@@ -1,0 +1,125 @@
+import { StyleSheet } from 'react-native';
+
+export const styles = StyleSheet.create({
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  assetInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  assetEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  assetName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  assetType: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  directionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  directionIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  directionText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#999',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  confidenceContainer: {
+    width: '80%',
+    height: 6,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  confidenceBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  confidenceText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  reasoningContainer: {
+    backgroundColor: '#F8F9FA',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  reasoningLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  reasoningText: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 18,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timestamp: {
+    fontSize: 11,
+    color: '#999',
+  },
+  disclaimer: {
+    fontSize: 10,
+    color: '#F44336',
+  },
+});
