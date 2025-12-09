@@ -1,0 +1,29 @@
+{
+  "verbs": [
+    "dame", "dime", "puedes", "podrias", "quiero", "necesito", "hazme", "hacerme",
+    "hacer", "haz", "muestrame", "muestra", "enseñame", "enseña",
+    "busca", "consulta", "analiza", "predice", "pronostica",
+    "crees", "opinas", "piensas", "recomiendas", "sugieres"
+  ],
+  "time": [
+    "minutos", "minuto", "horas", "hora", "dias", "dia", "semanas", "semana",
+    "meses", "mes", "años", "año", "hoy", "ahora", "ya", "ayer", "manana",
+    "proximos", "proximas", "siguiente", "siguientes"
+  ],
+  "articles": [
+    "de", "la", "el", "los", "las", "un", "una", "unos", "unas",
+    "que", "como", "esta", "estan", "cual", "cuales", "cuanto", "cuanta",
+    "para", "por", "con", "sin", "sobre", "entre", "hacia", "desde", "hasta",
+    "y", "o", "pero", "si", "no", "mas", "menos", "muy", "poco", "mucho"
+  ],
+  "finance": [
+    "precio", "actual", "tiempo", "real", "cotizacion", "cotizaciones",
+    "accion", "acciones", "bolsa", "mercado", "mercados", "valor", "valores",
+    "invertir", "inversion", "inversiones", "analisis", "prediccion", "predicciones",
+    "datos", "informacion", "info", "bien", "mal"
+  ],
+  "numbers": [
+    "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
+    "quince", "veinte", "treinta"
+  ]
+}

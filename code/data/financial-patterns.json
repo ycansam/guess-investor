@@ -1,0 +1,63 @@
+{
+  "priceAndValue": [
+    "precio",
+    "cotizacion",
+    "cotización",
+    "valor",
+    "cuanto vale",
+    "cuánto vale",
+    "cuanto cuesta",
+    "cuánto cuesta",
+    "cuanto esta",
+    "cuánto está"
+  ],
+  "realTimeData": [
+    "tiempo real",
+    "datos",
+    "informacion",
+    "información"
+  ],
+  "currentState": [
+    "como esta",
+    "cómo está",
+    "como va",
+    "cómo va",
+    "como anda",
+    "cómo anda",
+    "que tal",
+    "qué tal"
+  ],
+  "actions": [
+    "dame",
+    "dime",
+    "muestrame",
+    "muéstrame",
+    "consulta",
+    "busca"
+  ],
+  "assets": [
+    "accion",
+    "acción",
+    "acciones",
+    "bolsa",
+    "mercado",
+    "invertir",
+    "inversion",
+    "inversión"
+  ],
+  "analysis": [
+    "analiza",
+    "analisis",
+    "análisis",
+    "prediccion",
+    "predicción",
+    "pronostico",
+    "pronóstico"
+  ],
+  "crypto": [
+    "crypto",
+    "cripto",
+    "bitcoin",
+    "ethereum"
+  ]
+}
