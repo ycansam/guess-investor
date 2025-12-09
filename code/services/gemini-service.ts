@@ -22,76 +22,379 @@ class GeminiService {
     return this.client;
   }
 
+  // Mapa de empresas conocidas a sus símbolos
+  private readonly companySymbolMap: { [key: string]: string } = {
+    // Empresas españolas
+    'inditex': 'ITX.MC',
+    'zara': 'ITX.MC',
+    'santander': 'SAN.MC',
+    'banco santander': 'SAN.MC',
+    'bbva': 'BBVA.MC',
+    'telefonica': 'TEF.MC',
+    'telefónica': 'TEF.MC',
+    'iberdrola': 'IBE.MC',
+    'repsol': 'REP.MC',
+    'amadeus': 'AMS.MC',
+    'ferrovial': 'FER.MC',
+    'cellnex': 'CLNX.MC',
+    'caixabank': 'CABK.MC',
+    'endesa': 'ELE.MC',
+    'naturgy': 'NTGY.MC',
+    'mapfre': 'MAP.MC',
+    'acciona': 'ANA.MC',
+    'melia': 'MEL.MC',
+    'meliá': 'MEL.MC',
+    'grifols': 'GRF.MC',
+    'aena': 'AENA.MC',
+    'colonial': 'COL.MC',
+    'sabadell': 'SAB.MC',
+    'banco sabadell': 'SAB.MC',
+    'bankinter': 'BKT.MC',
+    'siemens gamesa': 'SGRE.MC',
+    'fluidra': 'FDR.MC',
+    'viscofan': 'VIS.MC',
+    'logista': 'LOG.MC',
+    'merlin': 'MRL.MC',
+    'ence': 'ENC.MC',
+    'acerinox': 'ACX.MC',
+    'arcelormittal': 'MTS.MC',
+    'sacyr': 'SCYR.MC',
+    'cie automotive': 'CIE.MC',
+    'pharma mar': 'PHM.MC',
+    'solaria': 'SLR.MC',
+    'red electrica': 'RED.MC',
+    'red eléctrica': 'RED.MC',
+    'enagas': 'ENG.MC',
+    'enagás': 'ENG.MC',
+    'indra': 'IDR.MC',
+    // Empresas americanas populares
+    'apple': 'AAPL',
+    'google': 'GOOGL',
+    'alphabet': 'GOOGL',
+    'microsoft': 'MSFT',
+    'amazon': 'AMZN',
+    'meta': 'META',
+    'facebook': 'META',
+    'tesla': 'TSLA',
+    'nvidia': 'NVDA',
+    'amd': 'AMD',
+    'netflix': 'NFLX',
+    'disney': 'DIS',
+    'boeing': 'BA',
+    'jpmorgan': 'JPM',
+    'jp morgan': 'JPM',
+    'visa': 'V',
+    'mastercard': 'MA',
+    'coca cola': 'KO',
+    'coca-cola': 'KO',
+    'pepsi': 'PEP',
+    'pepsico': 'PEP',
+    'walmart': 'WMT',
+    'home depot': 'HD',
+    'intel': 'INTC',
+    'ibm': 'IBM',
+    'oracle': 'ORCL',
+    'salesforce': 'CRM',
+    'adobe': 'ADBE',
+    'paypal': 'PYPL',
+    'spotify': 'SPOT',
+    'uber': 'UBER',
+    'airbnb': 'ABNB',
+    'zoom': 'ZM',
+    'palantir': 'PLTR',
+    'coinbase': 'COIN',
+    'robinhood': 'HOOD',
+    'berkshire': 'BRK.B',
+    'johnson & johnson': 'JNJ',
+    'procter & gamble': 'PG',
+    'exxon': 'XOM',
+    'chevron': 'CVX',
+    // Empresas europeas
+    'lvmh': 'MC.PA',
+    'louis vuitton': 'MC.PA',
+    'hermes': 'RMS.PA',
+    'hermès': 'RMS.PA',
+    'loreal': 'OR.PA',
+    "l'oreal": 'OR.PA',
+    'sap': 'SAP',
+    'siemens': 'SIE.DE',
+    'volkswagen': 'VOW3.DE',
+    'bmw': 'BMW.DE',
+    'mercedes': 'MBG.DE',
+    'daimler': 'MBG.DE',
+    'adidas': 'ADS.DE',
+    'bayer': 'BAYN.DE',
+    'basf': 'BAS.DE',
+    'nestle': 'NESN.SW',
+    'novartis': 'NOVN.SW',
+    'roche': 'ROG.SW',
+    'shell': 'SHEL',
+    'bp': 'BP',
+    'hsbc': 'HSBC',
+    'unilever': 'ULVR.L',
+    'astrazeneca': 'AZN',
+    'glaxo': 'GSK',
+    'diageo': 'DGE.L',
+  };
+
+  // Mapa de criptomonedas
+  private readonly cryptoMap: { [key: string]: string } = {
+    'bitcoin': 'BTC',
+    'btc': 'BTC',
+    'ethereum': 'ETH',
+    'eth': 'ETH',
+    'solana': 'SOL',
+    'sol': 'SOL',
+    'cardano': 'ADA',
+    'ada': 'ADA',
+    'ripple': 'XRP',
+    'xrp': 'XRP',
+    'dogecoin': 'DOGE',
+    'doge': 'DOGE',
+    'polkadot': 'DOT',
+    'dot': 'DOT',
+    'polygon': 'MATIC',
+    'matic': 'MATIC',
+    'chainlink': 'LINK',
+    'link': 'LINK',
+    'avalanche': 'AVAX',
+    'avax': 'AVAX',
+    'litecoin': 'LTC',
+    'ltc': 'LTC',
+    'shiba': 'SHIB',
+    'shiba inu': 'SHIB',
+    'uniswap': 'UNI',
+    'uni': 'UNI',
+    'binance coin': 'BNB',
+    'bnb': 'BNB',
+  };
+
+  // Detectar si el mensaje pide cualquier tipo de información financiera
+  private isFinancialRequest(message: string): boolean {
+    const financialPatterns = [
+      // Precios y valores
+      /precio/i,
+      /cotizaci[oó]n/i,
+      /valor/i,
+      /cu[aá]nto vale/i,
+      /cu[aá]nto cuesta/i,
+      /cu[aá]nto est[aá]/i,
+      // Datos y tiempo real
+      /tiempo real/i,
+      /datos/i,
+      /informaci[oó]n/i,
+      // Estado actual
+      /c[oó]mo est[aá]/i,
+      /c[oó]mo va/i,
+      /c[oó]mo anda/i,
+      /qu[eé] tal/i,
+      // Acciones específicas
+      /dame/i,
+      /dime/i,
+      /mu[eé]strame/i,
+      /consulta/i,
+      /busca/i,
+      // Acciones y activos
+      /acci[oó]n/i,
+      /acciones/i,
+      /bolsa/i,
+      /mercado/i,
+      /invertir/i,
+      /inversi[oó]n/i,
+      // Análisis
+      /analiza/i,
+      /an[aá]lisis/i,
+      /predicci[oó]n/i,
+      /pron[oó]stico/i,
+      // Crypto
+      /crypto/i,
+      /cripto/i,
+      /bitcoin/i,
+      /ethereum/i,
+    ];
+    return financialPatterns.some(pattern => pattern.test(message));
+  }
+
+  // Normalizar texto para comparación (quitar acentos y caracteres especiales)
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+      .replace(/[^a-z0-9\s]/g, ' ')    // Quitar caracteres especiales
+      .replace(/\s+/g, ' ')            // Normalizar espacios
+      .trim();
+  }
+
+  // Extraer posibles nombres de activos del mensaje
+  private extractPotentialAssets(message: string): string[] {
+    const normalized = this.normalizeText(message);
+    const words = normalized.split(' ');
+    
+    // Palabras comunes que NO son activos (ampliado)
+    const stopWords = new Set([
+      // Verbos y acciones
+      'dame', 'dime', 'puedes', 'podrias', 'quiero', 'necesito', 'hazme', 'hacerme',
+      'hacer', 'haz', 'muestrame', 'muestra', 'enseñame', 'enseña',
+      'busca', 'consulta', 'analiza', 'predice', 'pronostica',
+      'crees', 'opinas', 'piensas', 'recomiendas', 'sugieres',
+      // Tiempo
+      'minutos', 'minuto', 'horas', 'hora', 'dias', 'dia', 'semanas', 'semana',
+      'meses', 'mes', 'años', 'año', 'hoy', 'ahora', 'ya', 'ayer', 'manana',
+      'proximos', 'proximas', 'siguiente', 'siguientes',
+      // Artículos y preposiciones
+      'de', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
+      'que', 'como', 'esta', 'estan', 'cual', 'cuales', 'cuanto', 'cuanta',
+      'para', 'por', 'con', 'sin', 'sobre', 'entre', 'hacia', 'desde', 'hasta',
+      'y', 'o', 'pero', 'si', 'no', 'mas', 'menos', 'muy', 'poco', 'mucho',
+      // Finanzas genéricas
+      'precio', 'actual', 'tiempo', 'real', 'cotizacion', 'cotizaciones',
+      'accion', 'acciones', 'bolsa', 'mercado', 'mercados', 'valor', 'valores',
+      'invertir', 'inversion', 'inversiones', 'analisis', 'prediccion', 'predicciones',
+      'datos', 'informacion', 'info', 'bien', 'mal',
+      // Números escritos
+      'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez',
+      'quince', 'veinte', 'treinta',
+    ]);
+
+    return words.filter(word => 
+      word.length >= 3 && 
+      !stopWords.has(word) &&
+      !/^\d+$/.test(word) && // No números puros
+      !/^\d+[a-z]+$/.test(word) && // No combinaciones como "15min"
+      /^[a-z]+$/.test(word) // Solo letras
+    );
+  }
+
+  // Verificar si el mensaje menciona un activo específico (no solo pregunta general)
+  private mentionsSpecificAsset(message: string): boolean {
+    const messageLower = this.normalizeText(message);
+    
+    // Verificar si menciona alguna empresa/crypto conocida
+    for (const companyName of Object.keys(this.companySymbolMap)) {
+      if (messageLower.includes(this.normalizeText(companyName))) {
+        return true;
+      }
+    }
+    for (const cryptoName of Object.keys(this.cryptoMap)) {
+      if (messageLower.includes(this.normalizeText(cryptoName))) {
+        return true;
+      }
+    }
+    
+    // Verificar si tiene un símbolo en mayúsculas (AAPL, TSLA, etc.)
+    if (/\b[A-Z]{2,5}(?:\.[A-Z]{1,2})?\b/.test(message)) {
+      return true;
+    }
+    
+    return false;
+  }
+
   // Detectar si el mensaje menciona un activo y obtener datos reales
   private async enrichMessageWithMarketData(userMessage: string): Promise<string> {
-    // Patrones para detectar símbolos de acciones y crypto
-    const stockPatterns = [
-      /\b(AAPL|GOOGL|GOOG|MSFT|AMZN|META|TSLA|NVDA|AMD|NFLX|DIS|BA|JPM|V|MA|PG|KO|PEP|WMT|HD)\b/gi,
-      /acciones?\s+(?:de\s+)?(\w+)/gi,
-      /stock\s+(?:de\s+)?(\w+)/gi,
-    ];
+    console.log('[GeminiService] Procesando mensaje:', userMessage);
     
-    const cryptoPatterns = [
-      /\b(BTC|ETH|SOL|ADA|XRP|DOGE|DOT|MATIC|LINK|AVAX)\b/gi,
-      /\b(bitcoin|ethereum|solana|cardano|ripple|dogecoin)\b/gi,
-    ];
-
-    const cryptoMap: { [key: string]: string } = {
-      'bitcoin': 'BTC',
-      'ethereum': 'ETH',
-      'solana': 'SOL',
-      'cardano': 'ADA',
-      'ripple': 'XRP',
-      'dogecoin': 'DOGE',
-    };
-
+    const messageLower = this.normalizeText(userMessage);
     let marketData = '';
     const foundSymbols = new Set<string>();
+    const isFinancialRequest = this.isFinancialRequest(userMessage);
 
-    // Buscar acciones
-    for (const pattern of stockPatterns) {
-      const matches = userMessage.matchAll(pattern);
-      for (const match of matches) {
-        const symbol = match[1]?.toUpperCase();
-        if (symbol && symbol.length <= 5 && !foundSymbols.has(symbol)) {
-          foundSymbols.add(symbol);
+    console.log('[GeminiService] ¿Es petición financiera?', isFinancialRequest);
+    console.log('[GeminiService] Finnhub configurado:', finnhubService.isConfigured());
+
+    if (!finnhubService.isConfigured()) {
+      console.log('[GeminiService] Finnhub NO está configurado');
+      return userMessage;
+    }
+
+    // 1. Buscar en el mapa de empresas conocidas (con texto normalizado)
+    for (const [companyName, symbol] of Object.entries(this.companySymbolMap)) {
+      const normalizedCompany = this.normalizeText(companyName);
+      if (messageLower.includes(normalizedCompany) && !foundSymbols.has(symbol)) {
+        console.log(`[GeminiService] Encontrada empresa conocida: ${companyName} -> ${symbol}`);
+        foundSymbols.add(symbol);
+        try {
+          const data = await finnhubService.getMarketDataForAI(symbol, 'stock');
+          marketData += '\n' + data;
+        } catch (e: any) {
+          console.log(`[GeminiService] Error obteniendo datos para ${symbol}:`, e.message);
+        }
+      }
+    }
+
+    // 2. Buscar criptomonedas (con texto normalizado)
+    for (const [cryptoName, symbol] of Object.entries(this.cryptoMap)) {
+      const normalizedCrypto = this.normalizeText(cryptoName);
+      if (messageLower.includes(normalizedCrypto) && !foundSymbols.has(symbol)) {
+        console.log(`[GeminiService] Encontrada crypto: ${cryptoName} -> ${symbol}`);
+        foundSymbols.add(symbol);
+        try {
+          const data = await finnhubService.getMarketDataForAI(symbol, 'crypto');
+          marketData += '\n' + data;
+        } catch (e: any) {
+          console.log(`[GeminiService] Error obteniendo datos crypto para ${symbol}:`, e.message);
+        }
+      }
+    }
+
+    // 3. Buscar símbolos directos en mayúsculas (ej: AAPL, ITX.MC, TSLA)
+    const symbolPattern = /\b([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\b/g;
+    const directSymbols = userMessage.toUpperCase().match(symbolPattern) || [];
+    const commonUpperWords = new Set(['DE', 'LA', 'EL', 'EN', 'ES', 'UN', 'QUE', 'NO', 'SI', 'HOY', 'YA', 'MAS', 'MES', 'USD', 'EUR', 'DAME', 'PRECIO', 'ACTUAL', 'COMO', 'ESTA', 'TIEMPO', 'REAL']);
+    
+    for (const symbol of directSymbols) {
+      if (!foundSymbols.has(symbol) && !commonUpperWords.has(symbol)) {
+        console.log(`[GeminiService] Probando símbolo directo: ${symbol}`);
+        try {
+          const data = await finnhubService.getMarketDataForAI(symbol, 'stock');
+          if (!data.includes('No se pudieron obtener') && !data.includes('Error')) {
+            console.log(`[GeminiService] Símbolo válido encontrado: ${symbol}`);
+            foundSymbols.add(symbol);
+            marketData += '\n' + data;
+          }
+        } catch (e: any) {
+          console.log(`[GeminiService] Símbolo ${symbol} no válido`);
+        }
+      }
+    }
+
+    // 4. Solo buscar en Finnhub si parece que menciona un activo específico que no conocemos
+    // No buscar para preguntas generales como "hazme una predicción para 15 minutos"
+    if (isFinancialRequest && foundSymbols.size === 0 && this.mentionsSpecificAsset(userMessage)) {
+      const potentialAssets = this.extractPotentialAssets(userMessage);
+      console.log('[GeminiService] Buscando activos potenciales:', potentialAssets);
+      
+      for (const word of potentialAssets) {
+        if (word.length >= 4) { // Mínimo 4 caracteres para evitar falsos positivos
           try {
-            if (finnhubService.isConfigured()) {
-              const data = await finnhubService.getMarketDataForAI(symbol, 'stock');
-              marketData += '\n' + data;
+            console.log(`[GeminiService] Buscando en Finnhub: "${word}"`);
+            const searchResults = await finnhubService.searchSymbol(word);
+            
+            if (searchResults.length > 0) {
+              // Tomar el primer resultado que tenga descripción relevante
+              const bestMatch = searchResults[0];
+              console.log(`[GeminiService] Resultado de búsqueda:`, bestMatch);
+              
+              if (bestMatch.symbol && !foundSymbols.has(bestMatch.symbol)) {
+                foundSymbols.add(bestMatch.symbol);
+                const data = await finnhubService.getMarketDataForAI(bestMatch.symbol, 'stock');
+                marketData += '\n' + data;
+                console.log(`[GeminiService] Datos obtenidos para ${bestMatch.symbol}`);
+                break; // Solo tomar el primer resultado válido
+              }
             }
-          } catch (e) {
-            console.log(`No se pudo obtener datos para ${symbol}`);
+          } catch (e: any) {
+            console.log(`[GeminiService] Error buscando "${word}":`, e.message);
           }
         }
       }
     }
 
-    // Buscar crypto
-    for (const pattern of cryptoPatterns) {
-      const matches = userMessage.matchAll(pattern);
-      for (const match of matches) {
-        let symbol = match[1]?.toUpperCase();
-        // Convertir nombres a símbolos
-        if (cryptoMap[match[1]?.toLowerCase()]) {
-          symbol = cryptoMap[match[1].toLowerCase()];
-        }
-        if (symbol && !foundSymbols.has(symbol)) {
-          foundSymbols.add(symbol);
-          try {
-            if (finnhubService.isConfigured()) {
-              const data = await finnhubService.getMarketDataForAI(symbol, 'crypto');
-              marketData += '\n' + data;
-            }
-          } catch (e) {
-            console.log(`No se pudo obtener datos crypto para ${symbol}`);
-          }
-        }
-      }
-    }
+    console.log(`[GeminiService] Símbolos encontrados: ${Array.from(foundSymbols).join(', ')}`);
+    console.log(`[GeminiService] ¿Hay datos de mercado? ${marketData.length > 0}`)
 
     if (marketData) {
-      return `${userMessage}\n\n--- DATOS DE MERCADO EN TIEMPO REAL ---${marketData}\n\nUsa estos datos reales para tu análisis.`;
+      return `${userMessage}\n\n--- DATOS DE MERCADO EN TIEMPO REAL (Finnhub API) ---${marketData}\n\nIMPORTANTE: Estos son datos REALES y actualizados. Úsalos en tu respuesta y menciona que son datos en tiempo real.`;
     }
 
     return userMessage;
@@ -114,8 +417,22 @@ class GeminiService {
       // Enriquecer el mensaje con datos de mercado reales
       const enrichedMessage = await this.enrichMessageWithMarketData(userMessage);
 
+      // Limpiar historial de errores de símbolos incorrectos
+      const cleanedHistory = conversationHistory.slice(-10).filter(msg => {
+        // Filtrar respuestas que mencionen códigos de error o símbolos incorrectos
+        if (msg.role === 'assistant') {
+          const hasInvalidSymbolError = /\b\d{6}\s*\([A-Z]{2,4}\)/.test(msg.content) || // Patrón como "408525 (UNA)"
+                                        msg.content.includes('no se encontraron datos') ||
+                                        msg.content.includes('No encontré información');
+          if (hasInvalidSymbolError && msg.content.length < 200) {
+            return false; // Excluir mensajes cortos con errores
+          }
+        }
+        return true;
+      });
+
       // Construir historial para Gemini
-      const history = conversationHistory.slice(-10).map(msg => ({
+      const history = cleanedHistory.map(msg => ({
         role: msg.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: msg.content }],
       }));
