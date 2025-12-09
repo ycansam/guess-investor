@@ -1,0 +1,52 @@
+{
+  "cryptoNames": {
+    "BTC": "Bitcoin",
+    "ETH": "Ethereum",
+    "SOL": "Solana",
+    "ADA": "Cardano",
+    "XRP": "Ripple",
+    "DOGE": "Dogecoin",
+    "DOT": "Polkadot",
+    "MATIC": "Polygon",
+    "LINK": "Chainlink",
+    "AVAX": "Avalanche",
+    "LTC": "Litecoin",
+    "SHIB": "Shiba Inu",
+    "UNI": "Uniswap",
+    "BNB": "Binance Coin",
+    "ATOM": "Cosmos",
+    "XLM": "Stellar",
+    "ALGO": "Algorand",
+    "VET": "VeChain",
+    "FIL": "Filecoin",
+    "THETA": "Theta",
+    "XMR": "Monero",
+    "EOS": "EOS",
+    "AAVE": "Aave",
+    "MKR": "Maker",
+    "COMP": "Compound",
+    "SNX": "Synthetix",
+    "SUSHI": "SushiSwap",
+    "YFI": "yearn.finance",
+    "CRV": "Curve",
+    "BAL": "Balancer"
+  },
+  "europeanSuffixes": [".MC", ".PA", ".DE", ".L", ".MI", ".AS", ".SW", ".VI", ".BR", ".LS", ".WA"],
+  "currencyMapping": {
+    "european": {
+      "suffixes": [".MC", ".PA", ".DE", ".MI", ".AS", ".BR", ".LS", ".VI", ".WA"],
+      "symbol": "€"
+    },
+    "uk": {
+      "suffixes": [".L"],
+      "symbol": "£"
+    },
+    "swiss": {
+      "suffixes": [".SW"],
+      "symbol": "CHF "
+    },
+    "default": {
+      "symbol": "$"
+    }
+  }
+}

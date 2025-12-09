@@ -31,6 +31,19 @@ Patrones para detectar si un mensaje es una petición financiera:
 - **analysis**: Patrones de análisis
 - **crypto**: Términos de criptomonedas
 
+### `market-config.json`
+Configuración de mercados y monedas:
+- **cryptoNames**: Nombres completos de criptomonedas
+- **europeanSuffixes**: Sufijos de bolsas europeas
+- **currencyMapping**: Mapeo de símbolos a monedas (€, £, CHF, $)
+
+### `api-config.json`
+Configuración de APIs externas:
+- **finnhub**: URLs y endpoints de Finnhub API
+- **yahoo**: Configuración de Yahoo Finance
+- **exchangeRate**: API de tasas de cambio
+- **defaults**: Valores por defecto (límites de búsqueda, etc.)
+
 ## Cómo añadir nuevos datos
 
 ### Añadir una nueva empresa
@@ -44,9 +57,18 @@ Edita `company-symbols.json` y añade la entrada en la categoría correspondient
 ```
 
 ### Añadir una nueva criptomoneda
-Edita `crypto-symbols.json`:
+1. Edita `crypto-symbols.json`:
 ```json
 {
   "nueva crypto": "SYMBOL"
+}
+```
+
+2. Añade el nombre completo en `market-config.json`:
+```json
+{
+  "cryptoNames": {
+    "SYMBOL": "Nombre Completo"
+  }
 }
 ```

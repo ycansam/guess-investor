@@ -1,0 +1,26 @@
+{
+  "finnhub": {
+    "baseUrl": "https://finnhub.io/api/v1",
+    "endpoints": {
+      "quote": "/quote",
+      "profile": "/stock/profile2",
+      "news": "/news",
+      "companyNews": "/company-news",
+      "search": "/search"
+    }
+  },
+  "yahoo": {
+    "baseUrl": "https://query1.finance.yahoo.com/v8/finance/chart",
+    "corsProxy": "https://api.allorigins.win/raw?url="
+  },
+  "exchangeRate": {
+    "baseUrl": "https://api.exchangerate-api.com/v4/latest/USD",
+    "cacheDurationMs": 3600000,
+    "defaultUsdToEur": 0.86
+  },
+  "defaults": {
+    "newsLimit": 5,
+    "searchLimit": 10,
+    "cryptoExchange": "BINANCE"
+  }
+}
