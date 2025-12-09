@@ -7,10 +7,10 @@ export { cleanConversationHistory, formatHistoryForGemini } from './conversation
 // Utilidades de texto
 export { extractDirectSymbols, extractWords, normalizeText } from './text-utils';
 
-// Utilidades de mercado
-export {
-    convertPrices,
-    createMarketDataFromFinnhub,
-    createMarketDataFromYahoo, formatMarketDataForAI
-} from './market-data-utils';
+// Utilidades de formateo de mercado
+export { formatMarketDataForAI } from './format-market-data';
+
+// Mappers de datos
+export { convertPrices, createMarketDataFromFinnhub } from './finnhub-data-mapper';
+export { createMarketDataFromYahoo } from './yahoo-data-mapper';
 

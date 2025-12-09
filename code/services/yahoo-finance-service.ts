@@ -1,6 +1,6 @@
 import apiConfig from '../data/api-config.json';
 import { MarketData } from '../types';
-import { createMarketDataFromYahoo } from '../utils/market-data-utils';
+import { createMarketDataFromYahoo } from '../utils/yahoo-data-mapper';
 
 const config = apiConfig.yahoo;
 

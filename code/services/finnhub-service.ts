@@ -1,7 +1,8 @@
 import { appConfig } from '../config/app-config';
 import apiConfig from '../data/api-config.json';
 import { MarketData } from '../types';
-import { createMarketDataFromFinnhub, formatMarketDataForAI } from '../utils/market-data-utils';
+import { createMarketDataFromFinnhub } from '../utils/finnhub-data-mapper';
+import { formatMarketDataForAI } from '../utils/format-market-data';
 import { exchangeRateService } from './exchange-rate-service';
 import { marketConfigService } from './market-config-service';
 import { yahooFinanceService } from './yahoo-finance-service';
