@@ -131,11 +131,6 @@ export default function Index() {
           <Text style={styles.headerEmoji}>📈</Text>
           <Text style={styles.headerText}>Guess Investor</Text>
         </View>
-        {activeTab === 'chat' && messages.length > 0 && (
-          <TouchableOpacity onPress={handleClearChat} style={styles.headerButton}>
-            <Ionicons name="trash-outline" size={22} color="#FF3B30" />
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Tabs */}
