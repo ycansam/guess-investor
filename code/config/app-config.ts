@@ -14,8 +14,8 @@ export const appConfig: AppConfig = {
   // Obtén una GRATIS en: https://finnhub.io/register
   finnhubApiKey: process.env.EXPO_PUBLIC_FINNHUB_API_KEY || 'TU_FINNHUB_API_KEY',
 
-  // Modelo a usar (gemini-2.0-flash es el más reciente y gratis)
-  model: 'gemini-2.5-flash',
+  // Modelo a usar
+  model: process.env.EXPO_PUBLIC_GEMINI_MODEL || '',
 
   // Máximo de tokens en la respuesta
   maxTokens: 1024,
