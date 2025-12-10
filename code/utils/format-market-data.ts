@@ -3,16 +3,22 @@ import { MarketData } from '../types';
 /**
  * Formatea los datos de mercado para mostrar en el prompt de la IA
  */
-export function formatMarketDataForAI(
-  quote: MarketData,
-  currency: string,
-  profile?: any,
-  news?: any[]
-): string {
-  let dataString = formatQuoteSection(quote, currency);
-  dataString += formatProfileSection(profile);
-  dataString += formatNewsSection(news);
-  return dataString;
+export function formatMarketDataForAI(quote: MarketData): string {
+  const currency = getCurrencySymbol(quote.currency || 'USD');
+  return formatQuoteSection(quote, currency);
+}
+
+/**
+ * Obtiene el símbolo de la moneda
+ */
+function getCurrencySymbol(currencyCode: string): string {
+  const symbols: Record<string, string> = {
+    'USD': '$',
+    'EUR': '€',
+    'GBP': '£',
+    'JPY': '¥',
+  };
+  return symbols[currencyCode] || currencyCode + ' ';
 }
 
 function formatQuoteSection(quote: MarketData, currency: string): string {
@@ -30,31 +36,4 @@ function formatQuoteSection(quote: MarketData, currency: string): string {
 ${quote.volume ? `📊 Volumen: ${quote.volume.toLocaleString()}` : ''}
 ⏰ Actualizado: ${quote.lastUpdated.toLocaleTimeString()}
 `;
-}
-
-function formatProfileSection(profile?: any): string {
-  if (!profile?.name) return '';
-  
-  return `
-🏢 PERFIL DE LA EMPRESA:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Nombre: ${profile.name}
-Industria: ${profile.finnhubIndustry || 'N/A'}
-País: ${profile.country || 'N/A'}
-Cap. de Mercado: $${profile.marketCapitalization ? (profile.marketCapitalization / 1000).toFixed(2) + 'B' : 'N/A'}
-`;
-}
-
-function formatNewsSection(news?: any[]): string {
-  if (!news?.length) return '';
-  
-  let section = `
-📰 NOTICIAS RECIENTES:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-  
-  news.slice(0, 3).forEach((n: any, i: number) => {
-    section += `\n${i + 1}. ${n.headline}`;
-  });
-  
-  return section;
 }

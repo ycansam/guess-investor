@@ -10,12 +10,8 @@ export const appConfig: AppConfig = {
   // Puedes obtener una GRATIS en: https://aistudio.google.com/apikey
   geminiApiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'TU_API_KEY_AQUI',
 
-  // API Key de Finnhub para datos en tiempo real
-  // Obtén una GRATIS en: https://finnhub.io/register
-  finnhubApiKey: process.env.EXPO_PUBLIC_FINNHUB_API_KEY || 'TU_FINNHUB_API_KEY',
-
   // Modelo a usar
-  model: process.env.EXPO_PUBLIC_GEMINI_MODEL || '',
+  model: process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash-lite',
 
   // Máximo de tokens en la respuesta
   maxTokens: 1024,

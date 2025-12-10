@@ -58,6 +58,7 @@ export interface MarketData {
   low?: number;
   open?: number;
   previousClose?: number;
+  currency?: string;
 }
 
 export interface ChatState {
@@ -74,7 +75,6 @@ export interface PredictionState {
 
 export interface AppConfig {
   geminiApiKey: string;
-  finnhubApiKey?: string;
   model: string;
   maxTokens: number;
   temperature: number;

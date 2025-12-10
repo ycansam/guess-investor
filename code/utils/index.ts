@@ -11,6 +11,4 @@ export { extractDirectSymbols, extractWords, normalizeText } from './text-utils'
 export { formatMarketDataForAI } from './format-market-data';
 
 // Mappers de datos
-export { convertPrices, createMarketDataFromFinnhub } from './finnhub-data-mapper';
 export { createMarketDataFromYahoo } from './yahoo-data-mapper';
-
