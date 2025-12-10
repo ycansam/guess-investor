@@ -14,6 +14,8 @@ export interface InvestmentPrediction {
   assetType: AssetType;
   currentPrice?: number;
   predictedPrice?: number;
+  predictedPriceMin?: number;
+  predictedPriceMax?: number;
   predictedChange?: number;
   confidence: number;
   timeframe: string;

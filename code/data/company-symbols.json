@@ -41,7 +41,9 @@
     "red eléctrica": "RED.MC",
     "enagas": "ENG.MC",
     "enagás": "ENG.MC",
-    "indra": "IDR.MC"
+    "indra": "IDR.MC",
+    "dia": "DIA.MC",
+    "supermercados dia": "DIA.MC"
   },
   "american": {
     "apple": "AAPL",

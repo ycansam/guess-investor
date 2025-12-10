@@ -1,6 +1,6 @@
 {
   "yahoo": {
     "baseUrl": "https://query1.finance.yahoo.com/v8/finance/chart",
-    "corsProxy": "https://api.allorigins.win/raw?url="
+    "corsProxy": "https://corsproxy.io/?"
   }
 }

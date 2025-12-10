@@ -92,6 +92,45 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  pricesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  priceItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  priceLabel: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 4,
+  },
+  priceValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    textAlign: 'center',
+  },
+  priceArrow: {
+    paddingHorizontal: 8,
+  },
+  reasoningToggle: {
+    backgroundColor: '#E8F4FD',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  reasoningToggleText: {
+    fontSize: 13,
+    color: '#1976D2',
+    fontWeight: '600',
+  },
   reasoningContainer: {
     backgroundColor: '#F8F9FA',
     padding: 12,
@@ -99,14 +138,23 @@ export const styles = StyleSheet.create({
     marginBottom: 12,
   },
   reasoningLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 12,
+  },
+  reasoningSection: {
+    marginBottom: 10,
+  },
+  reasoningSectionTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: '#555',
     marginBottom: 4,
   },
   reasoningText: {
-    fontSize: 13,
-    color: '#444',
+    fontSize: 12,
+    color: '#666',
     lineHeight: 18,
   },
   footer: {

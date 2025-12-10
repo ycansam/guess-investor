@@ -76,6 +76,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           confidence: response.prediction.confidence || 50,
           timeframe: response.prediction.timeframe || 'No especificado',
           predictedChange: response.prediction.predictedChange,
+          currentPrice: response.prediction.currentPrice,
+          predictedPriceMin: response.prediction.predictedPriceMin,
+          predictedPriceMax: response.prediction.predictedPriceMax,
           reasoning: response.prediction.reasoning || '',
           createdAt: new Date(),
         };
@@ -146,6 +149,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           confidence: response.prediction.confidence || 50,
           timeframe: response.prediction.timeframe || 'No especificado',
           predictedChange: response.prediction.predictedChange,
+          currentPrice: response.prediction.currentPrice,
+          predictedPriceMin: response.prediction.predictedPriceMin,
+          predictedPriceMax: response.prediction.predictedPriceMax,
           reasoning: response.prediction.reasoning || '',
           createdAt: new Date(),
         };

@@ -1,0 +1,291 @@
+/**
+ * Servicio para calcular predicciones de forma DETERMINÍSTICA
+ * basándose en datos reales de mercado y sentimiento.
+ * 
+ * NO usa IA para los números, solo datos matemáticos reales.
+ */
+
+import { sentimentService } from './sentiment-service';
+import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
+
+export interface CalculatedPrediction {
+  asset: string;
+  assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'other';
+  currentPrice: number;
+  currency: string;
+  
+  // Predicción calculada
+  predictedPriceMin: number;
+  predictedPriceMax: number;
+  predictedChange: number;
+  direction: 'up' | 'down' | 'neutral';
+  confidence: number;
+  
+  // Datos base usados para el cálculo
+  sentiment: {
+    score: number; // 0-100, donde 50 es neutral
+    source: string;
+  };
+  historical: {
+    change30d: number;
+    change90d: number;
+    volatility: number;
+  };
+  
+  timeframe: string;
+  calculatedAt: Date;
+}
+
+interface SentimentData {
+  bullishPercent: number;
+  source: string;
+}
+
+class PredictionCalculatorService {
+  /**
+   * Calcula una predicción basada 100% en datos reales
+   */
+  async calculatePrediction(
+    symbol: string,
+    type: 'stock' | 'crypto',
+    timeframeDays: number = 1
+  ): Promise<CalculatedPrediction | null> {
+    try {
+      console.log(`[PredictionCalc] Calculando predicción para ${symbol} (${type})`);
+
+      // 1. Obtener datos de mercado reales
+      const [quote, historical] = await Promise.all([
+        yahooFinanceService.getQuote(symbol, type),
+        yahooFinanceService.getHistoricalData(symbol, type).catch(() => null),
+      ]);
+
+      if (!quote || !quote.price) {
+        console.log(`[PredictionCalc] No se pudo obtener precio para ${symbol}`);
+        return null;
+      }
+
+      // 2. Obtener sentimiento real
+      const sentimentData = await this.getSentimentScore(symbol, type);
+
+      // 3. Calcular predicción de forma determinística
+      const prediction = this.calculateFromData(
+        symbol,
+        type,
+        quote.price,
+        quote.currency || 'EUR',
+        historical,
+        sentimentData,
+        timeframeDays
+      );
+
+      console.log(`[PredictionCalc] Predicción calculada:`, {
+        direction: prediction.direction,
+        confidence: prediction.confidence,
+        change: prediction.predictedChange.toFixed(2) + '%',
+      });
+
+      return prediction;
+    } catch (error: any) {
+      console.error(`[PredictionCalc] Error:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Obtiene un score de sentimiento normalizado (0-100)
+   */
+  private async getSentimentScore(
+    symbol: string,
+    type: 'stock' | 'crypto'
+  ): Promise<SentimentData> {
+    try {
+      const sentiment = await sentimentService.getSentimentForAsset(symbol, type);
+      
+      // Extraer % bullish de StockTwits si existe
+      if (sentiment.stocktwits) {
+        const match = sentiment.stocktwits.match(/Bullish:\s*(\d+)/);
+        if (match) {
+          return {
+            bullishPercent: parseInt(match[1]),
+            source: 'StockTwits',
+          };
+        }
+      }
+
+      // Si hay Fear & Greed (crypto), usarlo
+      if (sentiment.fearGreed) {
+        const match = sentiment.fearGreed.match(/Valor:\s*(\d+)/);
+        if (match) {
+          return {
+            bullishPercent: parseInt(match[1]),
+            source: 'Fear & Greed Index',
+          };
+        }
+      }
+
+      // Sin datos de sentimiento
+      return {
+        bullishPercent: 50, // Neutral
+        source: 'Sin datos',
+      };
+    } catch {
+      return {
+        bullishPercent: 50,
+        source: 'Sin datos',
+      };
+    }
+  }
+
+  /**
+   * Cálculo determinístico de la predicción
+   * 
+   * Fórmula:
+   * - Dirección: basada en tendencia histórica (60%) + sentimiento (40%)
+   * - Confianza: basada en coherencia de señales + cantidad de datos
+   * - Precio objetivo: basado en volatilidad histórica real
+   */
+  private calculateFromData(
+    symbol: string,
+    type: 'stock' | 'crypto',
+    currentPrice: number,
+    currency: string,
+    historical: HistoricalData | null,
+    sentiment: SentimentData,
+    timeframeDays: number
+  ): CalculatedPrediction {
+    // Valores por defecto si no hay histórico
+    const change30d = historical?.change30d ?? 0;
+    const change90d = historical?.change90d ?? 0;
+    const volatility = historical?.volatility ?? 20; // 20% volatilidad por defecto
+
+    // --- CÁLCULO DE DIRECCIÓN ---
+    // Score de tendencia histórica (-100 a +100)
+    const trendScore = this.calculateTrendScore(change30d, change90d);
+    
+    // Score de sentimiento (-100 a +100)
+    const sentimentScore = (sentiment.bullishPercent - 50) * 2;
+    
+    // Score combinado (60% tendencia, 40% sentimiento)
+    const combinedScore = (trendScore * 0.6) + (sentimentScore * 0.4);
+    
+    // Determinar dirección
+    let direction: 'up' | 'down' | 'neutral';
+    if (combinedScore > 15) {
+      direction = 'up';
+    } else if (combinedScore < -15) {
+      direction = 'down';
+    } else {
+      direction = 'neutral';
+    }
+
+    // --- CÁLCULO DE CONFIANZA ---
+    // Base: coherencia entre tendencia y sentimiento
+    const signalCoherence = this.calculateCoherence(trendScore, sentimentScore);
+    
+    // Penalizar si no hay datos
+    let confidence = signalCoherence;
+    if (!historical) confidence -= 20;
+    if (sentiment.source === 'Sin datos') confidence -= 15;
+    
+    // Limitar entre 25 y 85 (nunca 100% seguro, nunca menos de 25%)
+    confidence = Math.max(25, Math.min(85, confidence));
+
+    // --- CÁLCULO DE PRECIO OBJETIVO ---
+    // Usar volatilidad real para calcular rango
+    const dailyVolatility = volatility / Math.sqrt(252); // Volatilidad diaria
+    const periodVolatility = dailyVolatility * Math.sqrt(timeframeDays);
+    
+    // El cambio esperado se basa en la dirección y la volatilidad
+    let expectedChange: number;
+    if (direction === 'up') {
+      expectedChange = Math.min(periodVolatility * 0.5, 5); // Máximo 5% en 1 día
+    } else if (direction === 'down') {
+      expectedChange = -Math.min(periodVolatility * 0.5, 5);
+    } else {
+      expectedChange = 0;
+    }
+
+    // Rango de precio basado en volatilidad real
+    const priceRange = currentPrice * (periodVolatility / 100);
+    const basePrice = currentPrice * (1 + expectedChange / 100);
+    
+    const predictedPriceMin = Math.round((basePrice - priceRange * 0.3) * 100) / 100;
+    const predictedPriceMax = Math.round((basePrice + priceRange * 0.3) * 100) / 100;
+
+    return {
+      asset: this.getAssetName(symbol),
+      assetType: type,
+      currentPrice: Math.round(currentPrice * 100) / 100,
+      currency,
+      predictedPriceMin,
+      predictedPriceMax,
+      predictedChange: Math.round(expectedChange * 100) / 100,
+      direction,
+      confidence: Math.round(confidence),
+      sentiment: {
+        score: sentiment.bullishPercent,
+        source: sentiment.source,
+      },
+      historical: {
+        change30d: Math.round(change30d * 100) / 100,
+        change90d: Math.round(change90d * 100) / 100,
+        volatility: Math.round(volatility * 100) / 100,
+      },
+      timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
+      calculatedAt: new Date(),
+    };
+  }
+
+  /**
+   * Calcula score de tendencia (-100 a +100)
+   */
+  private calculateTrendScore(change30d: number, change90d: number): number {
+    // Peso: 70% cambio 30d, 30% cambio 90d
+    const weightedChange = (change30d * 0.7) + (change90d * 0.3);
+    
+    // Normalizar a -100 a +100 (asumiendo ±20% como extremos)
+    return Math.max(-100, Math.min(100, weightedChange * 5));
+  }
+
+  /**
+   * Calcula coherencia entre señales (0-100)
+   */
+  private calculateCoherence(trendScore: number, sentimentScore: number): number {
+    // Si ambos tienen el mismo signo, alta coherencia
+    const sameDirection = (trendScore >= 0) === (sentimentScore >= 0);
+    
+    if (sameDirection) {
+      // Alta coherencia: base 60 + bonus por fuerza de señales
+      const strength = (Math.abs(trendScore) + Math.abs(sentimentScore)) / 2;
+      return 60 + (strength * 0.25);
+    } else {
+      // Baja coherencia: señales contradictorias
+      const conflict = Math.abs(trendScore - sentimentScore) / 2;
+      return Math.max(30, 55 - conflict * 0.25);
+    }
+  }
+
+  /**
+   * Obtiene nombre legible del activo
+   */
+  private getAssetName(symbol: string): string {
+    const names: Record<string, string> = {
+      'ITX.MC': 'Inditex',
+      'AMZN': 'Amazon',
+      'AAPL': 'Apple',
+      'GOOGL': 'Google',
+      'MSFT': 'Microsoft',
+      'TSLA': 'Tesla',
+      'BTC-EUR': 'Bitcoin',
+      'ETH-EUR': 'Ethereum',
+      'SAN.MC': 'Banco Santander',
+      'BBVA.MC': 'BBVA',
+      'TEF.MC': 'Telefónica',
+      'IBE.MC': 'Iberdrola',
+      'REP.MC': 'Repsol',
+    };
+    return names[symbol] || symbol;
+  }
+}
+
+export const predictionCalculatorService = new PredictionCalculatorService();

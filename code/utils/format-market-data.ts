@@ -23,17 +23,18 @@ function getCurrencySymbol(currencyCode: string): string {
 
 function formatQuoteSection(quote: MarketData, currency: string): string {
   const displayName = quote.name || quote.symbol.toUpperCase();
+  const price = quote.price || 0;
   
   return `
-📊 DATOS EN TIEMPO REAL DE ${displayName} (${quote.symbol.toUpperCase()}):
+📊 DATOS EN TIEMPO REAL: ${displayName} (${quote.symbol.toUpperCase()})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 Precio actual: ${currency}${quote.price?.toLocaleString() || 'N/A'}
-📈 Cambio: ${quote.change >= 0 ? '+' : ''}${quote.change?.toFixed(2) || '0.00'} (${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent?.toFixed(2) || '0.00'}%)
-🔼 Máximo del día: ${currency}${quote.high?.toLocaleString() || 'N/A'}
-🔽 Mínimo del día: ${currency}${quote.low?.toLocaleString() || 'N/A'}
-🔓 Apertura: ${currency}${quote.open?.toLocaleString() || 'N/A'}
-🔒 Cierre anterior: ${currency}${quote.previousClose?.toLocaleString() || 'N/A'}
+💰 PRECIO ACTUAL: ${currency}${price.toFixed(2)}
+📈 Cambio hoy: ${quote.change >= 0 ? '+' : ''}${quote.change?.toFixed(2) || '0.00'} (${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent?.toFixed(2) || '0.00'}%)
+🔼 Máximo del día: ${currency}${quote.high?.toFixed(2) || 'N/A'}
+🔽 Mínimo del día: ${currency}${quote.low?.toFixed(2) || 'N/A'}
+🔓 Apertura: ${currency}${quote.open?.toFixed(2) || 'N/A'}
+🔒 Cierre anterior: ${currency}${quote.previousClose?.toFixed(2) || 'N/A'}
 ${quote.volume ? `📊 Volumen: ${quote.volume.toLocaleString()}` : ''}
-⏰ Actualizado: ${quote.lastUpdated.toLocaleTimeString()}
+⏰ Actualizado: ${new Date().toLocaleTimeString('es-ES')}
 `;
 }

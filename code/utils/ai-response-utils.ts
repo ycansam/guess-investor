@@ -14,22 +14,35 @@ export function parseAIResponse(content: string): ParsedAIResponse {
   if (jsonMatch) {
     try {
       const predictionData = JSON.parse(jsonMatch[1]);
+      console.log('[AIParser] JSON parseado:', JSON.stringify(predictionData, null, 2));
       
       result.prediction = {
         asset: predictionData.asset,
-        assetType: predictionData.assetType || 'other',
+        assetType: predictionData.assetType || 'crypto',
         direction: predictionData.direction || 'neutral',
         confidence: predictionData.confidence || 50,
-        timeframe: predictionData.timeframe || 'No especificado',
+        timeframe: predictionData.timeframe || '1 semana',
         predictedChange: predictionData.predictedChange,
+        currentPrice: predictionData.currentPrice,
+        predictedPriceMin: predictionData.predictedPriceMin,
+        predictedPriceMax: predictionData.predictedPriceMax,
         reasoning: content.replace(/```json[\s\S]*?```/, '').trim(),
       };
+      
+      console.log('[AIParser] Predicción creada:', {
+        currentPrice: result.prediction.currentPrice,
+        predictedPriceMin: result.prediction.predictedPriceMin,
+        predictedPriceMax: result.prediction.predictedPriceMax,
+      });
 
       // Limpiar el mensaje removiendo el JSON
       result.message = content.replace(/```json[\s\S]*?```/, '').trim();
     } catch (e) {
-      console.log('No se pudo parsear predicción JSON:', e);
+      console.log('[AIParser] Error parseando JSON:', e);
+      console.log('[AIParser] JSON raw:', jsonMatch[1]);
     }
+  } else {
+    console.log('[AIParser] No se encontró bloque JSON en la respuesta');
   }
 
   return result;

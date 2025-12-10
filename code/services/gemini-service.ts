@@ -1,13 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { appConfig, INVESTMENT_SYSTEM_PROMPT } from '../config/app-config';
 import { ChatMessage, ParsedAIResponse } from '../types';
-import { getErrorMessage, parseAIResponse } from '../utils/ai-response-utils';
+import { getErrorMessage } from '../utils/ai-response-utils';
 import { cleanConversationHistory, formatHistoryForGemini } from '../utils/conversation-utils';
 import { marketDataEnricherService } from './market-data-enricher-service';
 
 /**
  * Servicio principal para comunicación con Google Gemini
- * Refactorizado para ser escalable y mantenible
+ * Las predicciones numéricas se calculan de forma determinística,
+ * la IA solo genera el formato de respuesta.
  */
 class GeminiService {
   private client: GoogleGenerativeAI | null = null;
@@ -45,26 +46,67 @@ class GeminiService {
     conversationHistory: ChatMessage[] = []
   ): Promise<ParsedAIResponse> {
     try {
-      const model = this.createModel();
+      // Enriquecer el mensaje con datos de mercado y calcular predicción
+      console.log('[Gemini] Enriqueciendo mensaje y calculando predicción...');
+      const enrichResult = await marketDataEnricherService.enrichMessage(userMessage);
+      const { enrichedMessage, hasMarketData, calculatedPrediction } = enrichResult;
       
-      // Enriquecer el mensaje con datos de mercado
-      const { enrichedMessage } = await marketDataEnricherService.enrichMessage(userMessage);
+      console.log('[Gemini] ¿Tiene datos?', hasMarketData);
+      console.log('[Gemini] ¿Tiene predicción calculada?', !!calculatedPrediction);
 
-      // Preparar historial limpio
+      // Si tenemos una predicción calculada, usarla directamente
+      if (calculatedPrediction) {
+        console.log('[Gemini] Usando predicción calculada (determinística)');
+        
+        const directionEmoji = calculatedPrediction.direction === 'up' ? '📈' : 
+                              calculatedPrediction.direction === 'down' ? '📉' : '➡️';
+        const directionText = calculatedPrediction.direction === 'up' ? 'SUBIDA' : 
+                             calculatedPrediction.direction === 'down' ? 'BAJADA' : 'LATERAL';
+        const moodText = calculatedPrediction.sentiment.score > 60 ? 'Bullish' : 
+                        calculatedPrediction.sentiment.score < 40 ? 'Bearish' : 'Neutro';
+
+        // Generar mensaje formateado con datos REALES
+        const message = `📊 Mi confianza: ${calculatedPrediction.confidence}%
+🌐 Sentimiento RRSS: ${calculatedPrediction.sentiment.score}% (${moodText})
+💰 Precio actual: €${calculatedPrediction.currentPrice.toFixed(2)}
+🎯 Precio objetivo: €${calculatedPrediction.predictedPriceMin.toFixed(2)} - €${calculatedPrediction.predictedPriceMax.toFixed(2)}
+${directionEmoji} Dirección: ${directionText}
+⏱️ Timeframe: ${calculatedPrediction.timeframe}`;
+
+        return {
+          message,
+          prediction: {
+            asset: calculatedPrediction.asset,
+            assetType: calculatedPrediction.assetType,
+            direction: calculatedPrediction.direction,
+            confidence: calculatedPrediction.confidence,
+            timeframe: calculatedPrediction.timeframe,
+            currentPrice: calculatedPrediction.currentPrice,
+            predictedPriceMin: calculatedPrediction.predictedPriceMin,
+            predictedPriceMax: calculatedPrediction.predictedPriceMax,
+            predictedChange: calculatedPrediction.predictedChange,
+            reasoning: `Análisis basado en: tendencia 30d (${calculatedPrediction.historical.change30d.toFixed(1)}%), volatilidad (${calculatedPrediction.historical.volatility.toFixed(1)}%), sentimiento ${calculatedPrediction.sentiment.source} (${calculatedPrediction.sentiment.score}%)`,
+          },
+        };
+      }
+
+      // Si no hay predicción calculada, usar Gemini para responder
+      const model = this.createModel();
       const cleanedHistory = cleanConversationHistory(conversationHistory);
       const formattedHistory = formatHistoryForGemini(cleanedHistory);
 
-      // Iniciar chat con contexto
       const chat = model.startChat({
         history: this.buildChatHistory(formattedHistory),
       });
 
-      // Enviar mensaje y obtener respuesta
+      console.log('[Gemini] Enviando a Gemini (sin predicción calculada)...');
       const result = await chat.sendMessage(enrichedMessage);
       const response = await result.response;
       const assistantMessage = response.text() || 'Lo siento, no pude procesar tu solicitud.';
 
-      return parseAIResponse(assistantMessage);
+      return {
+        message: assistantMessage,
+      };
     } catch (error: any) {
       console.error('Error al comunicarse con Gemini:', error);
       throw new Error(getErrorMessage(error));
