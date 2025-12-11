@@ -86,6 +86,10 @@ ${directionEmoji} Dirección: ${directionText}
             predictedPriceMax: calculatedPrediction.predictedPriceMax,
             predictedChange: calculatedPrediction.predictedChange,
             reasoning: `Análisis basado en: tendencia 30d (${calculatedPrediction.historical.change30d.toFixed(1)}%), volatilidad (${calculatedPrediction.historical.volatility.toFixed(1)}%), sentimiento ${calculatedPrediction.sentiment.source} (${calculatedPrediction.sentiment.score}%)`,
+            analysisData: {
+              sentiment: calculatedPrediction.sentiment,
+              historical: calculatedPrediction.historical,
+            },
           },
         };
       }

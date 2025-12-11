@@ -22,6 +22,19 @@ export interface InvestmentPrediction {
   direction: 'up' | 'down' | 'neutral';
   reasoning: string;
   createdAt: Date;
+  
+  // Datos de análisis reales (para mostrar en el razonamiento)
+  analysisData?: {
+    sentiment: {
+      score: number; // 0-100, donde 50 es neutral
+      source: string; // "StockTwits", "Fear & Greed Index", etc.
+    };
+    historical: {
+      change30d: number; // Cambio % últimos 30 días
+      change90d: number; // Cambio % últimos 90 días
+      volatility: number; // Volatilidad anualizada
+    };
+  };
 }
 
 export type AssetType = 

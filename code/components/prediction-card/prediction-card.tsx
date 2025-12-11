@@ -159,27 +159,95 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction }) =>
 
       {showReasoning && prediction.reasoning && (
         <View style={styles.reasoningContainer}>
-          <Text style={styles.reasoningLabel}>🧠 Análisis basado en:</Text>
+          <Text style={styles.reasoningLabel}>🧠 Análisis basado en datos reales:</Text>
+          
+          {/* Datos de mercado reales */}
           <View style={styles.reasoningSection}>
-            <Text style={styles.reasoningSectionTitle}>📊 Datos de mercado:</Text>
-            <Text style={styles.reasoningText}>
-              Precio actual, tendencia histórica, volatilidad y volumen del activo.
+            <Text style={styles.reasoningSectionTitle}>📊 Tendencia histórica:</Text>
+            {prediction.analysisData?.historical ? (
+              <View style={styles.dataGrid}>
+                <View style={styles.dataItem}>
+                  <Text style={styles.dataLabel}>Últimos 30 días</Text>
+                  <Text style={[
+                    styles.dataValue, 
+                    { color: prediction.analysisData.historical.change30d >= 0 ? '#4CAF50' : '#F44336' }
+                  ]}>
+                    {prediction.analysisData.historical.change30d >= 0 ? '+' : ''}
+                    {prediction.analysisData.historical.change30d.toFixed(2)}%
+                  </Text>
+                </View>
+                <View style={styles.dataItem}>
+                  <Text style={styles.dataLabel}>Últimos 90 días</Text>
+                  <Text style={[
+                    styles.dataValue, 
+                    { color: prediction.analysisData.historical.change90d >= 0 ? '#4CAF50' : '#F44336' }
+                  ]}>
+                    {prediction.analysisData.historical.change90d >= 0 ? '+' : ''}
+                    {prediction.analysisData.historical.change90d.toFixed(2)}%
+                  </Text>
+                </View>
+                <View style={styles.dataItem}>
+                  <Text style={styles.dataLabel}>Volatilidad</Text>
+                  <Text style={[
+                    styles.dataValue,
+                    { color: prediction.analysisData.historical.volatility > 40 ? '#F44336' : 
+                             prediction.analysisData.historical.volatility > 25 ? '#FF9800' : '#4CAF50' }
+                  ]}>
+                    {prediction.analysisData.historical.volatility.toFixed(1)}%
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.reasoningText}>Sin datos históricos disponibles</Text>
+            )}
+          </View>
+
+          {/* Sentimiento RRSS real */}
+          <View style={styles.reasoningSection}>
+            <Text style={styles.reasoningSectionTitle}>🌐 Sentimiento en redes:</Text>
+            {prediction.analysisData?.sentiment ? (
+              <View style={styles.sentimentContainer}>
+                <View style={styles.sentimentBar}>
+                  <View style={[
+                    styles.sentimentFill,
+                    { 
+                      width: `${prediction.analysisData.sentiment.score}%`,
+                      backgroundColor: prediction.analysisData.sentiment.score >= 60 ? '#4CAF50' : 
+                                      prediction.analysisData.sentiment.score >= 40 ? '#FF9800' : '#F44336'
+                    }
+                  ]} />
+                </View>
+                <View style={styles.sentimentInfo}>
+                  <Text style={styles.sentimentScore}>
+                    {prediction.analysisData.sentiment.score}% 
+                    {prediction.analysisData.sentiment.score >= 60 ? ' Bullish 🐂' : 
+                     prediction.analysisData.sentiment.score >= 40 ? ' Neutro 😐' : ' Bearish 🐻'}
+                  </Text>
+                  <Text style={styles.sentimentSource}>
+                    Fuente: {prediction.analysisData.sentiment.source}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.reasoningText}>Sin datos de sentimiento disponibles</Text>
+            )}
+          </View>
+
+          {/* Conclusión */}
+          <View style={styles.reasoningSection}>
+            <Text style={styles.reasoningSectionTitle}>💡 Conclusión:</Text>
+            <Text style={styles.conclusionText}>
+              {prediction.analysisData?.historical && prediction.analysisData?.sentiment ? (
+                prediction.analysisData.historical.change30d >= 0 && prediction.analysisData.sentiment.score >= 50
+                  ? `La tendencia a 30 días es positiva (+${prediction.analysisData.historical.change30d.toFixed(1)}%) y el sentimiento social es ${prediction.analysisData.sentiment.score >= 60 ? 'optimista' : 'neutro'} (${prediction.analysisData.sentiment.score}%), lo que sugiere momentum alcista.`
+                  : prediction.analysisData.historical.change30d < 0 && prediction.analysisData.sentiment.score < 50
+                    ? `La tendencia a 30 días es negativa (${prediction.analysisData.historical.change30d.toFixed(1)}%) y el sentimiento social es ${prediction.analysisData.sentiment.score < 40 ? 'pesimista' : 'neutro'} (${prediction.analysisData.sentiment.score}%), lo que sugiere presión bajista.`
+                    : `Señales mixtas: tendencia ${prediction.analysisData.historical.change30d >= 0 ? 'positiva' : 'negativa'} (${prediction.analysisData.historical.change30d.toFixed(1)}%) pero sentimiento ${prediction.analysisData.sentiment.score >= 50 ? 'positivo' : 'negativo'} (${prediction.analysisData.sentiment.score}%). Se recomienda cautela.`
+              ) : (
+                prediction.reasoning.replace(/```json[\s\S]*?```/g, '').trim().substring(0, 300)
+              )}
             </Text>
           </View>
-          <View style={styles.reasoningSection}>
-            <Text style={styles.reasoningSectionTitle}>🌐 Sentimiento RRSS:</Text>
-            <Text style={styles.reasoningText}>
-              Análisis de StockTwits, Reddit y Fear & Greed Index para medir el sentimiento del mercado.
-            </Text>
-          </View>
-          {prediction.reasoning.length > 10 && (
-            <View style={styles.reasoningSection}>
-              <Text style={styles.reasoningSectionTitle}>💡 Conclusión:</Text>
-              <Text style={styles.reasoningText}>
-                {prediction.reasoning.replace(/```json[\s\S]*?```/g, '').trim().substring(0, 300)}
-              </Text>
-            </View>
-          )}
         </View>
       )}
 

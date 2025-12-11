@@ -80,6 +80,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           predictedPriceMin: response.prediction.predictedPriceMin,
           predictedPriceMax: response.prediction.predictedPriceMax,
           reasoning: response.prediction.reasoning || '',
+          analysisData: response.prediction.analysisData,
           createdAt: new Date(),
         };
         
@@ -153,6 +154,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           predictedPriceMin: response.prediction.predictedPriceMin,
           predictedPriceMax: response.prediction.predictedPriceMax,
           reasoning: response.prediction.reasoning || '',
+          analysisData: response.prediction.analysisData,
           createdAt: new Date(),
         };
         
