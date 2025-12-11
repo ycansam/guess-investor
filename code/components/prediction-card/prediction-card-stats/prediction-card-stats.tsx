@@ -1,26 +1,13 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { InvestmentPrediction } from '../../../types';
+import { getConfidenceColor, getDirectionColor } from './_helpers';
 import { styles } from './prediction-card-stats.styles';
 
 interface PredictionCardStatsProps {
   prediction: InvestmentPrediction;
   changePercent?: number;
 }
-
-const getDirectionColor = (direction: string) => {
-  switch (direction) {
-    case 'up': return '#4CAF50';
-    case 'down': return '#F44336';
-    default: return '#FF9800';
-  }
-};
-
-const getConfidenceColor = (confidence: number) => {
-  if (confidence >= 70) return '#4CAF50';
-  if (confidence >= 40) return '#FF9800';
-  return '#F44336';
-};
 
 export const PredictionCardStats: React.FC<PredictionCardStatsProps> = ({ 
   prediction, 

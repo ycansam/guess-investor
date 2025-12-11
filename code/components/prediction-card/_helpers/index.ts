@@ -1,1 +1,2 @@
-export { calculateChangePercent } from './prediction-card.helpers';
+export { calculateChangePercent } from './calculate-change-percent';
+
