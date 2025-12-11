@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { InvestmentPrediction } from '../../types';
+import { calculateChangePercent } from './_helpers';
 import { PredictionCardAnalysis } from './prediction-card-analysis';
 import { PredictionCardFooter } from './prediction-card-footer';
 import { PredictionCardHeader } from './prediction-card-header';
@@ -13,19 +14,18 @@ interface PredictionCardProps {
 }
 
 export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction }) => {
-  const calculateChangePercent = () => {
-    if (!prediction.currentPrice || !prediction.predictedPriceMin || !prediction.predictedPriceMax) {
-      return prediction.predictedChange;
-    }
-    const avgPredicted = (prediction.predictedPriceMin + prediction.predictedPriceMax) / 2;
-    return ((avgPredicted - prediction.currentPrice) / prediction.currentPrice) * 100;
-  };
+  const changePercent = calculateChangePercent(
+    prediction.currentPrice,
+    prediction.predictedPriceMin,
+    prediction.predictedPriceMax,
+    prediction.predictedChange
+  );
 
   return (
     <View style={styles.card}>
       <PredictionCardHeader prediction={prediction} />
       <PredictionCardPrices prediction={prediction} />
-      <PredictionCardStats prediction={prediction} changePercent={calculateChangePercent()} />
+      <PredictionCardStats prediction={prediction} changePercent={changePercent} />
       <PredictionCardAnalysis prediction={prediction} />
       <PredictionCardFooter createdAt={prediction.createdAt} />
     </View>
