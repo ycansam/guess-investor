@@ -5,6 +5,7 @@
  * NO usa IA para los números, solo datos matemáticos reales.
  */
 
+import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { sentimentService } from './sentiment-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
@@ -31,6 +32,9 @@ export interface CalculatedPrediction {
     change90d: number;
     volatility: number;
   };
+  
+  // Datos financieros (solo para acciones)
+  financials?: FinancialSummary;
   
   timeframe: string;
   calculatedAt: Date;
@@ -67,7 +71,16 @@ class PredictionCalculatorService {
       // 2. Obtener sentimiento real
       const sentimentData = await this.getSentimentScore(symbol, type);
 
-      // 3. Calcular predicción de forma determinística
+      // 3. Obtener datos financieros (solo para acciones)
+      let financials: FinancialSummary | null = null;
+      if (type === 'stock') {
+        financials = await companyFinancialsService.getFinancialSummary(symbol, quote.price);
+        if (financials) {
+          console.log(`[PredictionCalc] Datos financieros obtenidos: score=${financials.overallScore}`);
+        }
+      }
+
+      // 4. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -75,6 +88,7 @@ class PredictionCalculatorService {
         quote.currency || 'EUR',
         historical,
         sentimentData,
+        financials,
         timeframeDays
       );
 
@@ -140,9 +154,9 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica (60%) + sentimiento (40%)
+   * - Dirección: basada en tendencia histórica (40%) + sentimiento (30%) + fundamentales (30%)
    * - Confianza: basada en coherencia de señales + cantidad de datos
-   * - Precio objetivo: basado en volatilidad histórica real
+   * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
   private calculateFromData(
     symbol: string,
@@ -151,6 +165,7 @@ class PredictionCalculatorService {
     currency: string,
     historical: HistoricalData | null,
     sentiment: SentimentData,
+    financials: FinancialSummary | null,
     timeframeDays: number
   ): CalculatedPrediction {
     // Valores por defecto si no hay histórico
@@ -165,8 +180,23 @@ class PredictionCalculatorService {
     // Score de sentimiento (-100 a +100)
     const sentimentScore = (sentiment.bullishPercent - 50) * 2;
     
-    // Score combinado (60% tendencia, 40% sentimiento)
-    const combinedScore = (trendScore * 0.6) + (sentimentScore * 0.4);
+    // Score de fundamentales (-100 a +100), solo para acciones
+    let financialsScore = 0;
+    if (financials) {
+      // Convertir score 0-100 a -100/+100
+      financialsScore = (financials.overallScore - 50) * 2;
+      console.log(`[PredictionCalc] Financials score: ${financialsScore} (overall: ${financials.overallScore})`);
+    }
+    
+    // Score combinado: si hay financieros, incluirlos en el cálculo
+    let combinedScore: number;
+    if (financials) {
+      // Acciones: 40% tendencia, 30% sentimiento, 30% fundamentales
+      combinedScore = (trendScore * 0.4) + (sentimentScore * 0.3) + (financialsScore * 0.3);
+    } else {
+      // Crypto u otros: 60% tendencia, 40% sentimiento
+      combinedScore = (trendScore * 0.6) + (sentimentScore * 0.4);
+    }
     
     // Determinar dirección
     let direction: 'up' | 'down' | 'neutral';
@@ -180,12 +210,21 @@ class PredictionCalculatorService {
 
     // --- CÁLCULO DE CONFIANZA ---
     // Base: coherencia entre tendencia y sentimiento
-    const signalCoherence = this.calculateCoherence(trendScore, sentimentScore);
+    let signalCoherence = this.calculateCoherence(trendScore, sentimentScore);
+    
+    // Si tenemos fundamentales, bonus por coherencia con ellos
+    if (financials) {
+      const financialsAgree = (financialsScore >= 0) === (combinedScore >= 0);
+      if (financialsAgree) signalCoherence += 10;
+      else signalCoherence -= 5;
+    }
     
     // Penalizar si no hay datos
     let confidence = signalCoherence;
     if (!historical) confidence -= 20;
     if (sentiment.source === 'Sin datos') confidence -= 15;
+    // Bonus si tenemos fundamentales
+    if (financials) confidence += 5;
     
     // Limitar entre 25 y 85 (nunca 100% seguro, nunca menos de 25%)
     confidence = Math.max(25, Math.min(85, confidence));
@@ -203,6 +242,20 @@ class PredictionCalculatorService {
       expectedChange = -Math.min(periodVolatility * 0.5, 5);
     } else {
       expectedChange = 0;
+    }
+    
+    // Si tenemos precio objetivo de analistas, ajustar el cambio esperado
+    if (financials && financials.targetPrice > 0 && financials.currentVsTarget !== 0) {
+      // Ponderar el cambio esperado con la diferencia vs precio objetivo
+      // Limitar la influencia del target al timeframe
+      const targetInfluence = Math.min(Math.abs(financials.currentVsTarget) / 100, 0.5);
+      const targetDirection = financials.currentVsTarget > 0 ? 1 : -1;
+      
+      // Ajustar el cambio esperado considerando el precio objetivo
+      const targetAdjustment = targetInfluence * (periodVolatility * 0.3) * targetDirection;
+      expectedChange = expectedChange + targetAdjustment;
+      
+      console.log(`[PredictionCalc] Ajuste por target analistas: ${targetAdjustment.toFixed(2)}%`);
     }
 
     // Rango de precio basado en volatilidad real
@@ -231,6 +284,7 @@ class PredictionCalculatorService {
         change90d: Math.round(change90d * 100) / 100,
         volatility: Math.round(volatility * 100) / 100,
       },
+      financials: financials || undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
     };

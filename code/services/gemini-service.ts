@@ -66,12 +66,29 @@ class GeminiService {
                         calculatedPrediction.sentiment.score < 40 ? 'Bearish' : 'Neutro';
 
         // Generar mensaje formateado con datos REALES
-        const message = `📊 Mi confianza: ${calculatedPrediction.confidence}%
+        let message = `📊 Mi confianza: ${calculatedPrediction.confidence}%
 🌐 Sentimiento RRSS: ${calculatedPrediction.sentiment.score}% (${moodText})
 💰 Precio actual: €${calculatedPrediction.currentPrice.toFixed(2)}
 🎯 Precio objetivo: €${calculatedPrediction.predictedPriceMin.toFixed(2)} - €${calculatedPrediction.predictedPriceMax.toFixed(2)}
 ${directionEmoji} Dirección: ${directionText}
 ⏱️ Timeframe: ${calculatedPrediction.timeframe}`;
+
+        // Añadir info financiera si está disponible
+        if (calculatedPrediction.financials) {
+          const fin = calculatedPrediction.financials;
+          message += `\n\n📈 Fundamentales: Score ${fin.overallScore}/100
+💵 Ingresos: ${fin.revenue} (${fin.revenueGrowth >= 0 ? '+' : ''}${fin.revenueGrowth.toFixed(1)}%)
+📊 Rating analistas: ${fin.analystRating}`;
+          if (fin.targetPrice > 0) {
+            message += ` | Objetivo: €${fin.targetPrice.toFixed(2)}`;
+          }
+        }
+
+        // Construir reasoning más completo
+        let reasoning = `Análisis basado en: tendencia 30d (${calculatedPrediction.historical.change30d.toFixed(1)}%), volatilidad (${calculatedPrediction.historical.volatility.toFixed(1)}%), sentimiento ${calculatedPrediction.sentiment.source} (${calculatedPrediction.sentiment.score}%)`;
+        if (calculatedPrediction.financials) {
+          reasoning += `. Fundamentales: score ${calculatedPrediction.financials.overallScore}/100, rating "${calculatedPrediction.financials.analystRating}"`;
+        }
 
         return {
           message,
@@ -85,10 +102,11 @@ ${directionEmoji} Dirección: ${directionText}
             predictedPriceMin: calculatedPrediction.predictedPriceMin,
             predictedPriceMax: calculatedPrediction.predictedPriceMax,
             predictedChange: calculatedPrediction.predictedChange,
-            reasoning: `Análisis basado en: tendencia 30d (${calculatedPrediction.historical.change30d.toFixed(1)}%), volatilidad (${calculatedPrediction.historical.volatility.toFixed(1)}%), sentimiento ${calculatedPrediction.sentiment.source} (${calculatedPrediction.sentiment.score}%)`,
+            reasoning,
             analysisData: {
               sentiment: calculatedPrediction.sentiment,
               historical: calculatedPrediction.historical,
+              financials: calculatedPrediction.financials,
             },
           },
         };

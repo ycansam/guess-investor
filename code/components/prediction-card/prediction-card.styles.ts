@@ -224,6 +224,101 @@ export const styles = StyleSheet.create({
     borderLeftColor: '#1976D2',
     marginTop: 4,
   },
+  // Estilos para datos financieros
+  financialsContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  financialsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  financialItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  financialLabel: {
+    fontSize: 9,
+    color: '#888',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  financialValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#333',
+    textAlign: 'center',
+  },
+  analystRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
+    marginTop: 4,
+  },
+  ratingBadge: {
+    alignItems: 'center',
+  },
+  ratingLabel: {
+    fontSize: 9,
+    color: '#888',
+    marginBottom: 2,
+  },
+  ratingValue: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  targetPriceContainer: {
+    alignItems: 'flex-end',
+  },
+  targetPriceLabel: {
+    fontSize: 9,
+    color: '#888',
+  },
+  targetPriceValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+  },
+  targetPriceDiff: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  overallScoreContainer: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
+  },
+  overallScoreLabel: {
+    fontSize: 10,
+    color: '#666',
+    marginBottom: 4,
+  },
+  overallScoreBarBg: {
+    height: 8,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  overallScoreBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  overallScoreValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

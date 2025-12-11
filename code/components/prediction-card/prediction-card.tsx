@@ -233,6 +233,119 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction }) =>
             )}
           </View>
 
+          {/* Datos financieros (solo para acciones) */}
+          {prediction.analysisData?.financials && (
+            <View style={styles.reasoningSection}>
+              <Text style={styles.reasoningSectionTitle}>📈 Resultados financieros:</Text>
+              <View style={styles.financialsContainer}>
+                <View style={styles.financialsRow}>
+                  <View style={styles.financialItem}>
+                    <Text style={styles.financialLabel}>Ingresos</Text>
+                    <Text style={styles.financialValue}>{prediction.analysisData.financials.revenue}</Text>
+                  </View>
+                  <View style={styles.financialItem}>
+                    <Text style={styles.financialLabel}>Crec. Ingresos</Text>
+                    <Text style={[
+                      styles.financialValue,
+                      { color: prediction.analysisData.financials.revenueGrowth >= 0 ? '#4CAF50' : '#F44336' }
+                    ]}>
+                      {prediction.analysisData.financials.revenueGrowth >= 0 ? '+' : ''}
+                      {prediction.analysisData.financials.revenueGrowth.toFixed(1)}%
+                    </Text>
+                  </View>
+                  <View style={styles.financialItem}>
+                    <Text style={styles.financialLabel}>Beneficio</Text>
+                    <Text style={styles.financialValue}>{prediction.analysisData.financials.netIncome}</Text>
+                  </View>
+                </View>
+                <View style={styles.financialsRow}>
+                  <View style={styles.financialItem}>
+                    <Text style={styles.financialLabel}>Crec. Beneficio</Text>
+                    <Text style={[
+                      styles.financialValue,
+                      { color: prediction.analysisData.financials.earningsGrowth >= 0 ? '#4CAF50' : '#F44336' }
+                    ]}>
+                      {prediction.analysisData.financials.earningsGrowth >= 0 ? '+' : ''}
+                      {prediction.analysisData.financials.earningsGrowth.toFixed(1)}%
+                    </Text>
+                  </View>
+                  <View style={styles.financialItem}>
+                    <Text style={styles.financialLabel}>Margen Neto</Text>
+                    <Text style={[
+                      styles.financialValue,
+                      { color: prediction.analysisData.financials.profitMargin >= 10 ? '#4CAF50' : 
+                               prediction.analysisData.financials.profitMargin >= 5 ? '#FF9800' : '#F44336' }
+                    ]}>
+                      {prediction.analysisData.financials.profitMargin.toFixed(1)}%
+                    </Text>
+                  </View>
+                  <View style={styles.financialItem}>
+                    <Text style={styles.financialLabel}>PER</Text>
+                    <Text style={[
+                      styles.financialValue,
+                      { color: prediction.analysisData.financials.peRatio > 0 && prediction.analysisData.financials.peRatio < 25 
+                          ? '#4CAF50' 
+                          : prediction.analysisData.financials.peRatio > 40 ? '#F44336' : '#FF9800' }
+                    ]}>
+                      {prediction.analysisData.financials.peRatio > 0 
+                        ? prediction.analysisData.financials.peRatio.toFixed(1) 
+                        : 'N/A'}
+                    </Text>
+                  </View>
+                </View>
+                {/* Rating y precio objetivo */}
+                <View style={styles.analystRow}>
+                  <View style={styles.ratingBadge}>
+                    <Text style={styles.ratingLabel}>Rating Analistas</Text>
+                    <Text style={[
+                      styles.ratingValue,
+                      { color: prediction.analysisData.financials.analystRating.includes('Compra') ? '#4CAF50' : 
+                               prediction.analysisData.financials.analystRating.includes('Venta') ? '#F44336' : '#FF9800' }
+                    ]}>
+                      {prediction.analysisData.financials.analystRating}
+                    </Text>
+                  </View>
+                  {prediction.analysisData.financials.targetPrice > 0 && (
+                    <View style={styles.targetPriceContainer}>
+                      <Text style={styles.targetPriceLabel}>Precio objetivo</Text>
+                      <Text style={styles.targetPriceValue}>
+                        €{prediction.analysisData.financials.targetPrice.toFixed(2)}
+                      </Text>
+                      <Text style={[
+                        styles.targetPriceDiff,
+                        { color: prediction.analysisData.financials.currentVsTarget >= 0 ? '#4CAF50' : '#F44336' }
+                      ]}>
+                        ({prediction.analysisData.financials.currentVsTarget >= 0 ? '+' : ''}
+                        {prediction.analysisData.financials.currentVsTarget.toFixed(1)}%)
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                {/* Score general */}
+                <View style={styles.overallScoreContainer}>
+                  <Text style={styles.overallScoreLabel}>Score Fundamentales</Text>
+                  <View style={styles.overallScoreBarBg}>
+                    <View style={[
+                      styles.overallScoreBar,
+                      { 
+                        width: `${prediction.analysisData.financials.overallScore}%`,
+                        backgroundColor: prediction.analysisData.financials.overallScore >= 70 ? '#4CAF50' : 
+                                        prediction.analysisData.financials.overallScore >= 50 ? '#FF9800' : '#F44336'
+                      }
+                    ]} />
+                  </View>
+                  <Text style={[
+                    styles.overallScoreValue,
+                    { color: prediction.analysisData.financials.overallScore >= 70 ? '#4CAF50' : 
+                             prediction.analysisData.financials.overallScore >= 50 ? '#FF9800' : '#F44336' }
+                  ]}>
+                    {prediction.analysisData.financials.overallScore}/100
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Conclusión */}
           <View style={styles.reasoningSection}>
             <Text style={styles.reasoningSectionTitle}>💡 Conclusión:</Text>

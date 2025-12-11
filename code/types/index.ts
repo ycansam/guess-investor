@@ -34,6 +34,19 @@ export interface InvestmentPrediction {
       change90d: number; // Cambio % últimos 90 días
       volatility: number; // Volatilidad anualizada
     };
+    // Datos financieros de la empresa (solo para acciones)
+    financials?: {
+      revenue: string; // Ingresos formateados (€5.2B)
+      revenueGrowth: number; // Crecimiento de ingresos (%)
+      netIncome: string; // Beneficio neto formateado
+      earningsGrowth: number; // Crecimiento de beneficios (%)
+      profitMargin: number; // Margen de beneficio (%)
+      peRatio: number; // P/E Ratio
+      analystRating: string; // Comprar, Mantener, Vender
+      targetPrice: number; // Precio objetivo analistas
+      currentVsTarget: number; // % diferencia vs objetivo
+      overallScore: number; // Score general 0-100
+    };
   };
 }
 
