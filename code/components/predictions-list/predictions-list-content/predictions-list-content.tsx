@@ -7,11 +7,13 @@ import { styles } from './predictions-list-content.styles';
 interface PredictionsListContentProps {
   predictions: InvestmentPrediction[];
   onClear?: () => void;
+  onRemove?: (id: string) => void;
 }
 
 export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
   predictions,
   onClear,
+  onRemove,
 }) => {
   return (
     <View style={styles.container}>
@@ -26,7 +28,7 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
       <FlatList
         data={predictions}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <PredictionCard prediction={item} />}
+        renderItem={({ item }) => <PredictionCard prediction={item} onRemove={onRemove} />}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
       />

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { geminiService } from '../services/gemini-service';
+import { storageService } from '../services/storage-service';
 import { ChatMessage, ChatState, InvestmentPrediction, PredictionState } from '../types';
+
+const PREDICTIONS_STORAGE_KEY = 'predictions-data';
 
 // Generar ID único
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -14,7 +17,9 @@ interface ChatStore extends ChatState, PredictionState {
   
   // Acciones de predicciones
   addPrediction: (prediction: InvestmentPrediction) => void;
+  removePrediction: (id: string) => void;
   clearPredictions: () => void;
+  loadPredictions: () => Promise<void>;
   
   // Análisis rápido
   analyzeAsset: (asset: string, assetType: string) => Promise<void>;
@@ -111,17 +116,59 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ error });
   },
 
-  // Añadir predicción
+  // Añadir predicción y guardar en IndexedDB
   addPrediction: (prediction) => {
-    set((state) => ({
-      predictions: [prediction, ...state.predictions],
-      lastAnalysis: new Date(),
-    }));
+    set((state) => {
+      const newPredictions = [prediction, ...state.predictions];
+      // Guardar en IndexedDB de forma asíncrona
+      storageService.save(PREDICTIONS_STORAGE_KEY, {
+        predictions: newPredictions,
+        lastAnalysis: new Date(),
+      });
+      return {
+        predictions: newPredictions,
+        lastAnalysis: new Date(),
+      };
+    });
   },
 
-  // Limpiar predicciones
+  // Eliminar una predicción por ID
+  removePrediction: (id) => {
+    set((state) => {
+      const newPredictions = state.predictions.filter((p) => p.id !== id);
+      // Guardar en IndexedDB de forma asíncrona
+      storageService.save(PREDICTIONS_STORAGE_KEY, {
+        predictions: newPredictions,
+        lastAnalysis: state.lastAnalysis,
+      });
+      return {
+        predictions: newPredictions,
+      };
+    });
+  },
+
+  // Limpiar predicciones y borrar de IndexedDB
   clearPredictions: () => {
+    storageService.remove(PREDICTIONS_STORAGE_KEY);
     set({ predictions: [], lastAnalysis: null });
+  },
+
+  // Cargar predicciones desde IndexedDB al iniciar
+  loadPredictions: async () => {
+    const data = await storageService.load<{
+      predictions: InvestmentPrediction[];
+      lastAnalysis: string | null;
+    }>(PREDICTIONS_STORAGE_KEY);
+    
+    if (data) {
+      set({
+        predictions: data.predictions.map((p) => ({
+          ...p,
+          createdAt: new Date(p.createdAt),
+        })),
+        lastAnalysis: data.lastAnalysis ? new Date(data.lastAnalysis) : null,
+      });
+    }
   },
 
   // Análisis rápido de un activo

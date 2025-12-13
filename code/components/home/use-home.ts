@@ -14,10 +14,15 @@ export function useHome() {
     sendMessage,
     clearMessages,
     clearPredictions,
+    removePrediction,
+    loadPredictions,
   } = useChatStore();
 
-  // Verificar configuración de API al montar
+  // Cargar predicciones guardadas y verificar configuración de API al montar
   useEffect(() => {
+    // Cargar predicciones desde IndexedDB
+    loadPredictions();
+    
     if (!geminiService.isConfigured()) {
       Alert.alert(
         '⚠️ Configuración Requerida',
@@ -56,6 +61,17 @@ export function useHome() {
     );
   };
 
+  const handleRemovePrediction = (id: string) => {
+    Alert.alert(
+      'Eliminar Predicción',
+      '¿Estás seguro de que quieres eliminar esta predicción?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: () => removePrediction(id) },
+      ]
+    );
+  };
+
   return {
     messages,
     isLoading,
@@ -63,5 +79,6 @@ export function useHome() {
     handleSendMessage,
     handleClearChat,
     handleClearPredictions,
+    handleRemovePrediction,
   };
 }

@@ -15,6 +15,7 @@ export function Home() {
     predictions,
     handleSendMessage,
     handleClearPredictions,
+    handleRemovePrediction,
   } = useHome();
 
   return (
@@ -39,6 +40,7 @@ export function Home() {
         <PredictionsList
           predictions={predictions}
           onClear={predictions.length > 0 ? handleClearPredictions : undefined}
+          onRemove={handleRemovePrediction}
         />
       )}
     </SafeAreaView>
