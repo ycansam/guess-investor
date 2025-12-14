@@ -44,6 +44,7 @@ export interface CalculatedPrediction {
 interface SentimentData {
   bullishPercent: number;
   source: string;
+  hasData: boolean; // NUEVO: indica si hay datos reales de sentimiento
 }
 
 class PredictionCalculatorService {
@@ -142,6 +143,7 @@ class PredictionCalculatorService {
           return {
             bullishPercent: parseInt(match[1]),
             source: 'StockTwits',
+            hasData: true,
           };
         }
       }
@@ -153,19 +155,22 @@ class PredictionCalculatorService {
           return {
             bullishPercent: parseInt(match[1]),
             source: 'Fear & Greed Index',
+            hasData: true,
           };
         }
       }
 
-      // Sin datos de sentimiento
+      // Sin datos de sentimiento - NO inventar
       return {
-        bullishPercent: 50, // Neutral
+        bullishPercent: 50, // Neutral por defecto
         source: 'Sin datos',
+        hasData: false, // Indica que no hay datos reales
       };
     } catch {
       return {
         bullishPercent: 50,
         source: 'Sin datos',
+        hasData: false,
       };
     }
   }
@@ -188,17 +193,24 @@ class PredictionCalculatorService {
     financials: FinancialSummary | null,
     timeframeDays: number
   ): CalculatedPrediction {
-    // Valores por defecto si no hay histórico
-    const change30d = historical?.change30d ?? 0;
-    const change90d = historical?.change90d ?? 0;
-    const volatility = historical?.volatility ?? 20; // 20% volatilidad por defecto
+    // --- FLAGS DE DATOS DISPONIBLES ---
+    const hasHistoricalData = historical !== null && (historical.change30d !== 0 || historical.change90d !== 0);
+    const hasSentimentData = sentiment.hasData;
+    const hasVolatilityData = historical !== null && historical.volatility > 0;
+    
+    // Valores - usar 0 (neutral) si no hay datos reales
+    const change30d = hasHistoricalData ? historical.change30d : 0;
+    const change90d = hasHistoricalData ? historical.change90d : 0;
+    const volatility = hasVolatilityData ? historical.volatility : 20; // Solo volatilidad usamos default
+
+    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, volatility=${hasVolatilityData}`);
 
     // --- CÁLCULO DE DIRECCIÓN ---
-    // Score de tendencia histórica (-100 a +100)
-    const trendScore = this.calculateTrendScore(change30d, change90d);
+    // Score de tendencia histórica (-100 a +100) - SOLO si hay datos
+    const trendScore = hasHistoricalData ? this.calculateTrendScore(change30d, change90d) : 0;
     
-    // Score de sentimiento (-100 a +100)
-    const sentimentScore = (sentiment.bullishPercent - 50) * 2;
+    // Score de sentimiento (-100 a +100) - SOLO si hay datos
+    const sentimentScore = hasSentimentData ? (sentiment.bullishPercent - 50) * 2 : 0;
     
     // Score de fundamentales (-100 a +100), solo para acciones
     let financialsScore = 0;
@@ -220,25 +232,33 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Sin datos de expectations, no se aplica este factor`);
     }
     
-    // Score combinado: si hay financieros, incluirlos en el cálculo
+    // Score combinado: distribuir pesos SOLO entre factores con datos reales
     let combinedScore: number;
-    if (financials) {
-      if (hasExpectationsData) {
-        // Acciones con expectativas reales: 
-        // 25% tendencia, 20% sentimiento, 25% fundamentales, 30% expectativas
-        combinedScore = (trendScore * 0.25) + (sentimentScore * 0.20) + 
-                       (financialsScore * 0.25) + (expectationsScore * 0.30);
-        console.log(`[PredictionCalc] Combined score (con expectations): ${combinedScore.toFixed(1)} (trend=${trendScore}, sent=${sentimentScore}, fin=${financialsScore}, exp=${expectationsScore})`);
-      } else {
-        // Acciones SIN datos de expectations: redistribuir pesos
-        // 35% tendencia, 25% sentimiento, 40% fundamentales
-        combinedScore = (trendScore * 0.35) + (sentimentScore * 0.25) + (financialsScore * 0.40);
-        console.log(`[PredictionCalc] Combined score (sin expectations): ${combinedScore.toFixed(1)} (trend=${trendScore}, sent=${sentimentScore}, fin=${financialsScore})`);
-      }
+    
+    // Contar cuántos factores tienen datos
+    const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.30 },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.20 },
+      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.25 },
+      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.25 },
+    ];
+    
+    const availableFactors = factors.filter(f => f.hasData);
+    
+    if (availableFactors.length === 0) {
+      // Sin datos de ningún factor - no podemos predecir
+      console.log(`[PredictionCalc] ⚠️ Sin datos de ningún factor, predicción neutral`);
+      combinedScore = 0;
     } else {
-      // Crypto u otros: 60% tendencia, 40% sentimiento
-      combinedScore = (trendScore * 0.6) + (sentimentScore * 0.4);
-      console.log(`[PredictionCalc] Combined score (crypto/sin financials): ${combinedScore.toFixed(1)}`);
+      // Redistribuir pesos entre factores disponibles
+      const totalWeight = availableFactors.reduce((sum, f) => sum + f.baseWeight, 0);
+      combinedScore = availableFactors.reduce((sum, f) => {
+        const normalizedWeight = f.baseWeight / totalWeight; // Normalizar a suma = 1
+        return sum + (f.score * normalizedWeight);
+      }, 0);
+      
+      const factorDetails = availableFactors.map(f => `${f.name}=${f.score.toFixed(0)}`).join(', ');
+      console.log(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)} (factores: ${factorDetails})`);
     }
     
     // Determinar dirección
@@ -252,25 +272,40 @@ class PredictionCalculatorService {
     }
 
     // --- CÁLCULO DE CONFIANZA ---
-    // Base: coherencia entre tendencia y sentimiento
-    let signalCoherence = this.calculateCoherence(trendScore, sentimentScore);
+    // Base: según cantidad de factores disponibles
+    const dataAvailabilityScore = (availableFactors.length / factors.length) * 100;
     
-    // Si tenemos fundamentales, bonus por coherencia con ellos
-    if (financials) {
-      const financialsAgree = (financialsScore >= 0) === (combinedScore >= 0);
-      if (financialsAgree) signalCoherence += 10;
-      else signalCoherence -= 5;
+    // Coherencia entre señales disponibles (solo si hay al menos 2)
+    let signalCoherence = 50; // Base neutral
+    if (availableFactors.length >= 2) {
+      const positiveSignals = availableFactors.filter(f => f.score > 10).length;
+      const negativeSignals = availableFactors.filter(f => f.score < -10).length;
+      const neutralSignals = availableFactors.length - positiveSignals - negativeSignals;
+      
+      // Alta coherencia si todas las señales van en la misma dirección
+      if (positiveSignals === availableFactors.length || negativeSignals === availableFactors.length) {
+        signalCoherence = 80;
+      } else if ((positiveSignals > 0 && negativeSignals > 0)) {
+        signalCoherence = 40; // Señales contradictorias
+      } else {
+        signalCoherence = 60; // Algunas señales, algunas neutrales
+      }
     }
     
-    // Penalizar si no hay datos
-    let confidence = signalCoherence;
-    if (!historical) confidence -= 20;
-    if (sentiment.source === 'Sin datos') confidence -= 15;
-    // Bonus si tenemos fundamentales
-    if (financials) confidence += 5;
+    // Confianza final: promedio entre disponibilidad y coherencia
+    let confidence = (dataAvailabilityScore * 0.4) + (signalCoherence * 0.6);
     
-    // Limitar entre 25 y 85 (nunca 100% seguro, nunca menos de 25%)
-    confidence = Math.max(25, Math.min(85, confidence));
+    // Bonus/penalizaciones específicas
+    if (!hasHistoricalData) confidence -= 10;
+    if (!hasSentimentData) confidence -= 5;
+    if (financials) confidence += 5;
+    if (hasExpectationsData) confidence += 5;
+    
+    // Limitar entre 20 y 85 (nunca 100% seguro, más bajo si faltan datos)
+    confidence = Math.max(20, Math.min(85, confidence));
+    
+    console.log(`[PredictionCalc] Confianza: ${confidence.toFixed(0)}% (datos: ${availableFactors.length}/${factors.length} factores)`);
+    
 
     // --- CÁLCULO DE PRECIO OBJETIVO ---
     // Usar volatilidad real para calcular rango
