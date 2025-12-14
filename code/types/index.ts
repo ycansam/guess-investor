@@ -95,6 +95,15 @@ export interface InvestmentPrediction {
       score: number; // -100 a +100
       summary: string; // Resumen de la actividad institucional
     };
+    // Estacionalidad del mercado
+    seasonality?: {
+      sector: string; // Sector detectado (Retail, Turismo, etc.)
+      region: string; // País/región detectada
+      currentSeason: string; // Estación actual
+      events: string[]; // Eventos activos (Black Friday, Navidad, etc.)
+      score: number; // -100 a +100
+      summary: string; // Resumen del impacto estacional
+    };
   };
 }
 

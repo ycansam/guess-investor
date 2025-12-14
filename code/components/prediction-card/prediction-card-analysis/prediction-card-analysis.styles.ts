@@ -397,4 +397,56 @@ export const styles = StyleSheet.create({
     color: '#555',
     lineHeight: 18,
   },
+  // Seasonality
+  seasonalityContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  seasonalityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  seasonalitySector: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  seasonalityScore: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  seasonalityMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  seasonalitySeason: {
+    fontSize: 11,
+    color: '#666',
+  },
+  seasonalityRegion: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  seasonalityEvents: {
+    marginBottom: 6,
+  },
+  seasonalityEvent: {
+    fontSize: 11,
+    color: '#555',
+    marginBottom: 2,
+  },
+  seasonalitySummary: {
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 18,
+  },
 });

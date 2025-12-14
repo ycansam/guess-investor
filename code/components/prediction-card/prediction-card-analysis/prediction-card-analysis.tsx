@@ -390,6 +390,46 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             </View>
           )}
 
+          {/* Estacionalidad */}
+          {prediction.analysisData?.seasonality && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>📅 Estacionalidad:</Text>
+              <View style={styles.seasonalityContainer}>
+                <View style={styles.seasonalityHeader}>
+                  <Text style={styles.seasonalitySector}>{prediction.analysisData.seasonality.sector}</Text>
+                  <Text style={[
+                    styles.seasonalityScore,
+                    { color: prediction.analysisData.seasonality.score > 15 ? '#4CAF50' :
+                             prediction.analysisData.seasonality.score < -15 ? '#F44336' : '#FF9800' }
+                  ]}>
+                    {prediction.analysisData.seasonality.score > 15 ? '📈 Favorable' :
+                     prediction.analysisData.seasonality.score < -15 ? '📉 Desfavorable' : '➖ Neutral'}
+                  </Text>
+                </View>
+                <View style={styles.seasonalityMetaRow}>
+                  <Text style={styles.seasonalitySeason}>
+                    Estación: {prediction.analysisData.seasonality.currentSeason}
+                  </Text>
+                  {prediction.analysisData.seasonality.region && prediction.analysisData.seasonality.region !== 'global' && (
+                    <Text style={styles.seasonalityRegion}>
+                      {prediction.analysisData.seasonality.region}
+                    </Text>
+                  )}
+                </View>
+                {prediction.analysisData.seasonality.events.length > 0 && (
+                  <View style={styles.seasonalityEvents}>
+                    {prediction.analysisData.seasonality.events.map((event, index) => (
+                      <Text key={index} style={styles.seasonalityEvent}>
+                        🎯 {event}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+                <Text style={styles.seasonalitySummary}>{prediction.analysisData.seasonality.summary}</Text>
+              </View>
+            </View>
+          )}
+
           {/* Conclusión */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>💡 Conclusión:</Text>

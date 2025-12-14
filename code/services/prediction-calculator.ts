@@ -12,6 +12,7 @@ import { forexAnalysisService, ForexImpact } from './forex-analysis-service';
 import { InstitutionalActivity, institutionalInvestorsService } from './institutional-investors-service';
 import { macroEconomicService, MacroIndicators } from './macro-economic-service';
 import { newsService, NewsSummary } from './news-service';
+import { SeasonalityAnalysis, seasonalityService } from './seasonality-service';
 import { sentimentService } from './sentiment-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
@@ -86,6 +87,16 @@ export interface CalculatedPrediction {
     insiderNetValue?: number;
     insiderTrend?: 'buying' | 'selling' | 'neutral';
     topHolders: string[]; // Nombres de principales fondos
+    score: number;
+    summary: string;
+  };
+  
+  // Estacionalidad del mercado
+  seasonality?: {
+    sector: string;
+    region: string;
+    currentSeason: string;
+    events: string[]; // Nombres de eventos activos
     score: number;
     summary: string;
   };
@@ -175,7 +186,13 @@ class PredictionCalculatorService {
         console.log(`[PredictionCalc] Institucional obtenido: score=${institutionalData.institutionalScore}`);
       }
 
-      // 9. Calcular predicción de forma determinística
+      // 9. Obtener análisis de estacionalidad
+      const seasonalityData = seasonalityService.analyzeSeasonality(symbol);
+      if (seasonalityData.hasData) {
+        console.log(`[PredictionCalc] Estacionalidad: ${seasonalityData.sector} (score: ${seasonalityData.seasonalScore})`);
+      }
+
+      // 10. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -189,10 +206,11 @@ class PredictionCalculatorService {
         competitorsData,
         forexData,
         institutionalData,
+        seasonalityData,
         timeframeDays
       );
 
-      // 10. Convertir precios a EUR si es necesario
+      // 11. Convertir precios a EUR si es necesario
       const currency = quote.currency || 'USD';
       if (currency !== 'EUR') {
         console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
@@ -277,7 +295,7 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores + forex + institucional
+   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores + forex + institucional + estacionalidad
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
@@ -294,6 +312,7 @@ class PredictionCalculatorService {
     competitors: CompetitorAnalysis,
     forex: ForexImpact,
     institutional: InstitutionalActivity,
+    seasonality: SeasonalityAnalysis,
     timeframeDays: number
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
@@ -302,6 +321,7 @@ class PredictionCalculatorService {
     const hasCompetitorsData = competitors.hasData;
     const hasForexData = forex.hasData;
     const hasInstitutionalData = institutional.hasData;
+    const hasSeasonalityData = seasonality.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
@@ -311,7 +331,7 @@ class PredictionCalculatorService {
     const change90d = hasHistoricalData ? historical.change90d : 0;
     const volatility = hasVolatilityData ? historical.volatility : 20; // Solo volatilidad usamos default
 
-    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, competitors=${hasCompetitorsData}, forex=${hasForexData}, institutional=${hasInstitutionalData}`);
+    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, competitors=${hasCompetitorsData}, forex=${hasForexData}, institutional=${hasInstitutionalData}, seasonality=${hasSeasonalityData}`);
 
     // --- CÁLCULO DE DIRECCIÓN ---
     // Score de tendencia histórica (-100 a +100) - SOLO si hay datos
@@ -362,6 +382,14 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Institutional score: ${institutionalScore} (insider: ${institutional.insiderTransactions?.trend || 'N/A'})`);
     }
     
+    // Score de estacionalidad (-100 a +100) - SOLO si hay datos del sector
+    // Patrones estacionales como Black Friday, temporada turística, etc.
+    let seasonalityScore = 0;
+    if (hasSeasonalityData) {
+      seasonalityScore = seasonality.seasonalScore; // Ya está en rango -100 a +100
+      console.log(`[PredictionCalc] Seasonality score: ${seasonalityScore} (${seasonality.sector}, ${seasonality.currentSeason})`);
+    }
+    
     // Score de fundamentales (-100 a +100), solo para acciones
     let financialsScore = 0;
     if (financials) {
@@ -389,13 +417,14 @@ class PredictionCalculatorService {
     // Los pesos reflejan la importancia de cada factor para predicciones a corto plazo
     // Total base se redistribuye a 1.00 entre factores disponibles
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.11 },
-      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.07 },
-      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.16 }, // Noticias: impacto directo
-      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.09 }, // Macro: contexto general
-      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.10 }, // Competidores: contexto sector
-      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.10 }, // Forex: impacto divisas
-      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: 0.11 }, // Grandes inversores: seguir el dinero inteligente
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.10 },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.06 },
+      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.15 }, // Noticias: impacto directo
+      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.08 }, // Macro: contexto general
+      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.09 }, // Competidores: contexto sector
+      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.09 }, // Forex: impacto divisas
+      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: 0.10 }, // Grandes inversores
+      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, baseWeight: 0.07 }, // Estacionalidad: patrones temporales
       { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.13 },
       { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.13 },
     ];
@@ -584,6 +613,24 @@ class PredictionCalculatorService {
     }
     priceAdjustments.push({ name: 'institutional', hasData: hasInstitutionalData, baseWeight: 0.12, adjustment: institutionalAdjustment });
     
+    // 8. Estacionalidad (peso base: 0.08)
+    // Patrones temporales como Black Friday, temporada turística, etc.
+    // Impacto moderado pero predecible
+    let seasonalityAdjustment = 0;
+    if (hasSeasonalityData && seasonality.seasonalScore !== 0) {
+      const seasonInfluence = seasonality.seasonalScore / 100;
+      // Impacto moderado - la estacionalidad es un factor de fondo
+      seasonalityAdjustment = seasonInfluence * periodVolatility * 0.3;
+      
+      // Bonus extra si hay eventos de alto impacto próximos (Black Friday, Navidad, etc.)
+      const highImpactEvents = seasonality.seasonalEvents.filter(e => e.impact === 'high' && e.daysUntil <= 14);
+      if (highImpactEvents.length > 0) {
+        const eventBonus = highImpactEvents[0].type === 'positive' ? 0.1 : -0.1;
+        seasonalityAdjustment += periodVolatility * eventBonus;
+      }
+    }
+    priceAdjustments.push({ name: 'seasonality', hasData: hasSeasonalityData, baseWeight: 0.08, adjustment: seasonalityAdjustment });
+    
     // Calcular ajuste total con redistribución de pesos
     const availablePriceAdjustments = priceAdjustments.filter(a => a.hasData);
     
@@ -697,6 +744,14 @@ class PredictionCalculatorService {
         topHolders: institutional.topInstitutions.slice(0, 3).map(t => t.name),
         score: institutional.institutionalScore,
         summary: institutional.summary,
+      } : undefined,
+      seasonality: hasSeasonalityData ? {
+        sector: seasonality.sector,
+        region: seasonality.region,
+        currentSeason: seasonality.currentSeason,
+        events: seasonality.seasonalEvents.slice(0, 3).map(e => e.name),
+        score: seasonality.seasonalScore,
+        summary: seasonality.summary,
       } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
