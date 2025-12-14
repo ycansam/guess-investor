@@ -98,6 +98,96 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             </View>
           )}
 
+          {/* Desglose de Factores */}
+          {prediction.analysisData?.factorBreakdown && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>📊 Análisis de Factores:</Text>
+              <View style={styles.factorBreakdownContainer}>
+                {/* Tipo de activo */}
+                <Text style={styles.factorAssetType}>
+                  {prediction.analysisData.factorBreakdown.assetGroupDescription}
+                </Text>
+                
+                {/* Resumen de señales */}
+                <View style={[
+                  styles.signalSummaryBadge,
+                  { backgroundColor: 
+                    prediction.analysisData.factorBreakdown.signalSummary === 'coherent_bullish' ? '#E8F5E9' :
+                    prediction.analysisData.factorBreakdown.signalSummary === 'coherent_bearish' ? '#FFEBEE' :
+                    prediction.analysisData.factorBreakdown.signalSummary === 'mixed' ? '#FFF3E0' :
+                    '#F5F5F5'
+                  }
+                ]}>
+                  <Text style={[
+                    styles.signalSummaryText,
+                    { color: 
+                      prediction.analysisData.factorBreakdown.signalSummary === 'coherent_bullish' ? '#2E7D32' :
+                      prediction.analysisData.factorBreakdown.signalSummary === 'coherent_bearish' ? '#C62828' :
+                      prediction.analysisData.factorBreakdown.signalSummary === 'mixed' ? '#E65100' :
+                      '#666'
+                    }
+                  ]}>
+                    {prediction.analysisData.factorBreakdown.signalSummary === 'coherent_bullish' ? '🟢 Señales alcistas coherentes' :
+                     prediction.analysisData.factorBreakdown.signalSummary === 'coherent_bearish' ? '🔴 Señales bajistas coherentes' :
+                     prediction.analysisData.factorBreakdown.signalSummary === 'mixed' ? '🟠 Señales contradictorias' :
+                     prediction.analysisData.factorBreakdown.signalSummary === 'insufficient' ? '⚪ Datos insuficientes' :
+                     '⚪ Señales neutrales'}
+                  </Text>
+                </View>
+
+                {/* Barra de factores */}
+                <View style={styles.factorBarContainer}>
+                  {prediction.analysisData.factorBreakdown.availableFactors
+                    .filter(f => prediction.analysisData?.factorBreakdown?.relevantFactors.includes(f.name))
+                    .map((factor, index) => (
+                    <View key={index} style={styles.factorItem}>
+                      <View style={styles.factorHeader}>
+                        <Text style={styles.factorName}>
+                          {factor.name === 'trend' ? '📈 Tendencia' :
+                           factor.name === 'sentiment' ? '💬 Sentimiento' :
+                           factor.name === 'news' ? '📰 Noticias' :
+                           factor.name === 'macro' ? '🌍 Macro' :
+                           factor.name === 'competitors' ? '🏭 Competidores' :
+                           factor.name === 'forex' ? '💱 Forex' :
+                           factor.name === 'institutional' ? '🏛️ Institucionales' :
+                           factor.name === 'seasonality' ? '📅 Estacionalidad' :
+                           factor.name === 'financials' ? '💰 Financieros' :
+                           factor.name === 'expectations' ? '🎯 Expectativas' : factor.name}
+                        </Text>
+                        <Text style={[
+                          styles.factorScore,
+                          { color: !factor.hasData ? '#999' :
+                                   factor.score > 15 ? '#4CAF50' :
+                                   factor.score < -15 ? '#F44336' : '#FF9800' }
+                        ]}>
+                          {!factor.hasData ? 'N/D' :
+                           factor.score > 0 ? `+${factor.score}` : factor.score}
+                        </Text>
+                      </View>
+                      <View style={styles.factorBar}>
+                        <View style={[
+                          styles.factorBarFill,
+                          { 
+                            width: factor.hasData ? `${Math.min(100, Math.abs(factor.score) + 50)}%` : '0%',
+                            backgroundColor: !factor.hasData ? '#E0E0E0' :
+                                            factor.score > 15 ? '#4CAF50' :
+                                            factor.score < -15 ? '#F44336' : '#FF9800',
+                            opacity: factor.hasData ? 0.7 : 0.3,
+                          }
+                        ]} />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Explicación de confianza */}
+                <Text style={styles.confidenceExplanation}>
+                  💡 {prediction.analysisData.factorBreakdown.confidenceExplanation}
+                </Text>
+              </View>
+            </View>
+          )}
+
           {/* Tendencia histórica */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>📊 Tendencia histórica:</Text>

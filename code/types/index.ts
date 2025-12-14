@@ -104,6 +104,15 @@ export interface InvestmentPrediction {
       score: number; // -100 a +100
       summary: string; // Resumen del impacto estacional
     };
+    // Desglose de factores usados en la predicción
+    factorBreakdown?: {
+      assetGroup: string; // Grupo del activo (large_cap_stock, crypto_major, etc.)
+      assetGroupDescription: string; // Descripción legible
+      relevantFactors: string[]; // Factores que aplican a este tipo de activo
+      availableFactors: { name: string; score: number; hasData: boolean }[];
+      confidenceExplanation: string; // Por qué la confianza es X%
+      signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
+    };
   };
 }
 

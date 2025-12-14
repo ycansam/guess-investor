@@ -504,4 +504,68 @@ export const styles = StyleSheet.create({
     fontStyle: 'italic',
     lineHeight: 16,
   },
+  // Factor Breakdown
+  factorBreakdownContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  factorAssetType: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  signalSummaryBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  signalSummaryText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  factorBarContainer: {
+    marginBottom: 12,
+  },
+  factorItem: {
+    marginBottom: 8,
+  },
+  factorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+  factorName: {
+    fontSize: 11,
+    color: '#333',
+  },
+  factorScore: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  factorBar: {
+    height: 4,
+    backgroundColor: '#E8E8E8',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  factorBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  confidenceExplanation: {
+    fontSize: 11,
+    color: '#555',
+    lineHeight: 16,
+    backgroundColor: '#F5F5F5',
+    padding: 8,
+    borderRadius: 6,
+  },
 });

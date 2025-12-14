@@ -119,6 +119,13 @@ ${directionEmoji} Dirección: ${directionText}
               sentiment: calculatedPrediction.sentiment,
               historical: calculatedPrediction.historical,
               financials: calculatedPrediction.financials,
+              news: calculatedPrediction.news,
+              macro: calculatedPrediction.macro,
+              competitors: calculatedPrediction.competitors,
+              forex: calculatedPrediction.forex,
+              institutional: calculatedPrediction.institutional,
+              seasonality: calculatedPrediction.seasonality,
+              factorBreakdown: calculatedPrediction.factorBreakdown,
             },
           },
         };

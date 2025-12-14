@@ -29,15 +29,27 @@ export interface CalculatedPrediction {
   direction: 'up' | 'down' | 'neutral';
   confidence: number;
   
+  // NUEVO: Desglose de factores usados
+  factorBreakdown: {
+    assetGroup: string; // Grupo del activo (large_cap, crypto_major, etc.)
+    assetGroupDescription: string; // Descripción legible
+    relevantFactors: string[]; // Factores que aplican a este tipo de activo
+    availableFactors: { name: string; score: number; hasData: boolean }[]; // Todos los factores con su score
+    confidenceExplanation: string; // Por qué la confianza es X%
+    signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
+  };
+  
   // Datos base usados para el cálculo
   sentiment: {
     score: number; // 0-100, donde 50 es neutral
     source: string;
+    hasData: boolean; // NUEVO: indica si es dato real
   };
   historical: {
     change30d: number;
     change90d: number;
     volatility: number;
+    hasData: boolean; // NUEVO
   };
   
   // Datos financieros (solo para acciones)
@@ -766,6 +778,59 @@ class PredictionCalculatorService {
     
     console.log(`[PredictionCalc] Confianza: ${confidence.toFixed(0)}% (coherencia: ${signalCoherence.toFixed(0)}, fuerza: ${signalStrength.toFixed(0)}, factores: ${availableRelevantFactors.length}/${relevantFactors.length} relevantes)`);
     
+    // --- CONSTRUIR EXPLICACIÓN DE FACTORES ---
+    // Determinar el tipo de señal
+    const positiveFactors = availableRelevantFactors.filter(f => f.score > 10);
+    const negativeFactors = availableRelevantFactors.filter(f => f.score < -10);
+    let signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
+    
+    if (availableRelevantFactors.length === 0) {
+      signalSummary = 'insufficient';
+    } else if (positiveFactors.length > 0 && negativeFactors.length > 0) {
+      signalSummary = 'mixed';
+    } else if (positiveFactors.length === availableRelevantFactors.length) {
+      signalSummary = 'coherent_bullish';
+    } else if (negativeFactors.length === availableRelevantFactors.length) {
+      signalSummary = 'coherent_bearish';
+    } else {
+      signalSummary = 'neutral';
+    }
+    
+    // Construir explicación de confianza
+    let confidenceExplanation: string;
+    if (availableRelevantFactors.length === 0) {
+      confidenceExplanation = 'Sin datos suficientes para hacer una predicción fiable.';
+    } else if (availableRelevantFactors.length === 1) {
+      confidenceExplanation = `Solo 1 factor disponible (${availableRelevantFactors[0].name}). Se necesitan más datos para validar.`;
+    } else if (signalSummary === 'mixed') {
+      const bullishNames = positiveFactors.map(f => f.name).join(', ');
+      const bearishNames = negativeFactors.map(f => f.name).join(', ');
+      confidenceExplanation = `Señales contradictorias: ${bullishNames} son positivos, pero ${bearishNames} son negativos. Alta incertidumbre.`;
+    } else if (signalSummary === 'coherent_bullish') {
+      confidenceExplanation = `${positiveFactors.length} factores coinciden en señal alcista: ${positiveFactors.map(f => f.name).join(', ')}.`;
+    } else if (signalSummary === 'coherent_bearish') {
+      confidenceExplanation = `${negativeFactors.length} factores coinciden en señal bajista: ${negativeFactors.map(f => f.name).join(', ')}.`;
+    } else {
+      confidenceExplanation = 'Señales mayormente neutrales, sin dirección clara.';
+    }
+    
+    // Añadir info sobre factores faltantes si son importantes
+    const missingRelevant = relevantFactors.filter(f => !f.hasData);
+    if (missingRelevant.length > 0 && availableRelevantFactors.length < groupConfig.minFactorsForHighConfidence) {
+      confidenceExplanation += ` Faltan datos de: ${missingRelevant.map(f => f.name).join(', ')}.`;
+    }
+    
+    // Objeto factorBreakdown para incluir en el resultado
+    const factorBreakdown = {
+      assetGroup,
+      assetGroupDescription: groupConfig.description,
+      relevantFactors: groupConfig.relevantFactors,
+      availableFactors: factors.map(f => ({ name: f.name, score: Math.round(f.score), hasData: f.hasData })),
+      confidenceExplanation,
+      signalSummary,
+    };
+
+    
 
     // --- CÁLCULO DE PRECIO OBJETIVO ---
     // Usar volatilidad real para calcular rango
@@ -971,14 +1036,17 @@ class PredictionCalculatorService {
       predictedChange: Math.round(expectedChange * 100) / 100,
       direction,
       confidence: Math.round(confidence),
+      factorBreakdown,
       sentiment: {
         score: sentiment.bullishPercent,
         source: sentiment.source,
+        hasData: hasSentimentData,
       },
       historical: {
         change30d: Math.round(change30d * 100) / 100,
         change90d: Math.round(change90d * 100) / 100,
         volatility: Math.round(volatility * 100) / 100,
+        hasData: hasHistoricalData,
       },
       financials: financials || undefined,
       news: hasNewsData ? {
