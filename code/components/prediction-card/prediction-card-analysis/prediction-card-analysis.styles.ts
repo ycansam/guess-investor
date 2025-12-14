@@ -337,4 +337,64 @@ export const styles = StyleSheet.create({
     color: '#555',
     lineHeight: 18,
   },
+  // Institutional investors
+  institutionalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  institutionalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  institutionalItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  institutionalLabel: {
+    fontSize: 9,
+    color: '#888',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  institutionalValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#333',
+    textAlign: 'center',
+  },
+  insiderSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
+  },
+  insiderBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  insiderValue: {
+    fontSize: 11,
+    color: '#555',
+    fontWeight: '600',
+  },
+  institutionalHolders: {
+    fontSize: 11,
+    color: '#888',
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  institutionalSummary: {
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 18,
+  },
 });

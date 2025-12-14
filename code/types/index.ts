@@ -83,6 +83,18 @@ export interface InvestmentPrediction {
       summary: string; // Resumen del impacto
       mainPairs: string[]; // Pares analizados (EUR/USD, EUR/GBP, etc.)
     };
+    // Movimientos de inversores institucionales
+    institutional?: {
+      ownershipPercent?: number; // % en manos de instituciones
+      numberOfInstitutions?: number;
+      ownershipTrend?: 'increasing' | 'decreasing' | 'stable';
+      insiderNetShares?: number;
+      insiderNetValue?: number;
+      insiderTrend?: 'buying' | 'selling' | 'neutral';
+      topHolders: string[]; // Nombres de principales fondos
+      score: number; // -100 a +100
+      summary: string; // Resumen de la actividad institucional
+    };
   };
 }
 

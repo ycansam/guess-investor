@@ -315,6 +315,81 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             </View>
           )}
 
+          {/* Inversores institucionales */}
+          {prediction.analysisData?.institutional && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🏦 Grandes inversores:</Text>
+              <View style={styles.institutionalContainer}>
+                {/* Propiedad institucional */}
+                {prediction.analysisData.institutional.ownershipPercent !== undefined && (
+                  <View style={styles.institutionalRow}>
+                    <View style={styles.institutionalItem}>
+                      <Text style={styles.institutionalLabel}>Propiedad institucional</Text>
+                      <Text style={styles.institutionalValue}>
+                        {prediction.analysisData.institutional.ownershipPercent.toFixed(1)}%
+                      </Text>
+                    </View>
+                    {prediction.analysisData.institutional.numberOfInstitutions !== undefined && (
+                      <View style={styles.institutionalItem}>
+                        <Text style={styles.institutionalLabel}>Nº de fondos</Text>
+                        <Text style={styles.institutionalValue}>
+                          {prediction.analysisData.institutional.numberOfInstitutions}
+                        </Text>
+                      </View>
+                    )}
+                    {prediction.analysisData.institutional.ownershipTrend && (
+                      <View style={styles.institutionalItem}>
+                        <Text style={styles.institutionalLabel}>Tendencia</Text>
+                        <Text style={[
+                          styles.institutionalValue,
+                          { color: prediction.analysisData.institutional.ownershipTrend === 'increasing' ? '#4CAF50' :
+                                   prediction.analysisData.institutional.ownershipTrend === 'decreasing' ? '#F44336' : '#FF9800' }
+                        ]}>
+                          {prediction.analysisData.institutional.ownershipTrend === 'increasing' ? '📈 Aumentando' :
+                           prediction.analysisData.institutional.ownershipTrend === 'decreasing' ? '📉 Disminuyendo' : '➖ Estable'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                
+                {/* Transacciones de insiders */}
+                {prediction.analysisData.institutional.insiderTrend && (
+                  <View style={styles.insiderSection}>
+                    <Text style={[
+                      styles.insiderBadge,
+                      { backgroundColor: prediction.analysisData.institutional.insiderTrend === 'buying' ? '#E8F5E9' :
+                                        prediction.analysisData.institutional.insiderTrend === 'selling' ? '#FFEBEE' : '#FFF3E0' }
+                    ]}>
+                      <Text style={{
+                        color: prediction.analysisData.institutional.insiderTrend === 'buying' ? '#4CAF50' :
+                               prediction.analysisData.institutional.insiderTrend === 'selling' ? '#F44336' : '#FF9800'
+                      }}>
+                        {prediction.analysisData.institutional.insiderTrend === 'buying' ? '💰 Insiders comprando' :
+                         prediction.analysisData.institutional.insiderTrend === 'selling' ? '📤 Insiders vendiendo' : '⚖️ Actividad equilibrada'}
+                      </Text>
+                    </Text>
+                    {prediction.analysisData.institutional.insiderNetValue !== undefined && (
+                      <Text style={styles.insiderValue}>
+                        Valor neto: {prediction.analysisData.institutional.insiderNetValue >= 0 ? '+' : ''}
+                        ${(prediction.analysisData.institutional.insiderNetValue / 1000000).toFixed(2)}M
+                      </Text>
+                    )}
+                  </View>
+                )}
+                
+                {/* Top holders */}
+                {prediction.analysisData.institutional.topHolders?.length > 0 && (
+                  <Text style={styles.institutionalHolders}>
+                    Principales: {prediction.analysisData.institutional.topHolders.join(', ')}
+                  </Text>
+                )}
+                
+                <Text style={styles.institutionalSummary}>{prediction.analysisData.institutional.summary}</Text>
+              </View>
+            </View>
+          )}
+
           {/* Conclusión */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>💡 Conclusión:</Text>

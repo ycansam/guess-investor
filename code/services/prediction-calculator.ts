@@ -9,6 +9,7 @@ import { companyFinancialsService, FinancialSummary } from './company-financials
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { currencyService } from './currency-service';
 import { forexAnalysisService, ForexImpact } from './forex-analysis-service';
+import { InstitutionalActivity, institutionalInvestorsService } from './institutional-investors-service';
 import { macroEconomicService, MacroIndicators } from './macro-economic-service';
 import { newsService, NewsSummary } from './news-service';
 import { sentimentService } from './sentiment-service';
@@ -74,6 +75,19 @@ export interface CalculatedPrediction {
     score: number;
     summary: string;
     mainPairs: string[]; // EUR/USD, EUR/GBP, etc.
+  };
+  
+  // Movimientos de inversores institucionales
+  institutional?: {
+    ownershipPercent?: number; // % en manos de instituciones
+    numberOfInstitutions?: number;
+    ownershipTrend?: 'increasing' | 'decreasing' | 'stable';
+    insiderNetShares?: number;
+    insiderNetValue?: number;
+    insiderTrend?: 'buying' | 'selling' | 'neutral';
+    topHolders: string[]; // Nombres de principales fondos
+    score: number;
+    summary: string;
   };
   
   timeframe: string;
@@ -155,7 +169,13 @@ class PredictionCalculatorService {
         console.log(`[PredictionCalc] Forex obtenido: ${forexData.overallTrend} (score: ${forexData.forexScore})`);
       }
 
-      // 8. Calcular predicción de forma determinística
+      // 8. Obtener datos de inversores institucionales
+      const institutionalData = await institutionalInvestorsService.getInstitutionalActivity(symbol, type);
+      if (institutionalData.hasData) {
+        console.log(`[PredictionCalc] Institucional obtenido: score=${institutionalData.institutionalScore}`);
+      }
+
+      // 9. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -168,10 +188,11 @@ class PredictionCalculatorService {
         macroData,
         competitorsData,
         forexData,
+        institutionalData,
         timeframeDays
       );
 
-      // 9. Convertir precios a EUR si es necesario
+      // 10. Convertir precios a EUR si es necesario
       const currency = quote.currency || 'USD';
       if (currency !== 'EUR') {
         console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
@@ -256,7 +277,7 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores + forex
+   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores + forex + institucional
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
@@ -272,6 +293,7 @@ class PredictionCalculatorService {
     macro: MacroIndicators,
     competitors: CompetitorAnalysis,
     forex: ForexImpact,
+    institutional: InstitutionalActivity,
     timeframeDays: number
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
@@ -279,6 +301,7 @@ class PredictionCalculatorService {
     const hasSentimentData = sentiment.hasData;
     const hasCompetitorsData = competitors.hasData;
     const hasForexData = forex.hasData;
+    const hasInstitutionalData = institutional.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
@@ -288,7 +311,7 @@ class PredictionCalculatorService {
     const change90d = hasHistoricalData ? historical.change90d : 0;
     const volatility = hasVolatilityData ? historical.volatility : 20; // Solo volatilidad usamos default
 
-    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, competitors=${hasCompetitorsData}, forex=${hasForexData}`);
+    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, competitors=${hasCompetitorsData}, forex=${hasForexData}, institutional=${hasInstitutionalData}`);
 
     // --- CÁLCULO DE DIRECCIÓN ---
     // Score de tendencia histórica (-100 a +100) - SOLO si hay datos
@@ -330,6 +353,15 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Forex score: ${forexScore} (${forex.overallTrend})`);
     }
     
+    // Score de inversores institucionales (-100 a +100) - SOLO si hay datos
+    // Mide si los grandes fondos y ejecutivos están comprando o vendiendo
+    // Las compras de insiders son especialmente significativas
+    let institutionalScore = 0;
+    if (hasInstitutionalData) {
+      institutionalScore = institutional.institutionalScore; // Ya está en rango -100 a +100
+      console.log(`[PredictionCalc] Institutional score: ${institutionalScore} (insider: ${institutional.insiderTransactions?.trend || 'N/A'})`);
+    }
+    
     // Score de fundamentales (-100 a +100), solo para acciones
     let financialsScore = 0;
     if (financials) {
@@ -357,14 +389,15 @@ class PredictionCalculatorService {
     // Los pesos reflejan la importancia de cada factor para predicciones a corto plazo
     // Total base se redistribuye a 1.00 entre factores disponibles
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.12 },
-      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.08 },
-      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.18 }, // Noticias: impacto directo
-      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.10 }, // Macro: contexto general
-      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.12 }, // Competidores: contexto sector
-      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.12 }, // Forex: impacto divisas
-      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.14 },
-      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.14 },
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.11 },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.07 },
+      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.16 }, // Noticias: impacto directo
+      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.09 }, // Macro: contexto general
+      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.10 }, // Competidores: contexto sector
+      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.10 }, // Forex: impacto divisas
+      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: 0.11 }, // Grandes inversores: seguir el dinero inteligente
+      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.13 },
+      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.13 },
     ];
     
     const availableFactors = factors.filter(f => f.hasData);
@@ -519,7 +552,7 @@ class PredictionCalculatorService {
     }
     priceAdjustments.push({ name: 'competitors', hasData: hasCompetitorsData, baseWeight: 0.18, adjustment: competitorsAdjustment });
     
-    // 6. Tipos de cambio (peso base: 0.12)
+    // 6. Tipos de cambio (peso base: 0.10)
     // EUR fuerte = negativo para exportadores europeos
     // Impacto moderado pero constante
     let forexAdjustment = 0;
@@ -528,7 +561,28 @@ class PredictionCalculatorService {
       // Impacto más moderado que noticias - es un factor de fondo
       forexAdjustment = forexInfluence * periodVolatility * 0.25;
     }
-    priceAdjustments.push({ name: 'forex', hasData: hasForexData, baseWeight: 0.12, adjustment: forexAdjustment });
+    priceAdjustments.push({ name: 'forex', hasData: hasForexData, baseWeight: 0.10, adjustment: forexAdjustment });
+    
+    // 7. Inversores institucionales (peso base: 0.12)
+    // Las compras de insiders y grandes fondos son señales muy importantes
+    // "Follow the smart money" - si los que mejor conocen la empresa compran, es buena señal
+    let institutionalAdjustment = 0;
+    if (hasInstitutionalData && institutional.institutionalScore !== 0) {
+      const instInfluence = institutional.institutionalScore / 100;
+      // Impacto significativo - las compras de insiders predicen bien
+      institutionalAdjustment = instInfluence * periodVolatility * 0.4;
+      
+      // Bonus/penalización extra si hay transacciones de insiders claras
+      if (institutional.insiderTransactions) {
+        const netShares = institutional.insiderTransactions.netShares;
+        if (netShares > 100000) {
+          institutionalAdjustment += periodVolatility * 0.15; // Insiders comprando fuerte
+        } else if (netShares < -100000) {
+          institutionalAdjustment -= periodVolatility * 0.15; // Insiders vendiendo fuerte
+        }
+      }
+    }
+    priceAdjustments.push({ name: 'institutional', hasData: hasInstitutionalData, baseWeight: 0.12, adjustment: institutionalAdjustment });
     
     // Calcular ajuste total con redistribución de pesos
     const availablePriceAdjustments = priceAdjustments.filter(a => a.hasData);
@@ -632,6 +686,17 @@ class PredictionCalculatorService {
         score: forex.forexScore,
         summary: forex.summary,
         mainPairs: forex.currencyPairs.map(p => p.pair),
+      } : undefined,
+      institutional: hasInstitutionalData ? {
+        ownershipPercent: institutional.institutionalOwnership?.percentage,
+        numberOfInstitutions: institutional.institutionalOwnership?.numberOfInstitutions,
+        ownershipTrend: institutional.institutionalOwnership?.trend,
+        insiderNetShares: institutional.insiderTransactions?.netShares,
+        insiderNetValue: institutional.insiderTransactions?.netValue,
+        insiderTrend: institutional.insiderTransactions?.trend,
+        topHolders: institutional.topInstitutions.slice(0, 3).map(t => t.name),
+        score: institutional.institutionalScore,
+        summary: institutional.summary,
       } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
