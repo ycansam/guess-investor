@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
+import { canTradeNow, getMarketHours, MarketHoursInfo } from '../../../services/market-hours-service';
 import { InvestmentPrediction } from '../../../types';
 import { styles } from './prediction-card-analysis.styles';
 
@@ -9,6 +10,26 @@ interface PredictionCardAnalysisProps {
 
 export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ prediction }) => {
   const [showReasoning, setShowReasoning] = useState(false);
+  const [marketInfo, setMarketInfo] = useState<MarketHoursInfo | null>(null);
+  const [tradeStatus, setTradeStatus] = useState<{ canTrade: boolean; reason: string; suggestion: string } | null>(null);
+
+  // Actualizar info del mercado cuando se muestra el análisis
+  useEffect(() => {
+    if (showReasoning && prediction.symbol) {
+      const info = getMarketHours(prediction.symbol);
+      const trade = canTradeNow(prediction.symbol);
+      setMarketInfo(info);
+      setTradeStatus(trade);
+
+      // Actualizar cada minuto mientras esté visible
+      const interval = setInterval(() => {
+        setMarketInfo(getMarketHours(prediction.symbol));
+        setTradeStatus(canTradeNow(prediction.symbol));
+      }, 60000);
+
+      return () => clearInterval(interval);
+    }
+  }, [showReasoning, prediction.symbol]);
 
   if (!prediction.reasoning) return null;
 
@@ -27,6 +48,55 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
       {showReasoning && (
         <View style={styles.container}>
           <Text style={styles.label}>🧠 Análisis basado en datos reales:</Text>
+
+          {/* Estado del Mercado */}
+          {marketInfo && tradeStatus && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🏛️ Mercado:</Text>
+              <View style={[
+                styles.marketHoursContainer,
+                { borderLeftColor: tradeStatus.canTrade ? '#4CAF50' : '#F44336' }
+              ]}>
+                <View style={styles.marketHoursHeader}>
+                  <Text style={styles.marketExchange}>{marketInfo.exchangeShort}</Text>
+                  <View style={[
+                    styles.marketStatusBadge,
+                    { backgroundColor: tradeStatus.canTrade ? '#E8F5E9' : '#FFEBEE' }
+                  ]}>
+                    <Text style={styles.marketStatusEmoji}>{marketInfo.statusEmoji}</Text>
+                    <Text style={[
+                      styles.marketStatusText,
+                      { color: tradeStatus.canTrade ? '#2E7D32' : '#C62828' }
+                    ]}>
+                      {marketInfo.statusText}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.marketHoursInfo}>
+                  <Text style={styles.marketHoursDetail}>
+                    🕐 Hora local: {marketInfo.localTime}
+                  </Text>
+                  <Text style={styles.marketHoursDetail}>
+                    📅 Horario: {marketInfo.regularHours}
+                  </Text>
+                  {marketInfo.hasExtendedHours && (
+                    <Text style={styles.marketHoursDetail}>
+                      ⏰ Horario extendido disponible
+                    </Text>
+                  )}
+                </View>
+                <Text style={styles.marketNextEvent}>
+                  ➡️ {marketInfo.nextEvent}: {marketInfo.nextEventTime}
+                </Text>
+                <Text style={[
+                  styles.marketSuggestion,
+                  { color: tradeStatus.canTrade ? '#2E7D32' : '#666' }
+                ]}>
+                  {tradeStatus.suggestion}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Tendencia histórica */}
           <View style={styles.section}>

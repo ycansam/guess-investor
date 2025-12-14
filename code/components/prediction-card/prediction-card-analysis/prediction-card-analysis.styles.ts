@@ -449,4 +449,59 @@ export const styles = StyleSheet.create({
     color: '#555',
     lineHeight: 18,
   },
+  // Market Hours
+  marketHoursContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    borderLeftWidth: 4,
+  },
+  marketHoursHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  marketExchange: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+  },
+  marketStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  marketStatusEmoji: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  marketStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  marketHoursInfo: {
+    marginBottom: 6,
+  },
+  marketHoursDetail: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 2,
+  },
+  marketNextEvent: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 4,
+  },
+  marketSuggestion: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
 });
