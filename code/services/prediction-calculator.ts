@@ -18,6 +18,7 @@ import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
 export interface CalculatedPrediction {
   asset: string;
+  symbol: string; // Símbolo exacto (ej: "AMZN", "ITX.MC", "BTC-USD")
   assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'other';
   currentPrice: number;
   currency: string;
@@ -115,6 +116,23 @@ export interface CalculatedPrediction {
   
   timeframe: string;
   calculatedAt: Date;
+  
+  // AUDITORÍA: Para verificar que los datos son reales
+  audit: {
+    dataSources: {
+      name: string;
+      url: string;
+      fetchedAt: Date;
+      rawValue?: string; // Valor crudo obtenido
+    }[];
+    calculationSteps: {
+      step: string;
+      formula: string;
+      result: number;
+    }[];
+    combinedScoreBreakdown: string; // Fórmula completa del score
+    expectedChangeBreakdown: string; // Cómo se calculó el % de cambio
+  };
 }
 
 interface SentimentData {
@@ -670,13 +688,16 @@ class PredictionCalculatorService {
     
     const availableFactors = factors.filter(f => f.hasData);
     
+    // Calcular peso total de factores disponibles (para auditoría también)
+    let totalWeight = availableFactors.reduce((sum, f) => sum + f.baseWeight, 0);
+    
     if (availableFactors.length === 0) {
       // Sin datos de ningún factor - no podemos predecir
       console.log(`[PredictionCalc] ⚠️ Sin datos de ningún factor, predicción neutral`);
       combinedScore = 0;
+      totalWeight = 1; // Evitar división por cero
     } else {
       // Redistribuir pesos entre factores disponibles
-      const totalWeight = availableFactors.reduce((sum, f) => sum + f.baseWeight, 0);
       combinedScore = availableFactors.reduce((sum, f) => {
         const normalizedWeight = f.baseWeight / totalWeight; // Normalizar a suma = 1
         return sum + (f.score * normalizedWeight);
@@ -686,14 +707,15 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)} (factores: ${factorDetails})`);
     }
     
-    // Determinar dirección
+    // Determinar dirección - ser más decisivo basándose en la suma de factores
+    // Solo "se mantiene" si el score está muy cerca de 0 (±5)
     let direction: 'up' | 'down' | 'neutral';
-    if (combinedScore > 15) {
+    if (combinedScore > 5) {
       direction = 'up';
-    } else if (combinedScore < -15) {
+    } else if (combinedScore < -5) {
       direction = 'down';
     } else {
-      direction = 'neutral';
+      direction = 'neutral'; // Solo si realmente está equilibrado
     }
 
     // --- CÁLCULO DE CONFIANZA BASADO EN GRUPO DE ACTIVO ---
@@ -994,40 +1016,41 @@ class PredictionCalculatorService {
     const maxChange = Math.min(periodVolatility * 1.5, timeframeDays === 1 ? 8 : 15);
     expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
 
-    // --- CÁLCULO DE PRECIO OBJETIVO ---
-    // Rango basado SOLO en volatilidad real (sin ampliar por confianza)
-    // La confianza es solo informativa, no afecta el rango
+    // --- CÁLCULO DE PRECIO OBJETIVO ÚNICO ---
+    // No dar rangos inútiles - dar UN precio objetivo basado en el análisis
+    // El precio objetivo = precio actual * (1 + cambio esperado %)
     
-    // Rango pequeño y coherente: ±20% de la volatilidad del período
-    const priceRange = currentPrice * (periodVolatility / 100) * 0.2;
-    const basePrice = currentPrice * (1 + expectedChange / 100);
+    const predictedPrice = Math.round(currentPrice * (1 + expectedChange / 100) * 100) / 100;
     
+    // Para compatibilidad con la interfaz, usamos el mismo valor para min/max
+    // Esto indica que es un precio objetivo único, no un rango
     let predictedPriceMin: number;
     let predictedPriceMax: number;
     
-    // El rango debe ser COHERENTE con la dirección:
-    // - SUBIDA: todo el rango por encima del precio actual
-    // - BAJADA: todo el rango por debajo del precio actual
-    // - NEUTRAL: rango pequeño simétrico
     if (direction === 'up') {
-      // Subida: desde precio actual hacia el objetivo
-      predictedPriceMin = Math.round(currentPrice * 100) / 100;
-      predictedPriceMax = Math.round((basePrice + priceRange) * 100) / 100;
+      // Subida: objetivo por encima del actual
+      predictedPriceMin = currentPrice;
+      predictedPriceMax = predictedPrice;
     } else if (direction === 'down') {
-      // Bajada: desde objetivo hacia el precio actual
-      predictedPriceMin = Math.round((basePrice - priceRange) * 100) / 100;
-      predictedPriceMax = Math.round(currentPrice * 100) / 100;
+      // Bajada: objetivo por debajo del actual
+      predictedPriceMin = predictedPrice;
+      predictedPriceMax = currentPrice;
     } else {
-      // Neutral: rango pequeño simétrico
-      predictedPriceMin = Math.round((currentPrice - priceRange) * 100) / 100;
-      predictedPriceMax = Math.round((currentPrice + priceRange) * 100) / 100;
+      // Se mantiene: precio objetivo = precio actual (cambio ~0%)
+      predictedPriceMin = currentPrice;
+      predictedPriceMax = currentPrice;
     }
+    
+    // Redondear
+    predictedPriceMin = Math.round(predictedPriceMin * 100) / 100;
+    predictedPriceMax = Math.round(predictedPriceMax * 100) / 100;
     
     console.log(`[PredictionCalc] Precio objetivo: ${predictedPriceMin} - ${predictedPriceMax}`);
     console.log(`[PredictionCalc] Dirección: ${direction.toUpperCase()}, Confianza: ${confidence.toFixed(0)}%`);
 
     return {
       asset: this.getAssetName(symbol),
+      symbol: symbol, // Símbolo exacto para detectar bolsa
       assetType: type,
       currentPrice: Math.round(currentPrice * 100) / 100,
       currency,
@@ -1097,6 +1120,67 @@ class PredictionCalculatorService {
       } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
+      
+      // AUDITORÍA: Trazabilidad completa de datos y cálculos
+      audit: {
+        dataSources: [
+          {
+            name: 'Yahoo Finance - Cotización',
+            url: `https://finance.yahoo.com/quote/${symbol}`,
+            fetchedAt: new Date(),
+            rawValue: `Precio: ${currentPrice} ${currency}`,
+          },
+          {
+            name: 'Yahoo Finance - Histórico',
+            url: `https://finance.yahoo.com/quote/${symbol}/history`,
+            fetchedAt: new Date(),
+            rawValue: `30d: ${change30d.toFixed(2)}%, 90d: ${change90d.toFixed(2)}%, Vol: ${volatility.toFixed(1)}%`,
+          },
+          ...(hasSentimentData ? [{
+            name: 'StockTwits - Sentimiento',
+            url: `https://stocktwits.com/symbol/${symbol.replace('-USD', '.X')}`,
+            fetchedAt: new Date(),
+            rawValue: `${sentiment.bullishPercent}% Bullish`,
+          }] : []),
+          ...(hasNewsData ? [{
+            name: 'Google News - Noticias',
+            url: `https://news.google.com/search?q=${encodeURIComponent(symbol)}`,
+            fetchedAt: new Date(),
+            rawValue: `${news.newsCount} noticias, sentimiento: ${news.overallSentiment}`,
+          }] : []),
+        ],
+        calculationSteps: [
+          {
+            step: '1. Score de Tendencia',
+            formula: `(${change30d.toFixed(2)}% × 0.7) + (${change90d.toFixed(2)}% × 0.3) × 5`,
+            result: Math.round(trendScore),
+          },
+          {
+            step: '2. Score de Sentimiento',
+            formula: `(${sentiment.bullishPercent}% - 50) × 2`,
+            result: Math.round(sentimentScore),
+          },
+          ...(hasNewsData ? [{
+            step: '3. Score de Noticias',
+            formula: `Score base noticias: ${news.sentimentScore}`,
+            result: Math.round(newsScore),
+          }] : []),
+          {
+            step: 'Score Combinado',
+            formula: availableFactors.map(f => `${f.name}(${f.score.toFixed(0)} × ${(f.baseWeight * 100).toFixed(0)}%)`).join(' + '),
+            result: Math.round(combinedScore),
+          },
+          {
+            step: 'Cambio Esperado',
+            formula: `Tendencia base + ajustes de factores`,
+            result: Math.round(expectedChange * 100) / 100,
+          },
+        ],
+        combinedScoreBreakdown: availableFactors
+          .map(f => `${f.name}: ${f.score.toFixed(0)} × ${((f.baseWeight / totalWeight) * 100).toFixed(1)}% = ${(f.score * f.baseWeight / totalWeight).toFixed(1)}`)
+          .join('\n'),
+        expectedChangeBreakdown: `Precio actual (${currentPrice}) × (1 + ${expectedChange.toFixed(2)}%) = ${predictedPrice}`,
+      },
     };
   }
 

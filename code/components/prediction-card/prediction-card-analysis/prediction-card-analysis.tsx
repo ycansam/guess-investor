@@ -23,8 +23,10 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
 
       // Actualizar cada minuto mientras esté visible
       const interval = setInterval(() => {
-        setMarketInfo(getMarketHours(prediction.symbol));
-        setTradeStatus(canTradeNow(prediction.symbol));
+        if (prediction.symbol) {
+          setMarketInfo(getMarketHours(prediction.symbol));
+          setTradeStatus(canTradeNow(prediction.symbol));
+        }
       }, 60000);
 
       return () => clearInterval(interval);
@@ -605,6 +607,57 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               )}
             </Text>
           </View>
+
+          {/* AUDITORÍA - Verificación de datos */}
+          {prediction.analysisData?.audit && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🔍 Auditoría - Verificar datos:</Text>
+              <Text style={styles.auditSubtitle}>
+                Puedes verificar cada dato haciendo clic en los enlaces:
+              </Text>
+              
+              {/* Fuentes de datos */}
+              <View style={styles.auditSourcesContainer}>
+                {prediction.analysisData.audit.dataSources.map((source, index) => (
+                  <View key={index} style={styles.auditSourceItem}>
+                    <Text style={styles.auditSourceName}>📊 {source.name}</Text>
+                    <Text style={styles.auditSourceValue}>{source.rawValue}</Text>
+                    <Text 
+                      style={styles.auditSourceUrl}
+                      onPress={() => {
+                        // En React Native Web esto abre el enlace
+                        if (typeof window !== 'undefined') {
+                          window.open(source.url, '_blank');
+                        }
+                      }}
+                    >
+                      🔗 Verificar →
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Cálculo paso a paso */}
+              <Text style={styles.auditCalcTitle}>📐 Cálculo matemático:</Text>
+              <View style={styles.auditCalcContainer}>
+                {prediction.analysisData.audit.calculationSteps.map((step, index) => (
+                  <View key={index} style={styles.auditCalcStep}>
+                    <Text style={styles.auditStepName}>{step.step}</Text>
+                    <Text style={styles.auditStepFormula}>{step.formula}</Text>
+                    <Text style={styles.auditStepResult}>= {step.result}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Fórmula final */}
+              <View style={styles.auditFinalFormula}>
+                <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
+                <Text style={styles.auditFormulaText}>
+                  {prediction.analysisData.audit.expectedChangeBreakdown}
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
       )}
     </>

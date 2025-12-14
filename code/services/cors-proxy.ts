@@ -4,10 +4,12 @@
  */
 
 // Lista de proxies CORS ordenados por confiabilidad
+// Actualizado: allorigins está dando 500, movido al final
 const CORS_PROXIES = [
-  'https://api.allorigins.win/raw?url=',
   'https://corsproxy.io/?',
   'https://api.codetabs.com/v1/proxy?quest=',
+  'https://proxy.cors.sh/',
+  'https://api.allorigins.win/raw?url=',
 ];
 
 /**
@@ -34,11 +36,18 @@ export async function fetchWithCorsProxy(
         signal: options?.signal || AbortSignal.timeout(10000),
       });
       
+      // Considerar 5xx como fallo del proxy, no del destino
       if (response.ok) {
         console.log(`[CorsProxy] Éxito con: ${proxyName}`);
         return response;
+      } else if (response.status >= 500) {
+        console.warn(`[CorsProxy] ${proxyName} error de servidor: HTTP ${response.status}, probando siguiente...`);
+        lastError = new Error(`Proxy ${proxyName} devolvió ${response.status}`);
+        continue; // Probar siguiente proxy
       } else {
-        console.warn(`[CorsProxy] ${proxyName} retornó HTTP ${response.status}`);
+        // 4xx significa que el proxy funcionó pero el destino falló
+        console.warn(`[CorsProxy] ${proxyName} retornó HTTP ${response.status} (error del destino)`);
+        return response;
       }
     } catch (error) {
       const proxyName = new URL(proxy).hostname;

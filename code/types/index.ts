@@ -11,6 +11,7 @@ export interface ChatMessage {
 export interface InvestmentPrediction {
   id: string;
   asset: string;
+  symbol?: string; // Símbolo del activo (ej: "AMZN", "ITX.MC", "BTC-USD")
   assetType: AssetType;
   currentPrice?: number;
   predictedPrice?: number;
@@ -112,6 +113,22 @@ export interface InvestmentPrediction {
       availableFactors: { name: string; score: number; hasData: boolean }[];
       confidenceExplanation: string; // Por qué la confianza es X%
       signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
+    };
+    // AUDITORÍA: Trazabilidad de datos y cálculos para verificación
+    audit?: {
+      dataSources: {
+        name: string;
+        url: string;
+        fetchedAt: Date;
+        rawValue?: string;
+      }[];
+      calculationSteps: {
+        step: string;
+        formula: string;
+        result: number;
+      }[];
+      combinedScoreBreakdown: string;
+      expectedChangeBreakdown: string;
     };
   };
 }

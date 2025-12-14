@@ -76,6 +76,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const prediction: InvestmentPrediction = {
           id: generateId(),
           asset: response.prediction.asset || 'Desconocido',
+          symbol: response.prediction.symbol,
           assetType: response.prediction.assetType || 'other',
           direction: response.prediction.direction || 'neutral',
           confidence: response.prediction.confidence || 50,
@@ -200,6 +201,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const prediction: InvestmentPrediction = {
           id: generateId(),
           asset: response.prediction.asset || asset,
+          symbol: response.prediction.symbol,
           assetType: response.prediction.assetType || 'other',
           direction: response.prediction.direction || 'neutral',
           confidence: response.prediction.confidence || 50,

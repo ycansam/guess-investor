@@ -60,17 +60,24 @@ class GeminiService {
         
         const directionEmoji = calculatedPrediction.direction === 'up' ? '📈' : 
                               calculatedPrediction.direction === 'down' ? '📉' : '➡️';
-        const directionText = calculatedPrediction.direction === 'up' ? 'SUBIDA' : 
-                             calculatedPrediction.direction === 'down' ? 'BAJADA' : 'LATERAL';
+        const directionText = calculatedPrediction.direction === 'up' ? 'SUBE' : 
+                             calculatedPrediction.direction === 'down' ? 'BAJA' : 'SE MANTIENE';
         const moodText = calculatedPrediction.sentiment.score > 60 ? 'Bullish' : 
                         calculatedPrediction.sentiment.score < 40 ? 'Bearish' : 'Neutro';
+
+        // Precio objetivo único según dirección
+        const targetPrice = calculatedPrediction.direction === 'up' 
+          ? calculatedPrediction.predictedPriceMax 
+          : calculatedPrediction.direction === 'down'
+            ? calculatedPrediction.predictedPriceMin
+            : calculatedPrediction.currentPrice;
 
         // Generar mensaje formateado con datos REALES
         let message = `📊 Mi confianza: ${calculatedPrediction.confidence}%
 🌐 Sentimiento RRSS: ${calculatedPrediction.sentiment.score}% (${moodText})
 💰 Precio actual: €${calculatedPrediction.currentPrice.toFixed(2)}
-🎯 Precio objetivo: €${calculatedPrediction.predictedPriceMin.toFixed(2)} - €${calculatedPrediction.predictedPriceMax.toFixed(2)}
-${directionEmoji} Dirección: ${directionText}
+🎯 Precio objetivo: €${targetPrice.toFixed(2)}
+${directionEmoji} Predicción: ${directionText} (${calculatedPrediction.predictedChange >= 0 ? '+' : ''}${calculatedPrediction.predictedChange.toFixed(2)}%)
 ⏱️ Timeframe: ${calculatedPrediction.timeframe}`;
 
         // Añadir info financiera si está disponible
@@ -106,6 +113,7 @@ ${directionEmoji} Dirección: ${directionText}
           message,
           prediction: {
             asset: calculatedPrediction.asset,
+            symbol: calculatedPrediction.symbol,
             assetType: calculatedPrediction.assetType,
             direction: calculatedPrediction.direction,
             confidence: calculatedPrediction.confidence,
@@ -126,6 +134,7 @@ ${directionEmoji} Dirección: ${directionText}
               institutional: calculatedPrediction.institutional,
               seasonality: calculatedPrediction.seasonality,
               factorBreakdown: calculatedPrediction.factorBreakdown,
+              audit: calculatedPrediction.audit,
             },
           },
         };

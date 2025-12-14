@@ -568,4 +568,92 @@ export const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 6,
   },
+  
+  // Estilos de Auditoría
+  auditSubtitle: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  auditSourcesContainer: {
+    marginBottom: 12,
+  },
+  auditSourceItem: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2196F3',
+  },
+  auditSourceName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  auditSourceValue: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 4,
+  },
+  auditSourceUrl: {
+    fontSize: 10,
+    color: '#1976D2',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  auditCalcTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+  },
+  auditCalcContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 10,
+  },
+  auditCalcStep: {
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  auditStepName: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#555',
+  },
+  auditStepFormula: {
+    fontSize: 10,
+    color: '#888',
+    fontFamily: 'monospace',
+    marginVertical: 2,
+  },
+  auditStepResult: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#333',
+  },
+  auditFinalFormula: {
+    backgroundColor: '#E3F2FD',
+    borderRadius: 6,
+    padding: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+  },
+  auditFormulaTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  auditFormulaText: {
+    fontSize: 11,
+    color: '#555',
+    fontFamily: 'monospace',
+  },
 });
