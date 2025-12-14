@@ -111,6 +111,233 @@ interface SentimentData {
   hasData: boolean; // NUEVO: indica si hay datos reales de sentimiento
 }
 
+// ============================================================================
+// GRUPOS DE ACTIVOS Y FACTORES RELEVANTES
+// Cada tipo de activo tiene factores que aplican y factores que NO aplican
+// ============================================================================
+
+type AssetGroup = 
+  | 'large_cap_stock'      // Acciones grandes (AAPL, MSFT, etc.)
+  | 'small_cap_stock'      // Acciones pequeñas/medianas
+  | 'crypto_major'         // Bitcoin, Ethereum
+  | 'crypto_alt'           // Altcoins
+  | 'etf_index'            // ETFs e índices
+  | 'commodity'            // Materias primas
+  | 'reit'                 // REITs inmobiliarios
+  | 'forex'                // Pares de divisas
+  | 'adr'                  // ADRs (acciones extranjeras en USA)
+  | 'default';             // Fallback
+
+interface AssetGroupConfig {
+  relevantFactors: string[];  // Factores que SÍ aplican
+  minFactorsForHighConfidence: number; // Mínimo para >70% confianza
+  description: string;
+}
+
+const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
+  large_cap_stock: {
+    relevantFactors: ['trend', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
+    minFactorsForHighConfidence: 5,
+    description: 'Acciones de gran capitalización',
+  },
+  small_cap_stock: {
+    relevantFactors: ['trend', 'news', 'competitors', 'seasonality', 'financials'],
+    minFactorsForHighConfidence: 3,
+    description: 'Acciones pequeñas/medianas (menos cobertura de analistas)',
+  },
+  crypto_major: {
+    relevantFactors: ['trend', 'sentiment', 'news', 'macro'],
+    minFactorsForHighConfidence: 2,
+    description: 'Criptomonedas principales (BTC, ETH)',
+  },
+  crypto_alt: {
+    relevantFactors: ['trend', 'sentiment', 'news'],
+    minFactorsForHighConfidence: 2,
+    description: 'Altcoins (alta volatilidad, menos datos)',
+  },
+  etf_index: {
+    relevantFactors: ['trend', 'macro', 'seasonality', 'forex'],
+    minFactorsForHighConfidence: 2,
+    description: 'ETFs e índices bursátiles',
+  },
+  commodity: {
+    relevantFactors: ['trend', 'macro', 'seasonality', 'forex'],
+    minFactorsForHighConfidence: 2,
+    description: 'Materias primas (oro, petróleo, etc.)',
+  },
+  reit: {
+    relevantFactors: ['trend', 'macro', 'financials', 'seasonality'],
+    minFactorsForHighConfidence: 2,
+    description: 'REITs inmobiliarios',
+  },
+  forex: {
+    relevantFactors: ['trend', 'macro', 'news'],
+    minFactorsForHighConfidence: 2,
+    description: 'Pares de divisas',
+  },
+  adr: {
+    relevantFactors: ['trend', 'news', 'forex', 'macro', 'competitors', 'financials'],
+    minFactorsForHighConfidence: 3,
+    description: 'ADRs (acciones extranjeras)',
+  },
+  default: {
+    relevantFactors: ['trend', 'sentiment', 'news', 'macro'],
+    minFactorsForHighConfidence: 2,
+    description: 'Activo genérico',
+  },
+};
+
+// Mapeo de símbolos conocidos a grupos
+const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
+  // Crypto Major
+  'BTC-USD': 'crypto_major',
+  'ETH-USD': 'crypto_major',
+  'BNB-USD': 'crypto_major',
+  
+  // Crypto Alt
+  'SOL-USD': 'crypto_alt',
+  'ADA-USD': 'crypto_alt',
+  'DOGE-USD': 'crypto_alt',
+  'XRP-USD': 'crypto_alt',
+  'SHIB-USD': 'crypto_alt',
+  'AVAX-USD': 'crypto_alt',
+  'DOT-USD': 'crypto_alt',
+  'MATIC-USD': 'crypto_alt',
+  'LINK-USD': 'crypto_alt',
+  'UNI-USD': 'crypto_alt',
+  
+  // ETFs/Índices
+  'SPY': 'etf_index',
+  'QQQ': 'etf_index',
+  'IWM': 'etf_index',
+  'DIA': 'etf_index',
+  'VOO': 'etf_index',
+  'VTI': 'etf_index',
+  '^GSPC': 'etf_index',
+  '^DJI': 'etf_index',
+  '^IXIC': 'etf_index',
+  '^IBEX': 'etf_index',
+  
+  // Commodities
+  'GC=F': 'commodity',
+  'SI=F': 'commodity',
+  'CL=F': 'commodity',
+  'NG=F': 'commodity',
+  'GLD': 'commodity',
+  'SLV': 'commodity',
+  'USO': 'commodity',
+  
+  // REITs
+  'O': 'reit',
+  'VNQ': 'reit',
+  'SPG': 'reit',
+  'AMT': 'reit',
+  'PLD': 'reit',
+  
+  // Large Cap conocidas
+  'AAPL': 'large_cap_stock',
+  'MSFT': 'large_cap_stock',
+  'GOOGL': 'large_cap_stock',
+  'GOOG': 'large_cap_stock',
+  'AMZN': 'large_cap_stock',
+  'META': 'large_cap_stock',
+  'NVDA': 'large_cap_stock',
+  'TSLA': 'large_cap_stock',
+  'BRK-B': 'large_cap_stock',
+  'JPM': 'large_cap_stock',
+  'V': 'large_cap_stock',
+  'MA': 'large_cap_stock',
+  'JNJ': 'large_cap_stock',
+  'WMT': 'large_cap_stock',
+  'PG': 'large_cap_stock',
+  'UNH': 'large_cap_stock',
+  'HD': 'large_cap_stock',
+  'DIS': 'large_cap_stock',
+  'NFLX': 'large_cap_stock',
+  'ADBE': 'large_cap_stock',
+  'CRM': 'large_cap_stock',
+  'PYPL': 'large_cap_stock',
+  'INTC': 'large_cap_stock',
+  'AMD': 'large_cap_stock',
+  'CSCO': 'large_cap_stock',
+  'PEP': 'large_cap_stock',
+  'KO': 'large_cap_stock',
+  'MCD': 'large_cap_stock',
+  'NKE': 'large_cap_stock',
+  'BA': 'large_cap_stock',
+  'IBM': 'large_cap_stock',
+  'GS': 'large_cap_stock',
+  'MS': 'large_cap_stock',
+  'C': 'large_cap_stock',
+  'BAC': 'large_cap_stock',
+  'WFC': 'large_cap_stock',
+  
+  // ADRs
+  'BABA': 'adr',
+  'TSM': 'adr',
+  'NIO': 'adr',
+  'JD': 'adr',
+  'BIDU': 'adr',
+  'PDD': 'adr',
+  
+  // Grandes europeas
+  'ITX.MC': 'large_cap_stock',
+  'SAN.MC': 'large_cap_stock',
+  'TEF.MC': 'large_cap_stock',
+  'IBE.MC': 'large_cap_stock',
+  'BBVA.MC': 'large_cap_stock',
+  'REP.MC': 'large_cap_stock',
+  'MC.PA': 'large_cap_stock',
+  'OR.PA': 'large_cap_stock',
+  'SAP.DE': 'large_cap_stock',
+  'SIE.DE': 'large_cap_stock',
+  'VOW3.DE': 'large_cap_stock',
+  'BMW.DE': 'large_cap_stock',
+  'SHELL.L': 'large_cap_stock',
+  'HSBA.L': 'large_cap_stock',
+  'BP.L': 'large_cap_stock',
+  'AZN.L': 'large_cap_stock',
+  'NESN.SW': 'large_cap_stock',
+  'NOVN.SW': 'large_cap_stock',
+  'ROG.SW': 'large_cap_stock',
+};
+
+/**
+ * Detecta el grupo de un activo
+ */
+function detectAssetGroup(symbol: string, type: 'stock' | 'crypto', hasExpectations: boolean, hasInstitutional: boolean): AssetGroup {
+  // 1. Buscar en el mapeo conocido
+  if (SYMBOL_TO_GROUP[symbol]) {
+    return SYMBOL_TO_GROUP[symbol];
+  }
+  
+  // 2. Inferir por tipo y características
+  if (type === 'crypto') {
+    // Major cryptos tienen más market cap (simplificado)
+    const majorCryptos = ['BTC', 'ETH', 'BNB', 'XRP', 'SOL'];
+    const base = symbol.replace('-USD', '');
+    return majorCryptos.includes(base) ? 'crypto_major' : 'crypto_alt';
+  }
+  
+  // 3. Para acciones, inferir por disponibilidad de datos
+  if (type === 'stock') {
+    // Si tiene expectativas de analistas e institucionales, probablemente es large cap
+    if (hasExpectations && hasInstitutional) {
+      return 'large_cap_stock';
+    }
+    
+    // Si es un índice o ETF (contiene ^ o termina en ciertos sufijos)
+    if (symbol.startsWith('^') || symbol.endsWith('=F')) {
+      return symbol.endsWith('=F') ? 'commodity' : 'etf_index';
+    }
+    
+    // Por defecto, small cap (menos datos esperados)
+    return 'small_cap_stock';
+  }
+  
+  return 'default';
+}
+
 class PredictionCalculatorService {
   /**
    * Calcula una predicción basada 100% en datos reales
@@ -457,40 +684,87 @@ class PredictionCalculatorService {
       direction = 'neutral';
     }
 
-    // --- CÁLCULO DE CONFIANZA ---
-    // Base: según cantidad de factores disponibles
-    const dataAvailabilityScore = (availableFactors.length / factors.length) * 100;
+    // --- CÁLCULO DE CONFIANZA BASADO EN GRUPO DE ACTIVO ---
+    // Detectar el grupo del activo para saber qué factores son relevantes
+    const assetGroup = detectAssetGroup(symbol, type, hasExpectationsData, hasInstitutionalData);
+    const groupConfig = ASSET_GROUP_CONFIGS[assetGroup];
     
-    // Coherencia entre señales disponibles (solo si hay al menos 2)
+    console.log(`[PredictionCalc] Grupo de activo: ${assetGroup} (${groupConfig.description})`);
+    
+    // Filtrar solo los factores RELEVANTES para este tipo de activo
+    const relevantFactors = factors.filter(f => groupConfig.relevantFactors.includes(f.name));
+    const availableRelevantFactors = relevantFactors.filter(f => f.hasData);
+    
+    console.log(`[PredictionCalc] Factores relevantes: ${relevantFactors.map(f => f.name).join(', ')}`);
+    console.log(`[PredictionCalc] Factores disponibles: ${availableRelevantFactors.map(f => f.name).join(', ')}`);
+    
+    // Calcular coherencia SOLO entre factores relevantes y disponibles
     let signalCoherence = 50; // Base neutral
-    if (availableFactors.length >= 2) {
-      const positiveSignals = availableFactors.filter(f => f.score > 10).length;
-      const negativeSignals = availableFactors.filter(f => f.score < -10).length;
-      const neutralSignals = availableFactors.length - positiveSignals - negativeSignals;
+    let signalStrength = 0; // Fuerza promedio de las señales
+    
+    if (availableRelevantFactors.length >= 1) {
+      const positiveSignals = availableRelevantFactors.filter(f => f.score > 10).length;
+      const negativeSignals = availableRelevantFactors.filter(f => f.score < -10).length;
+      const strongPositive = availableRelevantFactors.filter(f => f.score > 30).length;
+      const strongNegative = availableRelevantFactors.filter(f => f.score < -30).length;
       
-      // Alta coherencia si todas las señales van en la misma dirección
-      if (positiveSignals === availableFactors.length || negativeSignals === availableFactors.length) {
-        signalCoherence = 80;
-      } else if ((positiveSignals > 0 && negativeSignals > 0)) {
-        signalCoherence = 40; // Señales contradictorias
+      // Fuerza promedio de las señales (0-100)
+      signalStrength = Math.min(100, Math.abs(
+        availableRelevantFactors.reduce((sum, f) => sum + f.score, 0) / availableRelevantFactors.length
+      ));
+      
+      if (availableRelevantFactors.length === 1) {
+        // Solo 1 factor: confianza limitada, depende de la fuerza
+        signalCoherence = signalStrength > 30 ? 50 : 40;
       } else {
-        signalCoherence = 60; // Algunas señales, algunas neutrales
+        // 2+ factores: calcular coherencia
+        const totalNonNeutral = positiveSignals + negativeSignals;
+        
+        if (totalNonNeutral === 0) {
+          // Todas las señales neutrales
+          signalCoherence = 45;
+        } else if (positiveSignals === totalNonNeutral || negativeSignals === totalNonNeutral) {
+          // Todas las señales van en la misma dirección
+          signalCoherence = 75;
+          // Bonus si además son fuertes
+          if (strongPositive >= 2 || strongNegative >= 2) {
+            signalCoherence = 85;
+          }
+        } else {
+          // Señales contradictorias
+          const coherenceRatio = Math.max(positiveSignals, negativeSignals) / totalNonNeutral;
+          signalCoherence = 30 + (coherenceRatio * 25); // 30-55%
+        }
       }
     }
     
-    // Confianza final: promedio entre disponibilidad y coherencia
-    let confidence = (dataAvailabilityScore * 0.4) + (signalCoherence * 0.6);
+    // Calcular confianza final
+    // NO penalizamos por factores no disponibles si no son relevantes para este activo
+    let confidence: number;
     
-    // Bonus/penalizaciones específicas
-    if (!hasHistoricalData) confidence -= 10;
-    if (!hasSentimentData) confidence -= 5;
-    if (financials) confidence += 5;
-    if (hasExpectationsData) confidence += 5;
+    if (availableRelevantFactors.length === 0) {
+      // Sin ningún factor relevante disponible
+      confidence = 20;
+    } else if (availableRelevantFactors.length === 1) {
+      // Solo 1 factor: confianza baja (sin validación cruzada)
+      confidence = 35 + (signalStrength * 0.1); // 35-45%
+    } else if (availableRelevantFactors.length < groupConfig.minFactorsForHighConfidence) {
+      // Menos del mínimo recomendado
+      confidence = signalCoherence * 0.8; // Reducido
+    } else {
+      // Suficientes factores
+      confidence = signalCoherence;
+    }
     
-    // Limitar entre 20 y 85 (nunca 100% seguro, más bajo si faltan datos)
+    // Bonus por señales muy fuertes y coherentes
+    if (signalStrength > 40 && signalCoherence > 70) {
+      confidence += 5;
+    }
+    
+    // Limitar entre 20 y 85 (nunca 100% seguro)
     confidence = Math.max(20, Math.min(85, confidence));
     
-    console.log(`[PredictionCalc] Confianza: ${confidence.toFixed(0)}% (datos: ${availableFactors.length}/${factors.length} factores)`);
+    console.log(`[PredictionCalc] Confianza: ${confidence.toFixed(0)}% (coherencia: ${signalCoherence.toFixed(0)}, fuerza: ${signalStrength.toFixed(0)}, factores: ${availableRelevantFactors.length}/${relevantFactors.length} relevantes)`);
     
 
     // --- CÁLCULO DE PRECIO OBJETIVO ---
