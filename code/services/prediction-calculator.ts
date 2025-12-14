@@ -7,6 +7,7 @@
 
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { currencyService } from './currency-service';
+import { newsService, NewsSummary } from './news-service';
 import { sentimentService } from './sentiment-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
@@ -36,6 +37,14 @@ export interface CalculatedPrediction {
   
   // Datos financieros (solo para acciones)
   financials?: FinancialSummary;
+  
+  // Noticias recientes
+  news?: {
+    sentiment: 'positive' | 'negative' | 'neutral';
+    score: number;
+    count: number;
+    summary: string;
+  };
   
   timeframe: string;
   calculatedAt: Date;
@@ -73,7 +82,13 @@ class PredictionCalculatorService {
       // 2. Obtener sentimiento real
       const sentimentData = await this.getSentimentScore(symbol, type);
 
-      // 3. Obtener datos financieros (solo para acciones)
+      // 3. Obtener noticias recientes
+      const newsData = await newsService.getNews(symbol, type);
+      if (newsData.hasNews) {
+        console.log(`[PredictionCalc] Noticias obtenidas: ${newsData.newsCount} (sentimiento: ${newsData.sentimentScore})`);
+      }
+
+      // 4. Obtener datos financieros (solo para acciones)
       let financials: FinancialSummary | null = null;
       if (type === 'stock') {
         financials = await companyFinancialsService.getFinancialSummary(symbol, quote.price);
@@ -82,7 +97,7 @@ class PredictionCalculatorService {
         }
       }
 
-      // 4. Calcular predicción de forma determinística
+      // 5. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -91,10 +106,11 @@ class PredictionCalculatorService {
         historical,
         sentimentData,
         financials,
+        newsData,
         timeframeDays
       );
 
-      // 5. Convertir precios a EUR si es necesario
+      // 6. Convertir precios a EUR si es necesario
       const currency = quote.currency || 'USD';
       if (currency !== 'EUR') {
         console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
@@ -179,7 +195,7 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica (40%) + sentimiento (30%) + fundamentales (30%)
+   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
@@ -191,19 +207,21 @@ class PredictionCalculatorService {
     historical: HistoricalData | null,
     sentiment: SentimentData,
     financials: FinancialSummary | null,
+    news: NewsSummary,
     timeframeDays: number
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
     const hasHistoricalData = historical !== null && (historical.change30d !== 0 || historical.change90d !== 0);
     const hasSentimentData = sentiment.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
+    const hasNewsData = news.hasNews;
     
     // Valores - usar 0 (neutral) si no hay datos reales
     const change30d = hasHistoricalData ? historical.change30d : 0;
     const change90d = hasHistoricalData ? historical.change90d : 0;
     const volatility = hasVolatilityData ? historical.volatility : 20; // Solo volatilidad usamos default
 
-    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, volatility=${hasVolatilityData}`);
+    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, volatility=${hasVolatilityData}`);
 
     // --- CÁLCULO DE DIRECCIÓN ---
     // Score de tendencia histórica (-100 a +100) - SOLO si hay datos
@@ -211,6 +229,14 @@ class PredictionCalculatorService {
     
     // Score de sentimiento (-100 a +100) - SOLO si hay datos
     const sentimentScore = hasSentimentData ? (sentiment.bullishPercent - 50) * 2 : 0;
+    
+    // Score de noticias (-100 a +100) - SOLO si hay noticias
+    // Las noticias tienen impacto directo y rápido en el precio
+    let newsScore = 0;
+    if (hasNewsData) {
+      newsScore = news.sentimentScore; // Ya está en rango -100 a +100
+      console.log(`[PredictionCalc] News score: ${newsScore} (${news.positiveCount}+ / ${news.negativeCount}-)`);
+    }
     
     // Score de fundamentales (-100 a +100), solo para acciones
     let financialsScore = 0;
@@ -220,7 +246,7 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Financials score: ${financialsScore} (overall: ${financials.overallScore})`);
     }
     
-    // NUEVO: Score de expectativas (-100 a +100)
+    // Score de expectativas (-100 a +100)
     // Las expectativas son MUY importantes para movimientos a corto plazo
     // SOLO aplicar si hay datos reales (no inventar)
     let expectationsScore = 0;
@@ -236,11 +262,13 @@ class PredictionCalculatorService {
     let combinedScore: number;
     
     // Contar cuántos factores tienen datos
+    // Noticias tienen peso alto porque son información reciente y directa
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.30 },
-      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.20 },
-      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.25 },
-      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.25 },
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.25 },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.15 },
+      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.25 }, // Noticias: peso importante
+      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.20 },
+      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.15 },
     ];
     
     const availableFactors = factors.filter(f => f.hasData);
@@ -359,6 +387,21 @@ class PredictionCalculatorService {
       }
     }
     
+    // Ajustar por noticias recientes
+    // Las noticias tienen impacto DIRECTO e INMEDIATO en el precio
+    if (hasNewsData && news.sentimentScore !== 0) {
+      // Score de noticias: -100 a +100
+      // Convertir a ajuste de precio proporcional
+      const newsInfluence = news.sentimentScore / 100; // -1 a +1
+      
+      // El impacto de noticias es más fuerte a corto plazo
+      // Noticias muy positivas/negativas pueden mover el precio significativamente
+      const newsAdjustment = newsInfluence * periodVolatility * 0.5;
+      expectedChange = expectedChange + newsAdjustment;
+      
+      console.log(`[PredictionCalc] Ajuste por noticias: ${newsAdjustment.toFixed(2)}% (score: ${news.sentimentScore}, ${news.positiveCount}+/${news.negativeCount}-)`);
+    }
+    
     // Limitar el cambio máximo razonable para el timeframe
     const maxChange = Math.min(periodVolatility * 1.5, timeframeDays === 1 ? 8 : 15);
     expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
@@ -415,6 +458,12 @@ class PredictionCalculatorService {
         volatility: Math.round(volatility * 100) / 100,
       },
       financials: financials || undefined,
+      news: hasNewsData ? {
+        sentiment: news.overallSentiment,
+        score: news.sentimentScore,
+        count: news.newsCount,
+        summary: news.summary,
+      } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
     };
