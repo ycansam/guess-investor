@@ -45,6 +45,11 @@ export interface InvestmentPrediction {
       analystRating: string; // Comprar, Mantener, Vender
       targetPrice: number; // Precio objetivo analistas
       currentVsTarget: number; // % diferencia vs objetivo
+      // Expectativas del mercado
+      lastEarningsSurprise: number; // % sorpresa último trimestre
+      avgEarningsSurprise: number; // % sorpresa promedio
+      expectationsOutlook: string; // "Supera expectativas", "Cumple", etc.
+      expectationsScore: number; // Score expectativas 0-100
       overallScore: number; // Score general 0-100
     };
   };

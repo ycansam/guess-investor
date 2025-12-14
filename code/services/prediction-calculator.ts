@@ -208,11 +208,22 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Financials score: ${financialsScore} (overall: ${financials.overallScore})`);
     }
     
+    // NUEVO: Score de expectativas (-100 a +100)
+    // Las expectativas son MUY importantes para movimientos a corto plazo
+    let expectationsScore = 0;
+    if (financials && financials.expectationsScore !== undefined) {
+      expectationsScore = (financials.expectationsScore - 50) * 2;
+      console.log(`[PredictionCalc] Expectations score: ${expectationsScore} (raw: ${financials.expectationsScore})`);
+    }
+    
     // Score combinado: si hay financieros, incluirlos en el cálculo
     let combinedScore: number;
     if (financials) {
-      // Acciones: 40% tendencia, 30% sentimiento, 30% fundamentales
-      combinedScore = (trendScore * 0.4) + (sentimentScore * 0.3) + (financialsScore * 0.3);
+      // Acciones con expectativas: 
+      // 25% tendencia, 20% sentimiento, 25% fundamentales, 30% expectativas
+      combinedScore = (trendScore * 0.25) + (sentimentScore * 0.20) + 
+                     (financialsScore * 0.25) + (expectationsScore * 0.30);
+      console.log(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)} (trend=${trendScore}, sent=${sentimentScore}, fin=${financialsScore}, exp=${expectationsScore})`);
     } else {
       // Crypto u otros: 60% tendencia, 40% sentimiento
       combinedScore = (trendScore * 0.6) + (sentimentScore * 0.4);
@@ -277,6 +288,33 @@ class PredictionCalculatorService {
       
       console.log(`[PredictionCalc] Ajuste por target analistas: ${targetAdjustment.toFixed(2)}%`);
     }
+    
+    // NUEVO: Ajustar por expectativas del mercado (earnings surprise)
+    // Si la empresa supera/decepciona consistentemente las expectativas, ajustar precio
+    if (financials && financials.expectationsScore !== undefined && financials.expectationsScore !== 50) {
+      // Las sorpresas de earnings tienen efecto directo en el precio
+      // Empresas que superan expectativas tienden a subir más
+      const expectationsInfluence = (financials.expectationsScore - 50) / 100; // -0.5 a +0.5
+      
+      // El ajuste es proporcional a la volatilidad y la magnitud de las sorpresas
+      const expectationsAdjustment = expectationsInfluence * periodVolatility * 0.4;
+      expectedChange = expectedChange + expectationsAdjustment;
+      
+      console.log(`[PredictionCalc] Ajuste por expectativas: ${expectationsAdjustment.toFixed(2)}% (score: ${financials.expectationsScore})`);
+      
+      // Si hay sorpresa reciente fuerte, dar más peso
+      if (financials.lastEarningsSurprise && Math.abs(financials.lastEarningsSurprise) > 5) {
+        const surpriseBonus = Math.sign(financials.lastEarningsSurprise) * 
+                             Math.min(Math.abs(financials.lastEarningsSurprise) / 20, 0.5) * 
+                             periodVolatility * 0.2;
+        expectedChange = expectedChange + surpriseBonus;
+        console.log(`[PredictionCalc] Bonus por sorpresa reciente (${financials.lastEarningsSurprise.toFixed(1)}%): ${surpriseBonus.toFixed(2)}%`);
+      }
+    }
+    
+    // Limitar el cambio máximo razonable para el timeframe
+    const maxChange = Math.min(periodVolatility * 1.5, timeframeDays === 1 ? 8 : 15);
+    expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
 
     // Rango de precio basado en volatilidad real
     const priceRange = currentPrice * (periodVolatility / 100);

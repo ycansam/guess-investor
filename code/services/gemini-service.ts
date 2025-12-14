@@ -82,12 +82,24 @@ ${directionEmoji} Dirección: ${directionText}
           if (fin.targetPrice > 0) {
             message += ` | Objetivo: €${fin.targetPrice.toFixed(2)}`;
           }
+          
+          // NUEVO: Mostrar expectativas del mercado si hay datos
+          if (fin.expectationsOutlook && fin.expectationsOutlook !== 'Sin datos') {
+            const surpriseEmoji = fin.lastEarningsSurprise > 0 ? '✅' : fin.lastEarningsSurprise < 0 ? '❌' : '➖';
+            message += `\n🎯 Expectativas: ${fin.expectationsOutlook} ${surpriseEmoji}`;
+            if (fin.lastEarningsSurprise !== 0) {
+              message += ` (último: ${fin.lastEarningsSurprise >= 0 ? '+' : ''}${fin.lastEarningsSurprise.toFixed(1)}%)`;
+            }
+          }
         }
 
         // Construir reasoning más completo
         let reasoning = `Análisis basado en: tendencia 30d (${calculatedPrediction.historical.change30d.toFixed(1)}%), volatilidad (${calculatedPrediction.historical.volatility.toFixed(1)}%), sentimiento ${calculatedPrediction.sentiment.source} (${calculatedPrediction.sentiment.score}%)`;
         if (calculatedPrediction.financials) {
           reasoning += `. Fundamentales: score ${calculatedPrediction.financials.overallScore}/100, rating "${calculatedPrediction.financials.analystRating}"`;
+          if (calculatedPrediction.financials.expectationsOutlook && calculatedPrediction.financials.expectationsOutlook !== 'Sin datos') {
+            reasoning += `, expectativas: ${calculatedPrediction.financials.expectationsOutlook}`;
+          }
         }
 
         return {

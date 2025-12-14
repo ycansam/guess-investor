@@ -67,6 +67,14 @@ export interface CompanyFinancials {
   targetPriceLow: number;
   numberOfAnalysts: number;
   
+  // EXPECTATIVAS DEL MERCADO (Earnings Surprise)
+  lastEarningsSurprise: number; // % sorpresa último trimestre (positivo = superó expectativas)
+  avgEarningsSurprise: number; // % sorpresa promedio últimos 4 trimestres
+  nextEarningsEstimate: number; // EPS estimado próximo trimestre
+  currentQuarterGrowthEstimate: number; // % crecimiento esperado este trimestre
+  revenueEstimate: number; // Ingresos estimados próximo trimestre
+  hasPositiveSurpriseHistory: boolean; // Historial de superar expectativas
+  
   // Meta
   lastUpdated: Date;
   dataAvailable: boolean;
@@ -87,11 +95,17 @@ export interface FinancialSummary {
   targetPrice: number;
   currentVsTarget: number; // % diferencia precio actual vs objetivo
   
+  // Expectativas del mercado
+  lastEarningsSurprise: number; // % sorpresa último trimestre
+  avgEarningsSurprise: number; // % sorpresa promedio
+  expectationsOutlook: string; // "Supera expectativas", "Cumple", "Decepciona"
+  
   // Score calculado para la predicción
   financialHealthScore: number; // 0-100
   growthScore: number; // 0-100
   valueScore: number; // 0-100
   analystScore: number; // 0-100
+  expectationsScore: number; // 0-100 - NUEVO: basado en si supera/cumple expectativas
   overallScore: number; // 0-100, promedio ponderado
 }
 
@@ -172,6 +186,8 @@ class CompanyFinancialsService {
     const financial = data.financialData || {};
     const keyStats = data.defaultKeyStatistics || {};
     const recommendations = data.recommendationTrend?.trend?.[0] || {};
+    const earningsHistory = data.earningsHistory?.history || [];
+    const earningsTrend = data.earningsTrend?.trend || [];
     
     // Helper para extraer valores numéricos de Yahoo
     const getValue = (obj: any): number => {
@@ -201,6 +217,48 @@ class CompanyFinancialsService {
       else if (sellScore > buyScore * 2) analystRating = 'Venta fuerte';
       else if (sellScore > buyScore) analystRating = 'Vender';
       else analystRating = 'Mantener';
+    }
+    
+    // NUEVO: Calcular earnings surprise (diferencia entre actual y estimado)
+    let lastEarningsSurprise = 0;
+    let avgEarningsSurprise = 0;
+    let positiveSurprises = 0;
+    
+    if (earningsHistory.length > 0) {
+      const surprises: number[] = [];
+      
+      for (const quarter of earningsHistory) {
+        const actual = getValue(quarter.epsActual);
+        const estimate = getValue(quarter.epsEstimate);
+        
+        if (estimate !== 0) {
+          const surprise = ((actual - estimate) / Math.abs(estimate)) * 100;
+          surprises.push(surprise);
+          if (surprise > 0) positiveSurprises++;
+        }
+      }
+      
+      if (surprises.length > 0) {
+        lastEarningsSurprise = surprises[0]; // Último trimestre
+        avgEarningsSurprise = surprises.reduce((a, b) => a + b, 0) / surprises.length;
+      }
+      
+      console.log(`[Financials] Earnings surprises: last=${lastEarningsSurprise.toFixed(1)}%, avg=${avgEarningsSurprise.toFixed(1)}%, positivos=${positiveSurprises}/${earningsHistory.length}`);
+    }
+    
+    // NUEVO: Obtener estimaciones del próximo trimestre
+    let nextEarningsEstimate = 0;
+    let currentQuarterGrowthEstimate = 0;
+    let revenueEstimate = 0;
+    
+    if (earningsTrend.length > 0) {
+      // El primer elemento suele ser el trimestre actual/próximo
+      const currentTrend = earningsTrend[0];
+      nextEarningsEstimate = getValue(currentTrend.earningsEstimate?.avg);
+      currentQuarterGrowthEstimate = getPercent(currentTrend.growth);
+      revenueEstimate = getValue(currentTrend.revenueEstimate?.avg);
+      
+      console.log(`[Financials] Próximo trimestre: EPS estimado=${nextEarningsEstimate}, crecimiento=${currentQuarterGrowthEstimate.toFixed(1)}%`);
     }
     
     return {
@@ -244,6 +302,14 @@ class CompanyFinancialsService {
       targetPriceHigh: getValue(financial.targetHighPrice),
       targetPriceLow: getValue(financial.targetLowPrice),
       numberOfAnalysts: getValue(financial.numberOfAnalystOpinions),
+      
+      // Expectativas del mercado
+      lastEarningsSurprise,
+      avgEarningsSurprise,
+      nextEarningsEstimate,
+      currentQuarterGrowthEstimate,
+      revenueEstimate,
+      hasPositiveSurpriseHistory: positiveSurprises >= Math.ceil(earningsHistory.length / 2),
       
       lastUpdated: new Date(),
       dataAvailable: true,
@@ -331,12 +397,64 @@ class CompanyFinancialsService {
     else if (financials.analystRating === 'Vender') analystScore = 30;
     else if (financials.analystRating === 'Venta fuerte') analystScore = 10;
     
-    // Overall Score (ponderado)
+    // 5. NUEVO: Expectations Score (basado en earnings surprises)
+    // Si la empresa supera consistentemente las expectativas, es alcista
+    // Si decepciona, es bajista
+    let expectationsScore = 50; // Neutral por defecto
+    let expectationsOutlook = 'Sin datos';
+    
+    if (financials.lastEarningsSurprise !== 0 || financials.avgEarningsSurprise !== 0) {
+      // Última sorpresa de earnings tiene peso importante
+      if (financials.lastEarningsSurprise > 10) {
+        expectationsScore += 25; // Gran sorpresa positiva
+      } else if (financials.lastEarningsSurprise > 5) {
+        expectationsScore += 15;
+      } else if (financials.lastEarningsSurprise > 0) {
+        expectationsScore += 8;
+      } else if (financials.lastEarningsSurprise < -10) {
+        expectationsScore -= 25; // Gran decepción
+      } else if (financials.lastEarningsSurprise < -5) {
+        expectationsScore -= 15;
+      } else if (financials.lastEarningsSurprise < 0) {
+        expectationsScore -= 8;
+      }
+      
+      // Historial de sorpresas también cuenta
+      if (financials.avgEarningsSurprise > 5) {
+        expectationsScore += 10;
+      } else if (financials.avgEarningsSurprise < -5) {
+        expectationsScore -= 10;
+      }
+      
+      // Bonus si tiene historial positivo consistente
+      if (financials.hasPositiveSurpriseHistory) {
+        expectationsScore += 10;
+      }
+      
+      // Determinar outlook
+      if (expectationsScore >= 70) {
+        expectationsOutlook = 'Supera expectativas';
+      } else if (expectationsScore >= 55) {
+        expectationsOutlook = 'Cumple expectativas';
+      } else if (expectationsScore <= 35) {
+        expectationsOutlook = 'Decepciona';
+      } else {
+        expectationsOutlook = 'Mixto';
+      }
+      
+      console.log(`[Financials] Expectations score: ${expectationsScore} (${expectationsOutlook})`);
+    }
+    
+    expectationsScore = Math.max(0, Math.min(100, expectationsScore));
+
+    // Overall Score (ponderado) - ACTUALIZADO con expectativas
+    // Las expectativas del mercado son muy importantes para movimientos a corto plazo
     const overallScore = Math.round(
-      (healthScore * 0.25) +
-      (growthScore * 0.30) +
-      (valueScore * 0.25) +
-      (analystScore * 0.20)
+      (healthScore * 0.20) +
+      (growthScore * 0.20) +
+      (valueScore * 0.20) +
+      (analystScore * 0.15) +
+      (expectationsScore * 0.25) // Las expectativas tienen peso importante
     );
     
     return {
@@ -349,10 +467,14 @@ class CompanyFinancialsService {
       analystRating: financials.analystRating,
       targetPrice: financials.targetPrice,
       currentVsTarget,
+      lastEarningsSurprise: financials.lastEarningsSurprise,
+      avgEarningsSurprise: financials.avgEarningsSurprise,
+      expectationsOutlook,
       financialHealthScore: healthScore,
       growthScore,
       valueScore,
       analystScore,
+      expectationsScore,
       overallScore,
     };
   }
