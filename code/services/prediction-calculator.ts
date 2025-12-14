@@ -7,6 +7,7 @@
 
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { currencyService } from './currency-service';
+import { macroEconomicService, MacroIndicators } from './macro-economic-service';
 import { newsService, NewsSummary } from './news-service';
 import { sentimentService } from './sentiment-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
@@ -43,6 +44,14 @@ export interface CalculatedPrediction {
     sentiment: 'positive' | 'negative' | 'neutral';
     score: number;
     count: number;
+    summary: string;
+  };
+  
+  // Indicadores macroeconómicos
+  macro?: {
+    region: string;
+    outlook: 'favorable' | 'neutral' | 'unfavorable';
+    score: number;
     summary: string;
   };
   
@@ -88,7 +97,13 @@ class PredictionCalculatorService {
         console.log(`[PredictionCalc] Noticias obtenidas: ${newsData.newsCount} (sentimiento: ${newsData.sentimentScore})`);
       }
 
-      // 4. Obtener datos financieros (solo para acciones)
+      // 4. Obtener indicadores macroeconómicos
+      const macroData = await macroEconomicService.getIndicators(symbol, type);
+      if (macroData.hasData) {
+        console.log(`[PredictionCalc] Datos macro obtenidos: ${macroData.macroOutlook} (score: ${macroData.macroScore})`);
+      }
+
+      // 5. Obtener datos financieros (solo para acciones)
       let financials: FinancialSummary | null = null;
       if (type === 'stock') {
         financials = await companyFinancialsService.getFinancialSummary(symbol, quote.price);
@@ -97,7 +112,7 @@ class PredictionCalculatorService {
         }
       }
 
-      // 5. Calcular predicción de forma determinística
+      // 6. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -107,10 +122,11 @@ class PredictionCalculatorService {
         sentimentData,
         financials,
         newsData,
+        macroData,
         timeframeDays
       );
 
-      // 6. Convertir precios a EUR si es necesario
+      // 7. Convertir precios a EUR si es necesario
       const currency = quote.currency || 'USD';
       if (currency !== 'EUR') {
         console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
@@ -195,7 +211,7 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas
+   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
@@ -208,6 +224,7 @@ class PredictionCalculatorService {
     sentiment: SentimentData,
     financials: FinancialSummary | null,
     news: NewsSummary,
+    macro: MacroIndicators,
     timeframeDays: number
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
@@ -215,13 +232,14 @@ class PredictionCalculatorService {
     const hasSentimentData = sentiment.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
     const hasNewsData = news.hasNews;
+    const hasMacroData = macro.hasData;
     
     // Valores - usar 0 (neutral) si no hay datos reales
     const change30d = hasHistoricalData ? historical.change30d : 0;
     const change90d = hasHistoricalData ? historical.change90d : 0;
     const volatility = hasVolatilityData ? historical.volatility : 20; // Solo volatilidad usamos default
 
-    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, volatility=${hasVolatilityData}`);
+    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, volatility=${hasVolatilityData}`);
 
     // --- CÁLCULO DE DIRECCIÓN ---
     // Score de tendencia histórica (-100 a +100) - SOLO si hay datos
@@ -236,6 +254,13 @@ class PredictionCalculatorService {
     if (hasNewsData) {
       newsScore = news.sentimentScore; // Ya está en rango -100 a +100
       console.log(`[PredictionCalc] News score: ${newsScore} (${news.positiveCount}+ / ${news.negativeCount}-)`);
+    }
+    
+    // Score macroeconómico (-100 a +100) - SOLO si hay datos
+    let macroScore = 0;
+    if (hasMacroData) {
+      macroScore = macro.macroScore; // Ya está en rango -100 a +100
+      console.log(`[PredictionCalc] Macro score: ${macroScore} (${macro.macroOutlook})`);
     }
     
     // Score de fundamentales (-100 a +100), solo para acciones
@@ -262,11 +287,12 @@ class PredictionCalculatorService {
     let combinedScore: number;
     
     // Contar cuántos factores tienen datos
-    // Noticias tienen peso alto porque son información reciente y directa
+    // Los pesos reflejan la importancia de cada factor para predicciones a corto plazo
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.25 },
-      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.15 },
-      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.25 }, // Noticias: peso importante
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.20 },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.10 },
+      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.20 }, // Noticias: impacto directo
+      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.15 }, // Macro: contexto general
       { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.20 },
       { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.15 },
     ];
@@ -350,56 +376,79 @@ class PredictionCalculatorService {
       expectedChange = 0;
     }
     
-    // Si tenemos precio objetivo de analistas, ajustar el cambio esperado
-    if (financials && financials.targetPrice > 0 && financials.currentVsTarget !== 0) {
-      // Ponderar el cambio esperado con la diferencia vs precio objetivo
-      // Limitar la influencia del target al timeframe
-      const targetInfluence = Math.min(Math.abs(financials.currentVsTarget) / 100, 0.5);
-      const targetDirection = financials.currentVsTarget > 0 ? 1 : -1;
-      
-      // Ajustar el cambio esperado considerando el precio objetivo
-      const targetAdjustment = targetInfluence * (periodVolatility * 0.3) * targetDirection;
-      expectedChange = expectedChange + targetAdjustment;
-      
-      console.log(`[PredictionCalc] Ajuste por target analistas: ${targetAdjustment.toFixed(2)}%`);
+    // --- AJUSTES DE PRECIO CON REDISTRIBUCIÓN DE PESOS ---
+    // Cada ajuste tiene un peso base. Si no hay datos, los otros se redistribuyen.
+    
+    // Definir ajustes posibles con sus pesos base
+    interface PriceAdjustment {
+      name: string;
+      hasData: boolean;
+      baseWeight: number; // Peso base para redistribución
+      adjustment: number; // Ajuste calculado
     }
     
-    // NUEVO: Ajustar por expectativas del mercado (earnings surprise)
-    // SOLO si hay datos REALES - no inventar para cryptos u otros activos sin earnings
+    const priceAdjustments: PriceAdjustment[] = [];
+    
+    // 1. Precio objetivo de analistas (peso base: 0.25)
+    let targetAdjustment = 0;
+    const hasTargetData = financials !== null && financials.targetPrice > 0 && financials.currentVsTarget !== 0;
+    if (hasTargetData && financials) {
+      const targetInfluence = Math.min(Math.abs(financials.currentVsTarget) / 100, 0.5);
+      const targetDirection = financials.currentVsTarget > 0 ? 1 : -1;
+      targetAdjustment = targetInfluence * (periodVolatility * 0.3) * targetDirection;
+    }
+    priceAdjustments.push({ name: 'target', hasData: hasTargetData, baseWeight: 0.25, adjustment: targetAdjustment });
+    
+    // 2. Expectativas del mercado (peso base: 0.25)
+    let expectationsAdjustment = 0;
     if (hasExpectationsData && financials && financials.expectationsScore !== undefined && financials.expectationsScore !== 50) {
-      // Las sorpresas de earnings tienen efecto directo en el precio
-      // Empresas que superan expectativas tienden a subir más
-      const expectationsInfluence = (financials.expectationsScore - 50) / 100; // -0.5 a +0.5
+      const expectationsInfluence = (financials.expectationsScore - 50) / 100;
+      expectationsAdjustment = expectationsInfluence * periodVolatility * 0.4;
       
-      // El ajuste es proporcional a la volatilidad y la magnitud de las sorpresas
-      const expectationsAdjustment = expectationsInfluence * periodVolatility * 0.4;
-      expectedChange = expectedChange + expectationsAdjustment;
-      
-      console.log(`[PredictionCalc] Ajuste por expectativas: ${expectationsAdjustment.toFixed(2)}% (score: ${financials.expectationsScore})`);
-      
-      // Si hay sorpresa reciente fuerte, dar más peso
+      // Bonus por sorpresa reciente fuerte
       if (financials.lastEarningsSurprise && Math.abs(financials.lastEarningsSurprise) > 5) {
         const surpriseBonus = Math.sign(financials.lastEarningsSurprise) * 
                              Math.min(Math.abs(financials.lastEarningsSurprise) / 20, 0.5) * 
                              periodVolatility * 0.2;
-        expectedChange = expectedChange + surpriseBonus;
-        console.log(`[PredictionCalc] Bonus por sorpresa reciente (${financials.lastEarningsSurprise.toFixed(1)}%): ${surpriseBonus.toFixed(2)}%`);
+        expectationsAdjustment += surpriseBonus;
       }
     }
+    priceAdjustments.push({ name: 'expectations', hasData: hasExpectationsData, baseWeight: 0.25, adjustment: expectationsAdjustment });
     
-    // Ajustar por noticias recientes
-    // Las noticias tienen impacto DIRECTO e INMEDIATO en el precio
+    // 3. Noticias recientes (peso base: 0.30)
+    let newsAdjustment = 0;
     if (hasNewsData && news.sentimentScore !== 0) {
-      // Score de noticias: -100 a +100
-      // Convertir a ajuste de precio proporcional
-      const newsInfluence = news.sentimentScore / 100; // -1 a +1
+      const newsInfluence = news.sentimentScore / 100;
+      newsAdjustment = newsInfluence * periodVolatility * 0.5;
+    }
+    priceAdjustments.push({ name: 'news', hasData: hasNewsData, baseWeight: 0.30, adjustment: newsAdjustment });
+    
+    // 4. Contexto macroeconómico (peso base: 0.20)
+    let macroAdjustment = 0;
+    if (hasMacroData && macro.macroScore !== 0) {
+      const macroInfluence = macro.macroScore / 100;
+      macroAdjustment = macroInfluence * periodVolatility * 0.3;
+    }
+    priceAdjustments.push({ name: 'macro', hasData: hasMacroData, baseWeight: 0.20, adjustment: macroAdjustment });
+    
+    // Calcular ajuste total con redistribución de pesos
+    const availablePriceAdjustments = priceAdjustments.filter(a => a.hasData);
+    
+    if (availablePriceAdjustments.length > 0) {
+      const totalAdjustmentWeight = availablePriceAdjustments.reduce((sum, a) => sum + a.baseWeight, 0);
       
-      // El impacto de noticias es más fuerte a corto plazo
-      // Noticias muy positivas/negativas pueden mover el precio significativamente
-      const newsAdjustment = newsInfluence * periodVolatility * 0.5;
-      expectedChange = expectedChange + newsAdjustment;
+      // Aplicar cada ajuste con su peso normalizado
+      for (const adj of availablePriceAdjustments) {
+        const normalizedWeight = adj.baseWeight / totalAdjustmentWeight; // Normalizar a suma = 1
+        const weightedAdjustment = adj.adjustment * normalizedWeight;
+        expectedChange += weightedAdjustment;
+        
+        console.log(`[PredictionCalc] Ajuste ${adj.name}: ${weightedAdjustment.toFixed(2)}% (peso: ${(normalizedWeight * 100).toFixed(0)}%)`);
+      }
       
-      console.log(`[PredictionCalc] Ajuste por noticias: ${newsAdjustment.toFixed(2)}% (score: ${news.sentimentScore}, ${news.positiveCount}+/${news.negativeCount}-)`);
+      console.log(`[PredictionCalc] Ajustes disponibles: ${availablePriceAdjustments.length}/${priceAdjustments.length}`);
+    } else {
+      console.log(`[PredictionCalc] Sin ajustes adicionales - solo tendencia histórica`);
     }
     
     // Limitar el cambio máximo razonable para el timeframe
@@ -463,6 +512,12 @@ class PredictionCalculatorService {
         score: news.sentimentScore,
         count: news.newsCount,
         summary: news.summary,
+      } : undefined,
+      macro: hasMacroData ? {
+        region: macro.region,
+        outlook: macro.macroOutlook,
+        score: macro.macroScore,
+        summary: macro.summary,
       } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
