@@ -363,12 +363,37 @@ class PredictionCalculatorService {
     const maxChange = Math.min(periodVolatility * 1.5, timeframeDays === 1 ? 8 : 15);
     expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
 
-    // Rango de precio basado en volatilidad real
-    const priceRange = currentPrice * (periodVolatility / 100);
+    // --- CÁLCULO DE PRECIO OBJETIVO ---
+    // Rango basado SOLO en volatilidad real (sin ampliar por confianza)
+    // La confianza es solo informativa, no afecta el rango
+    
+    // Rango pequeño y coherente: ±20% de la volatilidad del período
+    const priceRange = currentPrice * (periodVolatility / 100) * 0.2;
     const basePrice = currentPrice * (1 + expectedChange / 100);
     
-    const predictedPriceMin = Math.round((basePrice - priceRange * 0.3) * 100) / 100;
-    const predictedPriceMax = Math.round((basePrice + priceRange * 0.3) * 100) / 100;
+    let predictedPriceMin: number;
+    let predictedPriceMax: number;
+    
+    // El rango debe ser COHERENTE con la dirección:
+    // - SUBIDA: todo el rango por encima del precio actual
+    // - BAJADA: todo el rango por debajo del precio actual
+    // - NEUTRAL: rango pequeño simétrico
+    if (direction === 'up') {
+      // Subida: desde precio actual hacia el objetivo
+      predictedPriceMin = Math.round(currentPrice * 100) / 100;
+      predictedPriceMax = Math.round((basePrice + priceRange) * 100) / 100;
+    } else if (direction === 'down') {
+      // Bajada: desde objetivo hacia el precio actual
+      predictedPriceMin = Math.round((basePrice - priceRange) * 100) / 100;
+      predictedPriceMax = Math.round(currentPrice * 100) / 100;
+    } else {
+      // Neutral: rango pequeño simétrico
+      predictedPriceMin = Math.round((currentPrice - priceRange) * 100) / 100;
+      predictedPriceMax = Math.round((currentPrice + priceRange) * 100) / 100;
+    }
+    
+    console.log(`[PredictionCalc] Precio objetivo: ${predictedPriceMin} - ${predictedPriceMax}`);
+    console.log(`[PredictionCalc] Dirección: ${direction.toUpperCase()}, Confianza: ${confidence.toFixed(0)}%`);
 
     return {
       asset: this.getAssetName(symbol),
