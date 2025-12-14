@@ -106,6 +106,7 @@ export interface FinancialSummary {
   valueScore: number; // 0-100
   analystScore: number; // 0-100
   expectationsScore: number; // 0-100 - NUEVO: basado en si supera/cumple expectativas
+  hasExpectationsData: boolean; // NUEVO: indica si hay datos reales de expectations
   overallScore: number; // 0-100, promedio ponderado
 }
 
@@ -402,8 +403,12 @@ class CompanyFinancialsService {
     // Si decepciona, es bajista
     let expectationsScore = 50; // Neutral por defecto
     let expectationsOutlook = 'Sin datos';
+    let hasExpectationsData = false; // Solo true si hay datos reales
     
-    if (financials.lastEarningsSurprise !== 0 || financials.avgEarningsSurprise !== 0) {
+    // Solo calcular si hay datos REALES de earnings surprise
+    const hasEarningsData = financials.lastEarningsSurprise !== 0 || financials.avgEarningsSurprise !== 0;
+    if (hasEarningsData) {
+      hasExpectationsData = true;
       // Última sorpresa de earnings tiene peso importante
       if (financials.lastEarningsSurprise > 10) {
         expectationsScore += 25; // Gran sorpresa positiva
@@ -443,19 +448,33 @@ class CompanyFinancialsService {
       }
       
       console.log(`[Financials] Expectations score: ${expectationsScore} (${expectationsOutlook})`);
+    } else {
+      console.log(`[Financials] Sin datos de earnings surprise, expectations no aplica`);
     }
     
     expectationsScore = Math.max(0, Math.min(100, expectationsScore));
 
     // Overall Score (ponderado) - ACTUALIZADO con expectativas
     // Las expectativas del mercado son muy importantes para movimientos a corto plazo
-    const overallScore = Math.round(
-      (healthScore * 0.20) +
-      (growthScore * 0.20) +
-      (valueScore * 0.20) +
-      (analystScore * 0.15) +
-      (expectationsScore * 0.25) // Las expectativas tienen peso importante
-    );
+    // SOLO incluir expectations si hay datos reales
+    let overallScore: number;
+    if (hasExpectationsData) {
+      overallScore = Math.round(
+        (healthScore * 0.20) +
+        (growthScore * 0.20) +
+        (valueScore * 0.20) +
+        (analystScore * 0.15) +
+        (expectationsScore * 0.25)
+      );
+    } else {
+      // Sin datos de expectations, redistribuir pesos
+      overallScore = Math.round(
+        (healthScore * 0.25) +
+        (growthScore * 0.25) +
+        (valueScore * 0.25) +
+        (analystScore * 0.25)
+      );
+    }
     
     return {
       revenue: formatBillions(financials.revenue),
@@ -475,6 +494,7 @@ class CompanyFinancialsService {
       valueScore,
       analystScore,
       expectationsScore,
+      hasExpectationsData, // NUEVO: indica si hay datos reales
       overallScore,
     };
   }

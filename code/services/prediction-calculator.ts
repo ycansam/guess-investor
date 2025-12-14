@@ -210,23 +210,35 @@ class PredictionCalculatorService {
     
     // NUEVO: Score de expectativas (-100 a +100)
     // Las expectativas son MUY importantes para movimientos a corto plazo
+    // SOLO aplicar si hay datos reales (no inventar)
     let expectationsScore = 0;
-    if (financials && financials.expectationsScore !== undefined) {
+    const hasExpectationsData = financials?.hasExpectationsData === true;
+    if (hasExpectationsData && financials.expectationsScore !== undefined) {
       expectationsScore = (financials.expectationsScore - 50) * 2;
       console.log(`[PredictionCalc] Expectations score: ${expectationsScore} (raw: ${financials.expectationsScore})`);
+    } else {
+      console.log(`[PredictionCalc] Sin datos de expectations, no se aplica este factor`);
     }
     
     // Score combinado: si hay financieros, incluirlos en el cálculo
     let combinedScore: number;
     if (financials) {
-      // Acciones con expectativas: 
-      // 25% tendencia, 20% sentimiento, 25% fundamentales, 30% expectativas
-      combinedScore = (trendScore * 0.25) + (sentimentScore * 0.20) + 
-                     (financialsScore * 0.25) + (expectationsScore * 0.30);
-      console.log(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)} (trend=${trendScore}, sent=${sentimentScore}, fin=${financialsScore}, exp=${expectationsScore})`);
+      if (hasExpectationsData) {
+        // Acciones con expectativas reales: 
+        // 25% tendencia, 20% sentimiento, 25% fundamentales, 30% expectativas
+        combinedScore = (trendScore * 0.25) + (sentimentScore * 0.20) + 
+                       (financialsScore * 0.25) + (expectationsScore * 0.30);
+        console.log(`[PredictionCalc] Combined score (con expectations): ${combinedScore.toFixed(1)} (trend=${trendScore}, sent=${sentimentScore}, fin=${financialsScore}, exp=${expectationsScore})`);
+      } else {
+        // Acciones SIN datos de expectations: redistribuir pesos
+        // 35% tendencia, 25% sentimiento, 40% fundamentales
+        combinedScore = (trendScore * 0.35) + (sentimentScore * 0.25) + (financialsScore * 0.40);
+        console.log(`[PredictionCalc] Combined score (sin expectations): ${combinedScore.toFixed(1)} (trend=${trendScore}, sent=${sentimentScore}, fin=${financialsScore})`);
+      }
     } else {
       // Crypto u otros: 60% tendencia, 40% sentimiento
       combinedScore = (trendScore * 0.6) + (sentimentScore * 0.4);
+      console.log(`[PredictionCalc] Combined score (crypto/sin financials): ${combinedScore.toFixed(1)}`);
     }
     
     // Determinar dirección
@@ -290,8 +302,8 @@ class PredictionCalculatorService {
     }
     
     // NUEVO: Ajustar por expectativas del mercado (earnings surprise)
-    // Si la empresa supera/decepciona consistentemente las expectativas, ajustar precio
-    if (financials && financials.expectationsScore !== undefined && financials.expectationsScore !== 50) {
+    // SOLO si hay datos REALES - no inventar para cryptos u otros activos sin earnings
+    if (hasExpectationsData && financials && financials.expectationsScore !== undefined && financials.expectationsScore !== 50) {
       // Las sorpresas de earnings tienen efecto directo en el precio
       // Empresas que superan expectativas tienden a subir más
       const expectationsInfluence = (financials.expectationsScore - 50) / 100; // -0.5 a +0.5
