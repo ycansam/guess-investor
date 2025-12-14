@@ -7,16 +7,22 @@ interface PredictionCardFooterProps {
 }
 
 export const PredictionCardFooter: React.FC<PredictionCardFooterProps> = ({ createdAt }) => {
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.timestamp}>
-        {createdAt.toLocaleDateString('es-ES', {
-          day: '2-digit',
-          month: 'short',
-          hour: '2-digit',
-          minute: '2-digit',
-        })}
-      </Text>
+      <View style={styles.dateContainer}>
+        <Text style={styles.dateIcon}>📅</Text>
+        <Text style={styles.timestamp}>{formatDate(createdAt)}</Text>
+      </View>
       <Text style={styles.disclaimer}>⚠️ No es consejo financiero</Text>
     </View>
   );

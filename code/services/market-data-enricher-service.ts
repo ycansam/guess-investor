@@ -74,10 +74,18 @@ class MarketDataEnricherService {
     const companySymbols = symbolLookupService.getCompanySymbols();
     const foundSymbols = new Set(foundAssets.map(a => a.symbol));
 
+    // Extraer palabras individuales del mensaje para coincidencia exacta
+    const messageWords = normalizedMessage.split(/\s+/);
+
     for (const [companyName, symbol] of Object.entries(companySymbols)) {
       const normalizedCompany = normalizeText(companyName);
       
-      if (normalizedMessage.includes(normalizedCompany) && !foundSymbols.has(symbol)) {
+      // Verificar coincidencia EXACTA: la palabra completa debe coincidir
+      // Para nombres compuestos como "banco santander", verificar que todas las palabras estén
+      const companyWords = normalizedCompany.split(/\s+/);
+      const allWordsMatch = companyWords.every(word => messageWords.includes(word));
+      
+      if (allWordsMatch && !foundSymbols.has(symbol)) {
         console.log(`[MarketDataEnricher] Encontrada empresa: ${companyName} -> ${symbol}`);
         foundAssets.push({ symbol, type: 'stock' });
         foundSymbols.add(symbol);
@@ -102,10 +110,17 @@ class MarketDataEnricherService {
     const cryptoSymbols = symbolLookupService.getCryptoSymbols();
     const foundSymbols = new Set(foundAssets.map(a => a.symbol));
 
+    // Extraer palabras individuales del mensaje para coincidencia exacta
+    const messageWords = normalizedMessage.split(/\s+/);
+
     for (const [cryptoName, symbol] of Object.entries(cryptoSymbols)) {
       const normalizedCrypto = normalizeText(cryptoName);
       
-      if (normalizedMessage.includes(normalizedCrypto) && !foundSymbols.has(symbol)) {
+      // Verificar coincidencia EXACTA de la palabra
+      const cryptoWords = normalizedCrypto.split(/\s+/);
+      const allWordsMatch = cryptoWords.every(word => messageWords.includes(word));
+      
+      if (allWordsMatch && !foundSymbols.has(symbol)) {
         console.log(`[MarketDataEnricher] Encontrada crypto: ${cryptoName} -> ${symbol}`);
         foundAssets.push({ symbol, type: 'crypto' });
         foundSymbols.add(symbol);
@@ -130,8 +145,33 @@ class MarketDataEnricherService {
     const directSymbols = extractDirectSymbols(userMessage);
     const foundSymbols = new Set(foundAssets.map(a => a.symbol));
 
+    // Solo permitir símbolos que parezcan válidos:
+    // - Símbolos americanos: 2-5 letras (AAPL, MSFT, GOOGL)
+    // - Símbolos europeos: XXX.MC, XXX.DE, XXX.PA, etc.
+    // - Símbolos asiáticos: XXXX.HK, XXXX.T, etc.
+    const validSymbolPattern = /^[A-Z]{2,5}(\.[A-Z]{1,2})?$/;
+
     for (const symbol of directSymbols) {
       if (foundSymbols.has(symbol) || symbolLookupService.isCommonUpperWord(symbol)) {
+        continue;
+      }
+
+      // Solo probar símbolos que tengan formato válido
+      if (!validSymbolPattern.test(symbol)) {
+        console.log(`[MarketDataEnricher] Símbolo ${symbol} no tiene formato válido, ignorando`);
+        continue;
+      }
+
+      // Solo probar símbolos que estén en nuestra base de datos
+      // O sean símbolos con sufijo de bolsa conocida
+      const knownSuffixes = ['.MC', '.DE', '.PA', '.L', '.HK', '.T', '.AS', '.MI', '.SW', '.CO', '.ST'];
+      const hasKnownSuffix = knownSuffixes.some(suffix => symbol.endsWith(suffix));
+      const isInDatabase = Object.values(symbolLookupService.getCompanySymbols()).includes(symbol) ||
+                          Object.values(symbolLookupService.getCryptoSymbols()).includes(symbol);
+      
+      // Si no tiene sufijo conocido y no está en nuestra base de datos, no probarlo
+      if (!hasKnownSuffix && !isInDatabase && symbol.length < 4) {
+        console.log(`[MarketDataEnricher] Símbolo ${symbol} desconocido y muy corto, ignorando`);
         continue;
       }
 
