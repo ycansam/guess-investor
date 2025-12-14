@@ -6,6 +6,7 @@
  */
 
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
+import { currencyService } from './currency-service';
 import { sentimentService } from './sentiment-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
@@ -91,6 +92,25 @@ class PredictionCalculatorService {
         financials,
         timeframeDays
       );
+
+      // 5. Convertir precios a EUR si es necesario
+      const currency = quote.currency || 'USD';
+      if (currency !== 'EUR') {
+        console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
+        const rate = await currencyService.getExchangeRateToEUR(currency);
+        
+        prediction.currentPrice = Math.round(prediction.currentPrice * rate * 100) / 100;
+        prediction.predictedPriceMin = Math.round(prediction.predictedPriceMin * rate * 100) / 100;
+        prediction.predictedPriceMax = Math.round(prediction.predictedPriceMax * rate * 100) / 100;
+        prediction.currency = 'EUR';
+        
+        // También convertir el precio objetivo de analistas si existe
+        if (prediction.financials?.targetPrice) {
+          prediction.financials.targetPrice = Math.round(prediction.financials.targetPrice * rate * 100) / 100;
+        }
+        
+        console.log(`[PredictionCalc] Precio convertido: ${prediction.currentPrice} EUR`);
+      }
 
       console.log(`[PredictionCalc] Predicción calculada:`, {
         direction: prediction.direction,

@@ -4,7 +4,7 @@
  * NOTA: Solo soporta símbolos americanos y criptos populares
  */
 
-import apiConfig from '../data/api-config.json';
+import { fetchWithCorsProxy } from './cors-proxy';
 
 interface StockTwitsSentiment {
   symbol: string;
@@ -27,8 +27,8 @@ interface StockTwitsMessage {
   user: string;
 }
 
+
 const STOCKTWITS_API = 'https://api.stocktwits.com/api/2';
-const CORS_PROXY = apiConfig.yahoo.corsProxy; // Reutilizar el proxy de Yahoo
 
 // Símbolos europeos que NO están en StockTwits
 const UNSUPPORTED_SUFFIXES = ['.MC', '.DE', '.PA', '.AS', '.MI', '.L', '.SW', '.CO', '.ST', '.HE', '.OL', '.BR', '.VI', '.IR', '.LS'];
@@ -75,8 +75,7 @@ class StockTwitsService {
 
       // Usar proxy CORS para evitar bloqueos
       const apiUrl = `${STOCKTWITS_API}/streams/symbol/${stocktwitsSymbol}.json`;
-      const url = `${CORS_PROXY}${encodeURIComponent(apiUrl)}`;
-      const response = await fetch(url);
+      const response = await fetchWithCorsProxy(apiUrl);
 
       if (!response.ok) {
         if (response.status === 404) {

@@ -44,9 +44,13 @@ export const storageService = {
    * Guardar datos en IndexedDB
    */
   save: async <T>(key: string, data: T): Promise<void> => {
-    if (!isIndexedDBAvailable()) return;
+    if (!isIndexedDBAvailable()) {
+      console.log('[Storage] IndexedDB no disponible, saltando guardado');
+      return;
+    }
 
     try {
+      console.log('[Storage] Guardando en IndexedDB, key:', key);
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -54,17 +58,19 @@ export const storageService = {
         const request = store.put(JSON.stringify(data), key);
 
         request.onerror = () => {
+          console.error('[Storage] Error al guardar:', request.error);
           db.close();
           reject(request.error);
         };
 
         transaction.oncomplete = () => {
+          console.log('[Storage] Guardado exitoso en IndexedDB');
           db.close();
           resolve();
         };
       });
     } catch (error) {
-      console.warn('Error saving to IndexedDB:', error);
+      console.warn('[Storage] Error saving to IndexedDB:', error);
     }
   },
 
@@ -72,9 +78,13 @@ export const storageService = {
    * Cargar datos desde IndexedDB
    */
   load: async <T>(key: string): Promise<T | null> => {
-    if (!isIndexedDBAvailable()) return null;
+    if (!isIndexedDBAvailable()) {
+      console.log('[Storage] IndexedDB no disponible, saltando carga');
+      return null;
+    }
 
     try {
+      console.log('[Storage] Cargando desde IndexedDB, key:', key);
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readonly');
@@ -82,6 +92,7 @@ export const storageService = {
         const request = store.get(key);
 
         request.onerror = () => {
+          console.error('[Storage] Error al cargar:', request.error);
           db.close();
           reject(request.error);
         };
@@ -91,17 +102,21 @@ export const storageService = {
           const result = request.result;
           if (result) {
             try {
-              resolve(JSON.parse(result) as T);
+              const parsed = JSON.parse(result) as T;
+              console.log('[Storage] Datos cargados correctamente');
+              resolve(parsed);
             } catch {
+              console.warn('[Storage] Error parseando JSON');
               resolve(null);
             }
           } else {
+            console.log('[Storage] No hay datos guardados para esta key');
             resolve(null);
           }
         };
       });
     } catch (error) {
-      console.warn('Error loading from IndexedDB:', error);
+      console.warn('[Storage] Error loading from IndexedDB:', error);
       return null;
     }
   },

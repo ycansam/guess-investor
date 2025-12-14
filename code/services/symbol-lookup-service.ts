@@ -28,6 +28,7 @@ class SymbolLookupService {
       ...companySymbolsData.spanish,
       ...companySymbolsData.american,
       ...companySymbolsData.european,
+      ...companySymbolsData.asian,
     };
 
     this.cryptoSymbolMap = cryptoSymbolsData;

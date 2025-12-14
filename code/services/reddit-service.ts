@@ -3,7 +3,7 @@
  * Subreddits: r/wallstreetbets, r/stocks, r/CryptoCurrency
  */
 
-import apiConfig from '../data/api-config.json';
+import { fetchWithCorsProxy } from './cors-proxy';
 
 interface RedditPost {
   title: string;
@@ -31,8 +31,6 @@ class RedditService {
     crypto: ['CryptoCurrency', 'wallstreetbets'],
   };
 
-  private readonly CORS_PROXY = apiConfig.yahoo.corsProxy;
-
   /**
    * Obtiene posts populares de un subreddit
    */
@@ -41,9 +39,7 @@ class RedditService {
       console.log(`[Reddit] Obteniendo posts de r/${subreddit}`);
 
       const redditUrl = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`;
-      const url = `${this.CORS_PROXY}${encodeURIComponent(redditUrl)}`;
-      
-      const response = await fetch(url);
+      const response = await fetchWithCorsProxy(redditUrl);
 
       if (!response.ok) {
         throw new Error(`Error ${response.status}`);

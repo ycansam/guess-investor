@@ -155,19 +155,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   // Cargar predicciones desde IndexedDB al iniciar
   loadPredictions: async () => {
-    const data = await storageService.load<{
-      predictions: InvestmentPrediction[];
-      lastAnalysis: string | null;
-    }>(PREDICTIONS_STORAGE_KEY);
-    
-    if (data) {
-      set({
-        predictions: data.predictions.map((p) => ({
-          ...p,
-          createdAt: new Date(p.createdAt),
-        })),
-        lastAnalysis: data.lastAnalysis ? new Date(data.lastAnalysis) : null,
-      });
+    console.log('[ChatStore] Iniciando carga de predicciones...');
+    try {
+      const data = await storageService.load<{
+        predictions: InvestmentPrediction[];
+        lastAnalysis: string | null;
+      }>(PREDICTIONS_STORAGE_KEY);
+      
+      if (data && data.predictions) {
+        console.log(`[ChatStore] Cargadas ${data.predictions.length} predicciones`);
+        set({
+          predictions: data.predictions.map((p) => ({
+            ...p,
+            createdAt: new Date(p.createdAt),
+          })),
+          lastAnalysis: data.lastAnalysis ? new Date(data.lastAnalysis) : null,
+        });
+      } else {
+        console.log('[ChatStore] No hay predicciones guardadas');
+      }
+    } catch (error) {
+      console.error('[ChatStore] Error cargando predicciones:', error);
     }
   },
 

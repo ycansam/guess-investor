@@ -114,5 +114,23 @@
     "astrazeneca": "AZN",
     "glaxo": "GSK",
     "diageo": "DGE.L"
+  },
+  "asian": {
+    "xiaomi": "1810.HK",
+    "alibaba": "9988.HK",
+    "baba": "9988.HK",
+    "tencent": "0700.HK",
+    "baidu": "9888.HK",
+    "jd": "9618.HK",
+    "jd.com": "9618.HK",
+    "nio": "NIO",
+    "byd": "1211.HK",
+    "sony": "SONY",
+    "toyota": "TM",
+    "honda": "HMC",
+    "samsung": "005930.KS",
+    "nintendo": "NTDOY",
+    "softbank": "9984.T",
+    "huawei": "N/A"
   }
 }

@@ -25,7 +25,8 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
-  },
+    cursor: 'pointer',
+  } as any,
   removeButtonText: {
     color: '#DC2626',
     fontSize: 14,

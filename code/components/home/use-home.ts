@@ -1,7 +1,21 @@
 import { useEffect } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { geminiService } from '../../services/gemini-service';
 import { useChatStore } from '../../store/chat-store';
+
+// Helper para mostrar confirmación compatible con web y mobile
+const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+  } else {
+    Alert.alert(title, message, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Confirmar', style: 'destructive', onPress: onConfirm },
+    ]);
+  }
+};
 
 /**
  * Hook que encapsula la lógica de la pantalla Home
@@ -40,35 +54,26 @@ export function useHome() {
   };
 
   const handleClearChat = () => {
-    Alert.alert(
+    showConfirm(
       'Limpiar Chat',
       '¿Estás seguro de que quieres borrar todo el historial?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Limpiar', style: 'destructive', onPress: clearMessages },
-      ]
+      clearMessages
     );
   };
 
   const handleClearPredictions = () => {
-    Alert.alert(
+    showConfirm(
       'Limpiar Predicciones',
       '¿Borrar todas las predicciones guardadas?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Limpiar', style: 'destructive', onPress: clearPredictions },
-      ]
+      clearPredictions
     );
   };
 
   const handleRemovePrediction = (id: string) => {
-    Alert.alert(
+    showConfirm(
       'Eliminar Predicción',
       '¿Estás seguro de que quieres eliminar esta predicción?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Eliminar', style: 'destructive', onPress: () => removePrediction(id) },
-      ]
+      () => removePrediction(id)
     );
   };
 

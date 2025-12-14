@@ -8,10 +8,8 @@
  * - PER, EPS, etc.
  */
 
-import apiConfig from '../data/api-config.json';
+import { fetchWithCorsProxy } from './cors-proxy';
 
-const config = apiConfig.yahoo;
-const CORS_PROXY = config.corsProxy;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos de caché (datos financieros cambian poco)
 
 /**
@@ -138,15 +136,11 @@ class CompanyFinancialsService {
       ].join(',');
       
       const yahooUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
-      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(yahooUrl)}`;
       
-      const response = await fetch(proxyUrl, {
+      // Usar el servicio de proxy con fallback automático
+      const response = await fetchWithCorsProxy(yahooUrl, {
         signal: AbortSignal.timeout(15000),
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
       
       const data = await response.json();
       const result = data.quoteSummary?.result?.[0];

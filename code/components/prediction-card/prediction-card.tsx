@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { InvestmentPrediction } from '../../types';
 import { calculateChangePercent } from './_helpers';
 import { PredictionCardAnalysis } from './prediction-card-analysis';
@@ -22,15 +22,25 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onRe
     prediction.predictedChange
   );
 
+  const handleRemove = () => {
+    if (onRemove) {
+      onRemove(prediction.id);
+    }
+  };
+
   return (
     <View style={styles.card}>
       {onRemove && (
-        <TouchableOpacity
-          style={styles.removeButton}
-          onPress={() => onRemove(prediction.id)}
+        <Pressable
+          style={({ pressed }) => [
+            styles.removeButton,
+            pressed && { opacity: 0.7, backgroundColor: '#FECACA' }
+          ]}
+          onPress={handleRemove}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Text style={styles.removeButtonText}>✕</Text>
-        </TouchableOpacity>
+        </Pressable>
       )}
       <PredictionCardHeader prediction={prediction} />
       <PredictionCardPrices prediction={prediction} />
