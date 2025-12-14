@@ -291,6 +291,30 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             </View>
           )}
 
+          {/* Tipos de cambio */}
+          {prediction.analysisData?.forex && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>💱 Tipos de cambio:</Text>
+              <View style={styles.forexContainer}>
+                <View style={styles.forexHeader}>
+                  <Text style={styles.forexBaseCurrency}>Base: {prediction.analysisData.forex.baseCurrency}</Text>
+                  <Text style={[
+                    styles.forexTrend,
+                    { color: prediction.analysisData.forex.trend === 'eur_weak' ? '#4CAF50' :
+                             prediction.analysisData.forex.trend === 'eur_strong' ? '#F44336' : '#FF9800' }
+                  ]}>
+                    {prediction.analysisData.forex.trend === 'eur_weak' ? '📈 EUR débil (favorable)' :
+                     prediction.analysisData.forex.trend === 'eur_strong' ? '📉 EUR fuerte (desfavorable)' : '➖ Estable'}
+                  </Text>
+                </View>
+                <Text style={styles.forexPairs}>
+                  Pares analizados: {prediction.analysisData.forex.mainPairs.join(', ')}
+                </Text>
+                <Text style={styles.forexSummary}>{prediction.analysisData.forex.summary}</Text>
+              </View>
+            </View>
+          )}
+
           {/* Conclusión */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>💡 Conclusión:</Text>

@@ -75,6 +75,14 @@ export interface InvestmentPrediction {
       summary: string; // Resumen de la comparación
       competitorNames: string[]; // Nombres de competidores analizados
     };
+    // Análisis de tipos de cambio
+    forex?: {
+      baseCurrency: string; // Moneda base de la empresa (EUR, USD, etc.)
+      trend: 'eur_strong' | 'eur_weak' | 'stable';
+      score: number; // -100 a +100
+      summary: string; // Resumen del impacto
+      mainPairs: string[]; // Pares analizados (EUR/USD, EUR/GBP, etc.)
+    };
   };
 }
 

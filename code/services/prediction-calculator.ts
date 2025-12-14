@@ -8,6 +8,7 @@
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { currencyService } from './currency-service';
+import { forexAnalysisService, ForexImpact } from './forex-analysis-service';
 import { macroEconomicService, MacroIndicators } from './macro-economic-service';
 import { newsService, NewsSummary } from './news-service';
 import { sentimentService } from './sentiment-service';
@@ -64,6 +65,15 @@ export interface CalculatedPrediction {
     score: number;
     summary: string;
     competitorNames: string[];
+  };
+  
+  // Análisis de tipos de cambio
+  forex?: {
+    baseCurrency: string;
+    trend: 'eur_strong' | 'eur_weak' | 'stable';
+    score: number;
+    summary: string;
+    mainPairs: string[]; // EUR/USD, EUR/GBP, etc.
   };
   
   timeframe: string;
@@ -139,7 +149,13 @@ class PredictionCalculatorService {
         console.log(`[PredictionCalc] Competidores obtenidos: ${competitorsData.sectorTrend} (score: ${competitorsData.competitorScore})`);
       }
 
-      // 7. Calcular predicción de forma determinística
+      // 7. Obtener análisis de tipos de cambio
+      const forexData = await forexAnalysisService.analyzeForexImpact(symbol);
+      if (forexData.hasData) {
+        console.log(`[PredictionCalc] Forex obtenido: ${forexData.overallTrend} (score: ${forexData.forexScore})`);
+      }
+
+      // 8. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -151,10 +167,11 @@ class PredictionCalculatorService {
         newsData,
         macroData,
         competitorsData,
+        forexData,
         timeframeDays
       );
 
-      // 8. Convertir precios a EUR si es necesario
+      // 9. Convertir precios a EUR si es necesario
       const currency = quote.currency || 'USD';
       if (currency !== 'EUR') {
         console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
@@ -239,7 +256,7 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores
+   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores + forex
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
@@ -254,12 +271,14 @@ class PredictionCalculatorService {
     news: NewsSummary,
     macro: MacroIndicators,
     competitors: CompetitorAnalysis,
+    forex: ForexImpact,
     timeframeDays: number
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
     const hasHistoricalData = historical !== null && (historical.change30d !== 0 || historical.change90d !== 0);
     const hasSentimentData = sentiment.hasData;
     const hasCompetitorsData = competitors.hasData;
+    const hasForexData = forex.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
@@ -269,7 +288,7 @@ class PredictionCalculatorService {
     const change90d = hasHistoricalData ? historical.change90d : 0;
     const volatility = hasVolatilityData ? historical.volatility : 20; // Solo volatilidad usamos default
 
-    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, volatility=${hasVolatilityData}`);
+    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, competitors=${hasCompetitorsData}, forex=${hasForexData}`);
 
     // --- CÁLCULO DE DIRECCIÓN ---
     // Score de tendencia histórica (-100 a +100) - SOLO si hay datos
@@ -302,6 +321,15 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Competitors score: ${competitorsScore} (${competitors.sectorTrend}, outperforming: ${competitors.outperforming})`);
     }
     
+    // Score de tipos de cambio (-100 a +100) - SOLO si hay datos
+    // EUR fuerte = negativo para exportadores europeos
+    // EUR débil = positivo para exportadores europeos
+    let forexScore = 0;
+    if (hasForexData) {
+      forexScore = forex.forexScore; // Ya está en rango -100 a +100
+      console.log(`[PredictionCalc] Forex score: ${forexScore} (${forex.overallTrend})`);
+    }
+    
     // Score de fundamentales (-100 a +100), solo para acciones
     let financialsScore = 0;
     if (financials) {
@@ -327,15 +355,16 @@ class PredictionCalculatorService {
     
     // Contar cuántos factores tienen datos
     // Los pesos reflejan la importancia de cada factor para predicciones a corto plazo
-    // Total base: 1.10, se redistribuye a 1.00 entre factores disponibles
+    // Total base se redistribuye a 1.00 entre factores disponibles
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.15 },
-      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.10 },
-      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.20 }, // Noticias: impacto directo
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.12 },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.08 },
+      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.18 }, // Noticias: impacto directo
       { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.10 }, // Macro: contexto general
-      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.15 }, // Competidores: contexto sector
-      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.15 },
-      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.15 },
+      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.12 }, // Competidores: contexto sector
+      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.12 }, // Forex: impacto divisas
+      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.14 },
+      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.14 },
     ];
     
     const availableFactors = factors.filter(f => f.hasData);
@@ -488,7 +517,18 @@ class PredictionCalculatorService {
         competitorsAdjustment -= periodVolatility * 0.1; // Penalización por rezago
       }
     }
-    priceAdjustments.push({ name: 'competitors', hasData: hasCompetitorsData, baseWeight: 0.20, adjustment: competitorsAdjustment });
+    priceAdjustments.push({ name: 'competitors', hasData: hasCompetitorsData, baseWeight: 0.18, adjustment: competitorsAdjustment });
+    
+    // 6. Tipos de cambio (peso base: 0.12)
+    // EUR fuerte = negativo para exportadores europeos
+    // Impacto moderado pero constante
+    let forexAdjustment = 0;
+    if (hasForexData && forex.forexScore !== 0) {
+      const forexInfluence = forex.forexScore / 100;
+      // Impacto más moderado que noticias - es un factor de fondo
+      forexAdjustment = forexInfluence * periodVolatility * 0.25;
+    }
+    priceAdjustments.push({ name: 'forex', hasData: hasForexData, baseWeight: 0.12, adjustment: forexAdjustment });
     
     // Calcular ajuste total con redistribución de pesos
     const availablePriceAdjustments = priceAdjustments.filter(a => a.hasData);
@@ -585,6 +625,13 @@ class PredictionCalculatorService {
         score: competitors.competitorScore,
         summary: competitors.summary,
         competitorNames: competitors.competitors.map(c => c.name),
+      } : undefined,
+      forex: hasForexData ? {
+        baseCurrency: forex.baseCurrency,
+        trend: forex.overallTrend,
+        score: forex.forexScore,
+        summary: forex.summary,
+        mainPairs: forex.currencyPairs.map(p => p.pair),
       } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),

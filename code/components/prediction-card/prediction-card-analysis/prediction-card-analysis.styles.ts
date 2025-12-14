@@ -302,4 +302,39 @@ export const styles = StyleSheet.create({
     color: '#555',
     lineHeight: 18,
   },
+  // Forex
+  forexContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  forexHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  forexBaseCurrency: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  forexTrend: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  forexPairs: {
+    fontSize: 11,
+    color: '#888',
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  forexSummary: {
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 18,
+  },
 });
