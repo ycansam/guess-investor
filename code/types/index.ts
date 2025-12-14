@@ -52,6 +52,29 @@ export interface InvestmentPrediction {
       expectationsScore: number; // Score expectativas 0-100
       overallScore: number; // Score general 0-100
     };
+    // Noticias recientes
+    news?: {
+      sentiment: 'positive' | 'negative' | 'neutral';
+      score: number; // -100 a +100
+      count: number; // Número de noticias analizadas
+      summary: string; // Resumen del sentimiento
+    };
+    // Indicadores macroeconómicos
+    macro?: {
+      region: string; // europe, usa, etc.
+      outlook: 'favorable' | 'neutral' | 'unfavorable';
+      score: number; // -100 a +100
+      summary: string; // Resumen del contexto macro
+    };
+    // Análisis de competidores
+    competitors?: {
+      sector: string; // Nombre del sector
+      sectorTrend: 'bullish' | 'bearish' | 'neutral';
+      outperforming: boolean; // ¿Supera a competidores?
+      score: number; // -100 a +100
+      summary: string; // Resumen de la comparación
+      competitorNames: string[]; // Nombres de competidores analizados
+    };
   };
 }
 

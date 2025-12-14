@@ -213,6 +213,84 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             </View>
           )}
 
+          {/* Noticias recientes */}
+          {prediction.analysisData?.news && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>📰 Noticias recientes:</Text>
+              <View style={styles.newsContainer}>
+                <View style={styles.newsHeader}>
+                  <Text style={[
+                    styles.newsSentiment,
+                    { color: prediction.analysisData.news.sentiment === 'positive' ? '#4CAF50' :
+                             prediction.analysisData.news.sentiment === 'negative' ? '#F44336' : '#FF9800' }
+                  ]}>
+                    {prediction.analysisData.news.sentiment === 'positive' ? '📈 Positivo' :
+                     prediction.analysisData.news.sentiment === 'negative' ? '📉 Negativo' : '➖ Neutral'}
+                  </Text>
+                  <Text style={styles.newsCount}>
+                    {prediction.analysisData.news.count} noticias analizadas
+                  </Text>
+                </View>
+                <Text style={styles.newsSummary}>{prediction.analysisData.news.summary}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Contexto macroeconómico */}
+          {prediction.analysisData?.macro && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🌍 Contexto macroeconómico:</Text>
+              <View style={styles.macroContainer}>
+                <View style={styles.macroHeader}>
+                  <Text style={styles.macroRegion}>{prediction.analysisData.macro.region}</Text>
+                  <Text style={[
+                    styles.macroOutlook,
+                    { color: prediction.analysisData.macro.outlook === 'favorable' ? '#4CAF50' :
+                             prediction.analysisData.macro.outlook === 'unfavorable' ? '#F44336' : '#FF9800' }
+                  ]}>
+                    {prediction.analysisData.macro.outlook === 'favorable' ? '✅ Favorable' :
+                     prediction.analysisData.macro.outlook === 'unfavorable' ? '⚠️ Desfavorable' : '➖ Neutral'}
+                  </Text>
+                </View>
+                <Text style={styles.macroSummary}>{prediction.analysisData.macro.summary}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Análisis de competidores */}
+          {prediction.analysisData?.competitors && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🏢 Competidores y sector:</Text>
+              <View style={styles.competitorsContainer}>
+                <View style={styles.competitorsHeader}>
+                  <Text style={styles.competitorsSector}>{prediction.analysisData.competitors.sector}</Text>
+                  <Text style={[
+                    styles.competitorsTrend,
+                    { color: prediction.analysisData.competitors.sectorTrend === 'bullish' ? '#4CAF50' :
+                             prediction.analysisData.competitors.sectorTrend === 'bearish' ? '#F44336' : '#FF9800' }
+                  ]}>
+                    {prediction.analysisData.competitors.sectorTrend === 'bullish' ? '📈 Sector alcista' :
+                     prediction.analysisData.competitors.sectorTrend === 'bearish' ? '📉 Sector bajista' : '➖ Sector neutro'}
+                  </Text>
+                </View>
+                <View style={styles.competitorsOutperform}>
+                  <Text style={[
+                    styles.outperformBadge,
+                    { backgroundColor: prediction.analysisData.competitors.outperforming ? '#E8F5E9' : '#FFF3E0' }
+                  ]}>
+                    <Text style={{ color: prediction.analysisData.competitors.outperforming ? '#4CAF50' : '#FF9800' }}>
+                      {prediction.analysisData.competitors.outperforming ? '🏆 Supera a competidores' : '📊 En línea con competidores'}
+                    </Text>
+                  </Text>
+                </View>
+                <Text style={styles.competitorsNames}>
+                  Comparado con: {prediction.analysisData.competitors.competitorNames.join(', ')}
+                </Text>
+                <Text style={styles.competitorsSummary}>{prediction.analysisData.competitors.summary}</Text>
+              </View>
+            </View>
+          )}
+
           {/* Conclusión */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>💡 Conclusión:</Text>

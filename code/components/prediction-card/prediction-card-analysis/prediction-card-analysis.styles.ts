@@ -201,4 +201,105 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'right',
   },
+  // News
+  newsContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  newsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  newsSentiment: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  newsCount: {
+    fontSize: 11,
+    color: '#888',
+  },
+  newsSummary: {
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 18,
+  },
+  // Macro
+  macroContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  macroHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  macroRegion: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  macroOutlook: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  macroSummary: {
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 18,
+  },
+  // Competitors
+  competitorsContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  competitorsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  competitorsSector: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  competitorsTrend: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  competitorsOutperform: {
+    marginBottom: 8,
+  },
+  outperformBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  competitorsNames: {
+    fontSize: 11,
+    color: '#888',
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  competitorsSummary: {
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 18,
+  },
 });

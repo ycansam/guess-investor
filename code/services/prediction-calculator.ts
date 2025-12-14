@@ -6,6 +6,7 @@
  */
 
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
+import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { currencyService } from './currency-service';
 import { macroEconomicService, MacroIndicators } from './macro-economic-service';
 import { newsService, NewsSummary } from './news-service';
@@ -53,6 +54,16 @@ export interface CalculatedPrediction {
     outlook: 'favorable' | 'neutral' | 'unfavorable';
     score: number;
     summary: string;
+  };
+  
+  // Análisis de competidores
+  competitors?: {
+    sector: string;
+    sectorTrend: 'bullish' | 'bearish' | 'neutral';
+    outperforming: boolean;
+    score: number;
+    summary: string;
+    competitorNames: string[];
   };
   
   timeframe: string;
@@ -112,7 +123,23 @@ class PredictionCalculatorService {
         }
       }
 
-      // 6. Calcular predicción de forma determinística
+      // 6. Obtener análisis de competidores
+      // Necesitamos los cambios históricos de la empresa para comparar
+      const companyChange1d = historical?.change30d ? historical.change30d / 30 : 0;
+      const companyChange1w = historical?.change30d ? historical.change30d / 4 : 0;
+      const companyChange1m = historical?.change30d || 0;
+      
+      const competitorsData = await competitorsService.analyzeCompetitors(
+        symbol,
+        companyChange1d,
+        companyChange1w,
+        companyChange1m
+      );
+      if (competitorsData.hasData) {
+        console.log(`[PredictionCalc] Competidores obtenidos: ${competitorsData.sectorTrend} (score: ${competitorsData.competitorScore})`);
+      }
+
+      // 7. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -123,10 +150,11 @@ class PredictionCalculatorService {
         financials,
         newsData,
         macroData,
+        competitorsData,
         timeframeDays
       );
 
-      // 7. Convertir precios a EUR si es necesario
+      // 8. Convertir precios a EUR si es necesario
       const currency = quote.currency || 'USD';
       if (currency !== 'EUR') {
         console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
@@ -211,7 +239,7 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro
+   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
@@ -225,11 +253,13 @@ class PredictionCalculatorService {
     financials: FinancialSummary | null,
     news: NewsSummary,
     macro: MacroIndicators,
+    competitors: CompetitorAnalysis,
     timeframeDays: number
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
     const hasHistoricalData = historical !== null && (historical.change30d !== 0 || historical.change90d !== 0);
     const hasSentimentData = sentiment.hasData;
+    const hasCompetitorsData = competitors.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
@@ -263,6 +293,15 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Macro score: ${macroScore} (${macro.macroOutlook})`);
     }
     
+    // Score de competidores (-100 a +100) - SOLO si hay datos
+    // Si a los competidores les va mal, puede arrastrar a la empresa
+    // Si la empresa destaca vs competidores, es muy positivo
+    let competitorsScore = 0;
+    if (hasCompetitorsData) {
+      competitorsScore = competitors.competitorScore; // Ya está en rango -100 a +100
+      console.log(`[PredictionCalc] Competitors score: ${competitorsScore} (${competitors.sectorTrend}, outperforming: ${competitors.outperforming})`);
+    }
+    
     // Score de fundamentales (-100 a +100), solo para acciones
     let financialsScore = 0;
     if (financials) {
@@ -288,12 +327,14 @@ class PredictionCalculatorService {
     
     // Contar cuántos factores tienen datos
     // Los pesos reflejan la importancia de cada factor para predicciones a corto plazo
+    // Total base: 1.10, se redistribuye a 1.00 entre factores disponibles
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.20 },
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.15 },
       { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.10 },
       { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.20 }, // Noticias: impacto directo
-      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.15 }, // Macro: contexto general
-      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.20 },
+      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.10 }, // Macro: contexto general
+      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.15 }, // Competidores: contexto sector
+      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.15 },
       { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.15 },
     ];
     
@@ -423,13 +464,31 @@ class PredictionCalculatorService {
     }
     priceAdjustments.push({ name: 'news', hasData: hasNewsData, baseWeight: 0.30, adjustment: newsAdjustment });
     
-    // 4. Contexto macroeconómico (peso base: 0.20)
+    // 4. Contexto macroeconómico (peso base: 0.15)
     let macroAdjustment = 0;
     if (hasMacroData && macro.macroScore !== 0) {
       const macroInfluence = macro.macroScore / 100;
       macroAdjustment = macroInfluence * periodVolatility * 0.3;
     }
-    priceAdjustments.push({ name: 'macro', hasData: hasMacroData, baseWeight: 0.20, adjustment: macroAdjustment });
+    priceAdjustments.push({ name: 'macro', hasData: hasMacroData, baseWeight: 0.15, adjustment: macroAdjustment });
+    
+    // 5. Análisis de competidores (peso base: 0.20)
+    // Si los competidores caen, puede arrastrar el precio
+    // Si la empresa supera a competidores, puede impulsar el precio
+    let competitorsAdjustment = 0;
+    if (hasCompetitorsData && competitors.competitorScore !== 0) {
+      const competitorsInfluence = competitors.competitorScore / 100;
+      // Impacto similar a noticias - el sector afecta directamente
+      competitorsAdjustment = competitorsInfluence * periodVolatility * 0.4;
+      
+      // Bonus/penalización adicional si destaca mucho o está muy rezagado
+      if (competitors.outperforming && competitors.companyVsSector1w > 3) {
+        competitorsAdjustment += periodVolatility * 0.1; // Bonus por destacar
+      } else if (!competitors.outperforming && competitors.companyVsSector1w < -3) {
+        competitorsAdjustment -= periodVolatility * 0.1; // Penalización por rezago
+      }
+    }
+    priceAdjustments.push({ name: 'competitors', hasData: hasCompetitorsData, baseWeight: 0.20, adjustment: competitorsAdjustment });
     
     // Calcular ajuste total con redistribución de pesos
     const availablePriceAdjustments = priceAdjustments.filter(a => a.hasData);
@@ -518,6 +577,14 @@ class PredictionCalculatorService {
         outlook: macro.macroOutlook,
         score: macro.macroScore,
         summary: macro.summary,
+      } : undefined,
+      competitors: hasCompetitorsData ? {
+        sector: competitors.sectorName,
+        sectorTrend: competitors.sectorTrend,
+        outperforming: competitors.outperforming,
+        score: competitors.competitorScore,
+        summary: competitors.summary,
+        competitorNames: competitors.competitors.map(c => c.name),
       } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),

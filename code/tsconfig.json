@@ -1,7 +1,9 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true,
+    "module": "es2015",
+    "target": "es2015",
+    "sourceMap": true,
     "paths": {
       "@/*": [
         "./*"
