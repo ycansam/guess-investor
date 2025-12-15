@@ -9,6 +9,7 @@ import { companyFinancialsService, FinancialSummary } from './company-financials
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { CorporateEvents, corporateEventsService } from './corporate-events-service';
 import { currencyService } from './currency-service';
+import { ExpectationsData, expectationsService } from './expectations-service';
 import { forexAnalysisService, ForexImpact } from './forex-analysis-service';
 import { InstitutionalActivity, institutionalInvestorsService } from './institutional-investors-service';
 import { macroEconomicService, MacroIndicators } from './macro-economic-service';
@@ -155,6 +156,21 @@ export interface CalculatedPrediction {
     analystActionsCount: number;
     analystActionsImpact: number;
     overallImpact: number;
+    summary: string;
+  };
+  
+  // Expectativas del mercado (earnings surprise, revisiones, próx. earnings)
+  expectations?: {
+    lastEpsSurprise: number | null;
+    avgEpsSurprise: number | null;
+    lastRevenueSurprise: number | null;
+    avgRevenueSurprise: number | null;
+    beatRate: number; // % de veces que superó estimaciones
+    revisionTrend: 'up' | 'down' | 'stable' | 'unknown';
+    nextEarningsDays: number | null;
+    earningsRisk: 'high' | 'medium' | 'low';
+    score: number;
+    dataQuality: 'high' | 'medium' | 'low';
     summary: string;
   };
   
@@ -499,16 +515,18 @@ class PredictionCalculatorService {
         console.log(`[PredictionCalc] Análisis técnico: ${technicalData.trend} (score: ${technicalData.technicalScore})`);
       }
 
-      // 11. Obtener VIX y Put/Call ratio (solo para stocks)
+      // 11. Obtener VIX, Put/Call ratio y Expectations mejoradas (solo para stocks)
       let vixData: { value: number; sentiment: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency'; score: number } | undefined;
       let putCallData: { ratio: number; sentiment: 'extreme_fear' | 'bearish' | 'neutral' | 'bullish' | 'extreme_greed'; score: number } | undefined;
       let corporateEventsData: CorporateEvents | null = null;
+      let expectationsData: ExpectationsData | null = null;
       
       if (type === 'stock') {
-        const [vixResult, pcResult, corpEventsResult] = await Promise.allSettled([
+        const [vixResult, pcResult, corpEventsResult, expectationsResult] = await Promise.allSettled([
           vixService.getCurrentVIX(),
           optionsService.getMarketPutCallRatio(),
           corporateEventsService.getCorporateEvents(symbol),
+          expectationsService.getExpectations(symbol),
         ]);
 
         if (vixResult.status === 'fulfilled' && vixResult.value) {
@@ -533,6 +551,11 @@ class PredictionCalculatorService {
           corporateEventsData = corpEventsResult.value;
           console.log(`[PredictionCalc] Eventos corporativos: ${corporateEventsData.summary}`);
         }
+
+        if (expectationsResult.status === 'fulfilled' && expectationsResult.value) {
+          expectationsData = expectationsResult.value;
+          console.log(`[PredictionCalc] Expectations mejoradas: score=${expectationsData.expectationsScore}, quality=${expectationsData.dataQuality}`);
+        }
       }
 
       // 12. Calcular predicción de forma determinística
@@ -551,7 +574,8 @@ class PredictionCalculatorService {
         institutionalData,
         seasonalityData,
         technicalData,
-        timeframeDays
+        timeframeDays,
+        expectationsData
       );
 
       // 12. Convertir precios a EUR si es necesario
@@ -698,7 +722,8 @@ class PredictionCalculatorService {
     institutional: InstitutionalActivity,
     seasonality: SeasonalityAnalysis,
     technical: TechnicalAnalysis,
-    timeframeDays: number
+    timeframeDays: number,
+    expectationsEnhanced: ExpectationsData | null = null
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
     const hasHistoricalData = historical !== null && (historical.change30d !== 0 || historical.change90d !== 0);
@@ -792,14 +817,25 @@ class PredictionCalculatorService {
       console.log(`[PredictionCalc] Financials score: ${financialsScore} (overall: ${financials.overallScore})`);
     }
     
-    // Score de expectativas (-100 a +100)
+    // Score de expectativas MEJORADO (-100 a +100)
+    // PRIORIDAD: Usar el nuevo servicio de expectations si está disponible
     // Las expectativas son MUY importantes para movimientos a corto plazo
-    // SOLO aplicar si hay datos reales (no inventar)
     let expectationsScore = 0;
-    const hasExpectationsData = financials?.hasExpectationsData === true;
-    if (hasExpectationsData && financials.expectationsScore !== undefined) {
+    let hasExpectationsData = false;
+    
+    // 1. Intentar usar el servicio mejorado de expectations
+    if (expectationsEnhanced && expectationsEnhanced.hasData) {
+      expectationsScore = (expectationsEnhanced.expectationsScore - 50) * 2;
+      hasExpectationsData = true;
+      console.log(`[PredictionCalc] Expectations MEJORADAS: score=${expectationsScore} (raw: ${expectationsEnhanced.expectationsScore}, quality: ${expectationsEnhanced.dataQuality})`);
+      console.log(`[PredictionCalc] → EPS Surprise: ${expectationsEnhanced.lastEpsSurprise?.toFixed(1)}%, Rev Surprise: ${expectationsEnhanced.lastRevenueSurprise?.toFixed(1)}%, Beat Rate: ${expectationsEnhanced.beatRate.toFixed(0)}%`);
+      console.log(`[PredictionCalc] → Revisiones: ${expectationsEnhanced.overallRevisionTrend}, Próx. Earnings: ${expectationsEnhanced.nextEarnings.daysUntil} días`);
+    }
+    // 2. Fallback: usar datos básicos de company-financials si no hay datos mejorados
+    else if (financials?.hasExpectationsData === true && financials.expectationsScore !== undefined) {
       expectationsScore = (financials.expectationsScore - 50) * 2;
-      console.log(`[PredictionCalc] Expectations score: ${expectationsScore} (raw: ${financials.expectationsScore})`);
+      hasExpectationsData = true;
+      console.log(`[PredictionCalc] Expectations (básico): score=${expectationsScore} (raw: ${financials.expectationsScore})`);
     } else {
       console.log(`[PredictionCalc] Sin datos de expectations, no se aplica este factor`);
     }
@@ -1253,6 +1289,20 @@ class PredictionCalculatorService {
         volumeSignal: technical.volumeSignal,
         signals: technical.signals.filter(s => s.signal !== 'neutral').slice(0, 5).map(s => s.description),
         summary: technical.summary,
+      } : undefined,
+      // Expectations mejoradas
+      expectations: hasExpectationsData && expectationsEnhanced ? {
+        lastEpsSurprise: expectationsEnhanced.lastEpsSurprise,
+        avgEpsSurprise: expectationsEnhanced.avgEpsSurprise,
+        lastRevenueSurprise: expectationsEnhanced.lastRevenueSurprise,
+        avgRevenueSurprise: expectationsEnhanced.avgRevenueSurprise,
+        beatRate: expectationsEnhanced.beatRate,
+        revisionTrend: expectationsEnhanced.overallRevisionTrend,
+        nextEarningsDays: expectationsEnhanced.nextEarnings.daysUntil,
+        earningsRisk: expectationsEnhanced.earningsRisk,
+        score: expectationsEnhanced.expectationsScore,
+        dataQuality: expectationsEnhanced.dataQuality,
+        summary: expectationsEnhanced.summary,
       } : undefined,
       // Nota: corporateEvents se añade desde el caller si está disponible
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,

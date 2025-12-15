@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 15 de diciembre de 2025  
-**Commit actual:** `ec4eb4e`
+**Commit actual:** `07b2853`
 
 ---
 
@@ -9,7 +9,8 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
-| `pendiente` | - | **Factor Institutional mejorado** - COT Report (Commitment of Traders), Flujos ETFs del sector, Dark Pools (short volume, acumulación/distribución), Block trades |
+| `pendiente` | - | **Factor Expectations mejorado** - Revenue Surprise (real vs estimado), Revisiones de analistas (7d/30d/90d trends), Fecha próximos earnings con riesgo, Beat Rate histórico, Whisper numbers |
+| `07b2853` | 15/12/2025 | **Factor Institutional mejorado** - COT Report (Commitment of Traders), Flujos ETFs del sector, Dark Pools (short volume, acumulación/distribución), Block trades |
 | `ec4eb4e` | 15/12/2025 | **Factor News mejorado** - Eventos corporativos (earnings calendar, dividendos, splits, M&A), Acciones de analistas (upgrades/downgrades), Detección de eventos regulatorios (SEC, FDA, FTC, DOJ, EU, antitrust) |
 | `fd79316` | 15/12/2025 | **Factor Sentiment mejorado** - VIX Index, Put/Call Ratio (CBOE SPX), indicadores institucionales en UI |
 | `91a22e9` | 15/12/2025 | Fix: discrepancia entre % cambio del chat y tarjeta de predicción + tabla cobertura changelog |
@@ -69,7 +70,7 @@
 | 8 | **Institutional** | Movimientos de grandes inversores: ownership, insiders, top holders, **COT Report** (posiciones futuros), **Flujos ETFs** del sector, **Dark Pools** (short volume, acumulación/distribución) |
 | 9 | **Seasonality** | Festivos por país, eventos comerciales (Black Friday, Buen Fin), patrones históricos (Rally Santa Claus, Sell in May) |
 | 10 | **Financials** | Resultados financieros: ingresos, márgenes, deuda, P/E, rating analistas, precio objetivo |
-| 11 | **Expectations** | Expectativas de mercado: earnings surprise, EPS estimado, guidance |
+| 11 | **Expectations** | Expectativas de mercado: **earnings surprise** (EPS + Revenue), **revisiones de analistas** (7d/30d/90d), EPS estimado, **fecha próximos earnings**, **beat rate** histórico |
 
 ---
 
@@ -87,14 +88,14 @@
 | **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades) | 13F filings SEC detallados | ~75% |
 | **Seasonality** | 50+ eventos para 20+ países, patrones globales | Patrones históricos por acción específica | ~60% |
 | **Financials** | Ingresos, márgenes, EPS, P/E, deuda, ROE, rating analistas | FCF, CAPEX, balance completo | ~65% |
-| **Expectations** | Earnings surprise histórico, EPS estimado | Revenue surprise, revisiones analistas, fecha próx earnings | ~45% |
+| **Expectations** | EPS surprise histórico, **Revenue surprise**, **Revisiones analistas** (7d/30d/90d), EPS/Revenue estimados, **Fecha próx. earnings**, **Beat rate**, **Riesgo earnings**, **Whisper numbers** | Guidance management | ~75% |
 
 ### APIs/Fuentes de Datos
 
 | Fuente | Uso |
 |--------|-----|
 | **Yahoo Finance Chart API** | Precios, históricos, OHLCV para indicadores técnicos, **volumen para análisis de dark pools** |
-| **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings, **calendarEvents** (earnings dates, dividendos), **upgradeDowngradeHistory** (acciones de analistas) |
+| **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings, **calendarEvents** (earnings dates, dividendos), **upgradeDowngradeHistory** (acciones de analistas), **earningsHistory** (EPS surprise histórico), **earningsTrend** (revisiones de analistas 7d/30d/90d, estimaciones EPS/Revenue), **earnings** (revenue trimestral) |
 | **Yahoo Finance Options** | Datos de opciones para **análisis de dark pools** (put/call ratio, open interest, volumen inusual) |
 | **Yahoo Finance Search** | Noticias |
 | **Yahoo Finance VIX** | Índice de volatilidad VIX (indicador de miedo), **estimación de posiciones COT** |

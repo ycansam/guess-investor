@@ -166,9 +166,9 @@ class SentimentService {
       // Fear & Greed (solo para crypto)
       if (type === 'crypto') {
         const fgData = await fearGreedService.getIndex();
-        if (fgData) {
+        if (fgData && fgData.current) {
           // Convertir valor 0-100 a -100 a +100
-          const fgScore = (fgData.value - 50) * 2;
+          const fgScore = (fgData.current.value - 50) * 2;
           scores.push({ score: fgScore, weight: 40 });
         }
       }
