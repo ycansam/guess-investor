@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 16 de diciembre de 2025  
-**Commit actual:** `pendiente`
+**Commit actual:** `fd79316`
 
 ---
 
@@ -9,9 +9,10 @@
 
 | Commit | Funcionalidad |
 |--------|---------------|
-| `pendiente` | **Factor Sentiment mejorado** - VIX Index, Put/Call Ratio (CBOE SPX), indicadores institucionales en UI |
-| `pendiente` | Fix: discrepancia entre % cambio del chat y tarjeta de predicción |
-| `34c65e3` | **Factor de Indicadores Técnicos** (SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bandas de Bollinger, Análisis de Volumen, Cruces Dorado/Mortal) |
+| `fd79316` | **Factor Sentiment mejorado** - VIX Index, Put/Call Ratio (CBOE SPX), indicadores institucionales en UI |
+| `pendiente` | **Factor News mejorado** - Eventos corporativos (earnings calendar, dividendos, splits, M&A), Acciones de analistas (upgrades/downgrades), Detección de eventos regulatorios (SEC, FDA, FTC, DOJ, EU, antitrust) |
+| `91a22e9` | Fix: discrepancia entre % cambio del chat y tarjeta de predicción + tabla cobertura changelog |
+| `1a01ef4` | **Factor de Indicadores Técnicos** (SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bandas de Bollinger, Análisis de Volumen, Cruces Dorado/Mortal) |
 | `0be2753` | Eliminado temporadas (estaciones del año) del factor seasonality |
 | `f74ebc7` | Changelog actualizado con funcionalidades implementadas |
 | `d1b1a21` | Predicción determinista y sin rangos de precio (precio objetivo único) |
@@ -60,7 +61,7 @@
 | 1 | **Trend** | Análisis de tendencias de precio y momentum histórico (cambios 30d, 90d, volatilidad) |
 | 2 | **Technical** | **NUEVO** - Indicadores técnicos: SMA (20/50/200), EMA (12/26), RSI 14, MACD, Bandas de Bollinger, Volumen, Cruces Dorado/Mortal |
 | 3 | **Sentiment** | Sentimiento de mercado: StockTwits, Reddit, Fear & Greed, **VIX Index**, **Put/Call Ratio** (CBOE SPX) |
-| 4 | **News** | Impacto de noticias relevantes sobre el activo o sector (Yahoo Finance) |
+| 4 | **News** | Impacto de noticias: Yahoo Finance, **Eventos corporativos** (earnings calendar, dividendos, splits), **Acciones de analistas** (upgrades/downgrades), **Detección regulatoria** (SEC, FDA, FTC, DOJ, EU, antitrust) |
 | 5 | **Macro** | Indicadores macroeconómicos: índices regionales, tipos de interés, VIX, commodities |
 | 6 | **Competitors** | Contexto relativo frente a competidores y sector: rendimiento comparativo |
 | 7 | **Forex** | Efectos de movimientos de divisas sobre activos internacionales |
@@ -78,7 +79,7 @@
 | **Trend** | Cambios 30d/90d/1Y, volatilidad | - | 100% |
 | **Technical** | SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bollinger, Volumen, Cruces | Patrones chartistas, soportes/resistencias | ~80% |
 | **Sentiment** | StockTwits, Reddit, Fear & Greed (crypto), **VIX Index**, **Put/Call Ratio (CBOE SPX)** | Short interest (requiere API FINRA pagada), Twitter/X (requiere API pagada), options flow detallado | ~70% |
-| **News** | Yahoo News + análisis keywords | Calendario earnings, eventos corporativos (splits, M&A) | ~35% |
+| **News** | Yahoo News + análisis keywords, **Earnings calendar**, **Dividendos**, **Acciones de analistas** (upgrades/downgrades), **Detección de eventos regulatorios** (SEC, FDA, FTC, DOJ, EU, antitrust) | Splits históricos, M&A rumores | ~65% |
 | **Macro** | Índices regionales, bonos 10Y, VIX, commodities | Inflación (CPI), PIB, empleo (NFP), decisiones Fed/BCE | ~40% |
 | **Competitors** | Rendimiento relativo vs competidores mapeados | Cuota de mercado, comparación de ratios P/E | ~50% |
 | **Forex** | Exposición por empresa, cambios de pares | Hedging, volatilidad FX | ~60% |
@@ -92,7 +93,7 @@
 | Fuente | Uso |
 |--------|-----|
 | **Yahoo Finance Chart API** | Precios, históricos, OHLCV para indicadores técnicos |
-| **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings |
+| **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings, **calendarEvents** (earnings dates, dividendos), **upgradeDowngradeHistory** (acciones de analistas) |
 | **Yahoo Finance Search** | Noticias |
 | **Yahoo Finance VIX** | Índice de volatilidad VIX (indicador de miedo) |
 | **CBOE Options API** | Put/Call Ratio de opciones SPX (indicador institucional) |

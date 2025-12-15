@@ -7,6 +7,7 @@
 
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
+import { CorporateEvents, corporateEventsService } from './corporate-events-service';
 import { currencyService } from './currency-service';
 import { forexAnalysisService, ForexImpact } from './forex-analysis-service';
 import { InstitutionalActivity, institutionalInvestorsService } from './institutional-investors-service';
@@ -142,6 +143,18 @@ export interface CalculatedPrediction {
     bollingerPosition: 'above' | 'below' | 'inside';
     volumeSignal: 'high' | 'low' | 'normal';
     signals: string[]; // Descripciones de señales activas
+    summary: string;
+  };
+  
+  // Eventos corporativos (earnings, dividendos, upgrades/downgrades)
+  corporateEvents?: {
+    nextEarningsDate?: Date;
+    daysUntilEarnings?: number;
+    earningsImpact: number;
+    hasDividendUpcoming: boolean;
+    analystActionsCount: number;
+    analystActionsImpact: number;
+    overallImpact: number;
     summary: string;
   };
   
@@ -489,11 +502,13 @@ class PredictionCalculatorService {
       // 11. Obtener VIX y Put/Call ratio (solo para stocks)
       let vixData: { value: number; sentiment: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency'; score: number } | undefined;
       let putCallData: { ratio: number; sentiment: 'extreme_fear' | 'bearish' | 'neutral' | 'bullish' | 'extreme_greed'; score: number } | undefined;
+      let corporateEventsData: CorporateEvents | null = null;
       
       if (type === 'stock') {
-        const [vixResult, pcResult] = await Promise.allSettled([
+        const [vixResult, pcResult, corpEventsResult] = await Promise.allSettled([
           vixService.getCurrentVIX(),
           optionsService.getMarketPutCallRatio(),
+          corporateEventsService.getCorporateEvents(symbol),
         ]);
 
         if (vixResult.status === 'fulfilled' && vixResult.value) {
@@ -512,6 +527,11 @@ class PredictionCalculatorService {
             score: pcResult.value.sentimentScore,
           };
           console.log(`[PredictionCalc] Put/Call obtenido: ${putCallData.ratio.toFixed(2)} (${putCallData.sentiment})`);
+        }
+
+        if (corpEventsResult.status === 'fulfilled' && corpEventsResult.value) {
+          corporateEventsData = corpEventsResult.value;
+          console.log(`[PredictionCalc] Eventos corporativos: ${corporateEventsData.summary}`);
         }
       }
 
@@ -572,6 +592,20 @@ class PredictionCalculatorService {
         if (vixData) scores.push(vixData.score);
         if (putCallData) scores.push(putCallData.score);
         prediction.sentiment.overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      }
+
+      // 15. Añadir datos de eventos corporativos
+      if (corporateEventsData) {
+        prediction.corporateEvents = {
+          nextEarningsDate: corporateEventsData.nextEarningsDate?.date,
+          daysUntilEarnings: corporateEventsData.nextEarningsDate?.daysUntil,
+          earningsImpact: corporateEventsData.earningsImpact,
+          hasDividendUpcoming: corporateEventsData.dividend?.isUpcoming || false,
+          analystActionsCount: corporateEventsData.recentAnalystActions.length,
+          analystActionsImpact: corporateEventsData.analystActionsImpact,
+          overallImpact: corporateEventsData.overallImpact,
+          summary: corporateEventsData.summary,
+        };
       }
 
       return prediction;
@@ -1220,6 +1254,7 @@ class PredictionCalculatorService {
         signals: technical.signals.filter(s => s.signal !== 'neutral').slice(0, 5).map(s => s.description),
         summary: technical.summary,
       } : undefined,
+      // Nota: corporateEvents se añade desde el caller si está disponible
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
       

@@ -2,9 +2,11 @@
  * Servicio para obtener noticias de empresas/criptos
  * Usa Yahoo Finance Search API para obtener noticias recientes
  * Analiza el sentimiento de los títulos para determinar impacto
+ * Integra detección de eventos regulatorios (SEC, FDA, FTC, etc.)
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
+import { RegulatoryAnalysis, regulatoryEventsService } from './regulatory-events-service';
 
 export interface NewsItem {
   title: string;
@@ -13,6 +15,7 @@ export interface NewsItem {
   publishedAt: Date;
   sentiment: 'positive' | 'negative' | 'neutral';
   sentimentScore: number; // -100 a +100
+  isRegulatory?: boolean; // true si contiene evento regulatorio
 }
 
 export interface NewsSummary {
@@ -25,6 +28,9 @@ export interface NewsSummary {
   negativeCount: number;
   neutralCount: number;
   summary: string;
+  // Nuevos campos para eventos regulatorios
+  regulatoryAnalysis?: RegulatoryAnalysis;
+  hasRegulatoryNews: boolean;
 }
 
 // Palabras clave para análisis de sentimiento de noticias financieras
@@ -237,6 +243,24 @@ class NewsService {
     const negativeItems = items.filter(i => i.sentiment === 'negative');
     const neutralItems = items.filter(i => i.sentiment === 'neutral');
     
+    // Analizar eventos regulatorios en todas las noticias
+    const titles = items.map(i => i.title);
+    const regulatoryAnalysis = regulatoryEventsService.analyzeNews(titles);
+    
+    // Marcar items que tienen eventos regulatorios
+    if (regulatoryAnalysis.hasRegulatoryNews) {
+      for (const item of items) {
+        const itemAnalysis = regulatoryEventsService.analyzeNews([item.title]);
+        if (itemAnalysis.hasRegulatoryNews) {
+          item.isRegulatory = true;
+          // Ajustar el score del item con el impacto regulatorio
+          item.sentimentScore = Math.max(-100, Math.min(100, 
+            item.sentimentScore + itemAnalysis.overallImpact * 0.5
+          ));
+        }
+      }
+    }
+    
     // Calcular score ponderado (noticias más recientes pesan más)
     const now = Date.now();
     let weightedScore = 0;
@@ -250,7 +274,10 @@ class NewsService {
       const ageHours = (now - item.publishedAt.getTime()) / (1000 * 60 * 60);
       const ageWeight = ageHours < 24 ? 1.5 : ageHours < 72 ? 1.0 : 0.5;
       
-      const weight = positionWeight * ageWeight;
+      // Noticias regulatorias pesan más
+      const regulatoryWeight = item.isRegulatory ? 1.5 : 1.0;
+      
+      const weight = positionWeight * ageWeight * regulatoryWeight;
       weightedScore += item.sentimentScore * weight;
       totalWeight += weight;
     });
@@ -280,6 +307,8 @@ class NewsService {
       negativeCount: negativeItems.length,
       neutralCount: neutralItems.length,
       summary,
+      regulatoryAnalysis,
+      hasRegulatoryNews: regulatoryAnalysis.hasRegulatoryNews,
     };
   }
 
@@ -321,6 +350,7 @@ class NewsService {
       negativeCount: 0,
       neutralCount: 0,
       summary: '',
+      hasRegulatoryNews: false,
     };
   }
   
@@ -335,7 +365,50 @@ class NewsService {
     const emoji = summary.overallSentiment === 'positive' ? '📈' :
                   summary.overallSentiment === 'negative' ? '📉' : '📊';
     
-    return `${emoji} ${summary.newsCount} noticias (${summary.positiveCount}+ / ${summary.negativeCount}-)`;
+    let display = `${emoji} ${summary.newsCount} noticias (${summary.positiveCount}+ / ${summary.negativeCount}-)`;
+    
+    // Añadir indicador de noticias regulatorias si las hay
+    if (summary.hasRegulatoryNews && summary.regulatoryAnalysis) {
+      display += ` ⚖️`;
+    }
+    
+    return display;
+  }
+  
+  /**
+   * Formatea para el prompt de IA incluyendo eventos regulatorios
+   */
+  formatForAI(summary: NewsSummary): string {
+    const lines: string[] = ['NEWS_ANALYSIS:'];
+    
+    if (!summary.hasNews) {
+      lines.push('  Sin noticias recientes');
+      return lines.join('\n');
+    }
+    
+    lines.push(`  Total: ${summary.newsCount} noticias`);
+    lines.push(`  Sentimiento: ${summary.overallSentiment} (score: ${summary.sentimentScore})`);
+    lines.push(`  Distribución: ${summary.positiveCount} positivas, ${summary.negativeCount} negativas, ${summary.neutralCount} neutrales`);
+    
+    // Añadir análisis regulatorio si existe
+    if (summary.hasRegulatoryNews && summary.regulatoryAnalysis) {
+      lines.push('');
+      lines.push(regulatoryEventsService.formatForAI(summary.regulatoryAnalysis));
+    }
+    
+    // Añadir titulares principales
+    const topNews = summary.items.slice(0, 3);
+    if (topNews.length > 0) {
+      lines.push('');
+      lines.push('  Titulares recientes:');
+      topNews.forEach(n => {
+        const emoji = n.sentiment === 'positive' ? '📈' : n.sentiment === 'negative' ? '📉' : '📊';
+        const regulatory = n.isRegulatory ? ' ⚖️' : '';
+        lines.push(`    ${emoji}${regulatory} ${n.title.substring(0, 100)}...`);
+      });
+    }
+    
+    return lines.join('\n');
   }
 }
 
