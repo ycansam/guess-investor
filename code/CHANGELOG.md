@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 15 de diciembre de 2025  
-**Commit actual:** `07b2853`
+**Commit actual:** `486ceab`
 
 ---
 
@@ -9,8 +9,9 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
-| `pendiente` | - | **Factor Macro mejorado** - CPI (Inflación), GDP (PIB), NFP (Empleo), PMI (Manufacturing/Services), Tasas bancos centrales (Fed/BCE/BoE/BoJ/PBOC), Ciclo económico, Eventos económicos próximos |
-| `pendiente` | - | **Factor Expectations mejorado** - Revenue Surprise (real vs estimado), Revisiones de analistas (7d/30d/90d trends), Fecha próximos earnings con riesgo, Beat Rate histórico, Whisper numbers |
+| `486ceab` | 15/12/2025 | Fix: Pesos normalizados en fórmula de auditoría |
+| `cdfe4d6` | 15/12/2025 | **Factor Macro mejorado** - CPI (Inflación), GDP (PIB), NFP (Empleo), PMI (Manufacturing/Services), Tasas bancos centrales (Fed/BCE/BoE/BoJ/PBOC), Ciclo económico, Eventos económicos próximos |
+| `c7080c6` | 15/12/2025 | **Factor Expectations mejorado** - Revenue Surprise (real vs estimado), Revisiones de analistas (7d/30d/90d trends), Fecha próximos earnings con riesgo, Beat Rate histórico, Whisper numbers |
 | `07b2853` | 15/12/2025 | **Factor Institutional mejorado** - COT Report (Commitment of Traders), Flujos ETFs del sector, Dark Pools (short volume, acumulación/distribución), Block trades |
 | `ec4eb4e` | 15/12/2025 | **Factor News mejorado** - Eventos corporativos (earnings calendar, dividendos, splits, M&A), Acciones de analistas (upgrades/downgrades), Detección de eventos regulatorios (SEC, FDA, FTC, DOJ, EU, antitrust) |
 | `fd79316` | 15/12/2025 | **Factor Sentiment mejorado** - VIX Index, Put/Call Ratio (CBOE SPX), indicadores institucionales en UI |
