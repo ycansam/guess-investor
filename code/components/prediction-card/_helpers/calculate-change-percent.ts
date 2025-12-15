@@ -1,4 +1,3 @@
-const PRICE_AVERAGE_DIVISOR = 2;
 const PERCENTAGE_MULTIPLIER = 100;
 
 export const calculateChangePercent = (
@@ -7,9 +6,17 @@ export const calculateChangePercent = (
   predictedPriceMax?: number,
   predictedChange?: number
 ): number | undefined => {
-  if (!currentPrice || !predictedPriceMin || !predictedPriceMax) {
+  // Si tenemos predictedChange directo, usarlo (es el valor calculado correctamente)
+  if (predictedChange !== undefined) {
     return predictedChange;
   }
-  const avgPredicted = (predictedPriceMin + predictedPriceMax) / PRICE_AVERAGE_DIVISOR;
-  return ((avgPredicted - currentPrice) / currentPrice) * PERCENTAGE_MULTIPLIER;
+  
+  // Fallback: calcular desde precios si no hay predictedChange
+  if (!currentPrice || !predictedPriceMin || !predictedPriceMax) {
+    return undefined;
+  }
+  
+  // Usar predictedPriceMax como precio objetivo (min y max deberían ser iguales)
+  const targetPrice = predictedPriceMax;
+  return ((targetPrice - currentPrice) / currentPrice) * PERCENTAGE_MULTIPLIER;
 };

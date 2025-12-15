@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 15 de diciembre de 2025  
-**Commit actual:** `34c65e3`
+**Commit actual:** `pendiente`
 
 ---
 
@@ -9,6 +9,7 @@
 
 | Commit | Funcionalidad |
 |--------|---------------|
+| `pendiente` | Fix: discrepancia entre % cambio del chat y tarjeta de predicción |
 | `34c65e3` | **Factor de Indicadores Técnicos** (SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bandas de Bollinger, Análisis de Volumen, Cruces Dorado/Mortal) |
 | `0be2753` | Eliminado temporadas (estaciones del año) del factor seasonality |
 | `f74ebc7` | Changelog actualizado con funcionalidades implementadas |
@@ -66,6 +67,36 @@
 | 9 | **Seasonality** | Festivos por país, eventos comerciales (Black Friday, Buen Fin), patrones históricos (Rally Santa Claus, Sell in May) |
 | 10 | **Financials** | Resultados financieros: ingresos, márgenes, deuda, P/E, rating analistas, precio objetivo |
 | 11 | **Expectations** | Expectativas de mercado: earnings surprise, EPS estimado, guidance |
+
+---
+
+## Cobertura por Factor
+
+| Factor | Implementado | Pendiente | % |
+|--------|-------------|-----------|---|
+| **Trend** | Cambios 30d/90d/1Y, volatilidad | - | 100% |
+| **Technical** | SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bollinger, Volumen, Cruces | Patrones chartistas, soportes/resistencias | ~80% |
+| **Sentiment** | StockTwits, Reddit, Fear & Greed (crypto) | Put/Call ratio, short interest, Twitter/X | ~40% |
+| **News** | Yahoo News + análisis keywords | Calendario earnings, eventos corporativos (splits, M&A) | ~35% |
+| **Macro** | Índices regionales, bonos 10Y, VIX, commodities | Inflación (CPI), PIB, empleo (NFP), decisiones Fed/BCE | ~40% |
+| **Competitors** | Rendimiento relativo vs competidores mapeados | Cuota de mercado, comparación de ratios P/E | ~50% |
+| **Forex** | Exposición por empresa, cambios de pares | Hedging, volatilidad FX | ~60% |
+| **Institutional** | % ownership, tendencia, insiders, top 5 fondos | COT report, 13F filings SEC, flujos ETFs | ~50% |
+| **Seasonality** | 50+ eventos para 20+ países, patrones globales | Patrones históricos por acción específica | ~60% |
+| **Financials** | Ingresos, márgenes, EPS, P/E, deuda, ROE, rating analistas | FCF, CAPEX, balance completo | ~65% |
+| **Expectations** | Earnings surprise histórico, EPS estimado | Revenue surprise, revisiones analistas, fecha próx earnings | ~45% |
+
+### APIs/Fuentes de Datos
+
+| Fuente | Uso |
+|--------|-----|
+| **Yahoo Finance Chart API** | Precios, históricos, OHLCV para indicadores técnicos |
+| **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings |
+| **Yahoo Finance Search** | Noticias |
+| **StockTwits API** | Sentimiento USA/crypto |
+| **Reddit JSON** | Sentimiento social (r/wallstreetbets, r/stocks) |
+| **Alternative.me** | Fear & Greed Index (crypto) |
+| **Datos hardcoded** | Competidores, exposición forex, eventos estacionales |
 
 ---
 

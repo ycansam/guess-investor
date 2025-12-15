@@ -1060,28 +1060,11 @@ class PredictionCalculatorService {
     
     // Para compatibilidad con la interfaz, usamos el mismo valor para min/max
     // Esto indica que es un precio objetivo único, no un rango
-    let predictedPriceMin: number;
-    let predictedPriceMax: number;
+    // IMPORTANTE: Ambos deben ser iguales para que calculateChangePercent funcione correctamente
+    const predictedPriceMin = predictedPrice;
+    const predictedPriceMax = predictedPrice;
     
-    if (direction === 'up') {
-      // Subida: objetivo por encima del actual
-      predictedPriceMin = currentPrice;
-      predictedPriceMax = predictedPrice;
-    } else if (direction === 'down') {
-      // Bajada: objetivo por debajo del actual
-      predictedPriceMin = predictedPrice;
-      predictedPriceMax = currentPrice;
-    } else {
-      // Se mantiene: precio objetivo = precio actual (cambio ~0%)
-      predictedPriceMin = currentPrice;
-      predictedPriceMax = currentPrice;
-    }
-    
-    // Redondear
-    predictedPriceMin = Math.round(predictedPriceMin * 100) / 100;
-    predictedPriceMax = Math.round(predictedPriceMax * 100) / 100;
-    
-    console.log(`[PredictionCalc] Precio objetivo: ${predictedPriceMin} - ${predictedPriceMax}`);
+    console.log(`[PredictionCalc] Precio objetivo: ${predictedPrice} (cambio: ${expectedChange.toFixed(2)}%)`);
     console.log(`[PredictionCalc] Dirección: ${direction.toUpperCase()}, Confianza: ${confidence.toFixed(0)}%`);
 
     return {
