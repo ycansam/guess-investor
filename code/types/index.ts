@@ -104,6 +104,22 @@ export interface InvestmentPrediction {
       score: number; // -100 a +100
       summary: string; // Resumen del impacto estacional
     };
+    // Análisis técnico (indicadores)
+    technicalAnalysis?: {
+      trend: 'strong_bullish' | 'bullish' | 'neutral' | 'bearish' | 'strong_bearish';
+      score: number; // -100 a +100
+      rsi14?: number;
+      rsiSignal: 'oversold' | 'overbought' | 'neutral';
+      macdTrend: 'bullish' | 'bearish' | 'neutral';
+      priceVsSMA200: 'above' | 'below';
+      priceVsSMA50: 'above' | 'below';
+      goldenCross: boolean;
+      deathCross: boolean;
+      bollingerPosition: 'above' | 'below' | 'inside';
+      volumeSignal: 'high' | 'low' | 'normal';
+      signals: string[]; // Descripciones de señales activas
+      summary: string;
+    };
     // Desglose de factores usados en la predicción
     factorBreakdown?: {
       assetGroup: string; // Grupo del activo (large_cap_stock, crypto_major, etc.)

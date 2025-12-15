@@ -14,6 +14,7 @@ import { macroEconomicService, MacroIndicators } from './macro-economic-service'
 import { newsService, NewsSummary } from './news-service';
 import { SeasonalityAnalysis, seasonalityService } from './seasonality-service';
 import { sentimentService } from './sentiment-service';
+import { TechnicalAnalysis, technicalIndicatorsService } from './technical-indicators-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
 export interface CalculatedPrediction {
@@ -110,6 +111,23 @@ export interface CalculatedPrediction {
     region: string;
     events: string[]; // Nombres de eventos activos
     score: number;
+    summary: string;
+  };
+  
+  // Análisis técnico (indicadores)
+  technicalAnalysis?: {
+    trend: 'strong_bullish' | 'bullish' | 'neutral' | 'bearish' | 'strong_bearish';
+    score: number; // -100 a +100
+    rsi14?: number;
+    rsiSignal: 'oversold' | 'overbought' | 'neutral';
+    macdTrend: 'bullish' | 'bearish' | 'neutral';
+    priceVsSMA200: 'above' | 'below';
+    priceVsSMA50: 'above' | 'below';
+    goldenCross: boolean;
+    deathCross: boolean;
+    bollingerPosition: 'above' | 'below' | 'inside';
+    volumeSignal: 'high' | 'low' | 'normal';
+    signals: string[]; // Descripciones de señales activas
     summary: string;
   };
   
@@ -448,7 +466,13 @@ class PredictionCalculatorService {
         console.log(`[PredictionCalc] Estacionalidad: ${seasonalityData.sector} (score: ${seasonalityData.seasonalScore})`);
       }
 
-      // 10. Calcular predicción de forma determinística
+      // 10. Obtener análisis técnico (indicadores)
+      const technicalData = await technicalIndicatorsService.analyzeTechnicals(symbol);
+      if (technicalData.hasData) {
+        console.log(`[PredictionCalc] Análisis técnico: ${technicalData.trend} (score: ${technicalData.technicalScore})`);
+      }
+
+      // 11. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -463,10 +487,11 @@ class PredictionCalculatorService {
         forexData,
         institutionalData,
         seasonalityData,
+        technicalData,
         timeframeDays
       );
 
-      // 11. Convertir precios a EUR si es necesario
+      // 12. Convertir precios a EUR si es necesario
       const currency = quote.currency || 'USD';
       if (currency !== 'EUR') {
         console.log(`[PredictionCalc] Convirtiendo de ${currency} a EUR`);
@@ -551,7 +576,7 @@ class PredictionCalculatorService {
    * Cálculo determinístico de la predicción
    * 
    * Fórmula:
-   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores + forex + institucional + estacionalidad
+   * - Dirección: basada en tendencia histórica + sentimiento + fundamentales + noticias + expectativas + macro + competidores + forex + institucional + estacionalidad + indicadores técnicos
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
@@ -569,6 +594,7 @@ class PredictionCalculatorService {
     forex: ForexImpact,
     institutional: InstitutionalActivity,
     seasonality: SeasonalityAnalysis,
+    technical: TechnicalAnalysis,
     timeframeDays: number
   ): CalculatedPrediction {
     // --- FLAGS DE DATOS DISPONIBLES ---
@@ -578,6 +604,7 @@ class PredictionCalculatorService {
     const hasForexData = forex.hasData;
     const hasInstitutionalData = institutional.hasData;
     const hasSeasonalityData = seasonality.hasData;
+    const hasTechnicalData = technical.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
@@ -587,11 +614,19 @@ class PredictionCalculatorService {
     const change90d = hasHistoricalData ? historical.change90d : 0;
     const volatility = hasVolatilityData ? historical.volatility : 20; // Solo volatilidad usamos default
 
-    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, competitors=${hasCompetitorsData}, forex=${hasForexData}, institutional=${hasInstitutionalData}, seasonality=${hasSeasonalityData}`);
+    console.log(`[PredictionCalc] Datos disponibles: historical=${hasHistoricalData}, sentiment=${hasSentimentData}, news=${hasNewsData}, macro=${hasMacroData}, competitors=${hasCompetitorsData}, forex=${hasForexData}, institutional=${hasInstitutionalData}, seasonality=${hasSeasonalityData}, technical=${hasTechnicalData}`);
 
     // --- CÁLCULO DE DIRECCIÓN ---
     // Score de tendencia histórica (-100 a +100) - SOLO si hay datos
-    const trendScore = hasHistoricalData ? this.calculateTrendScore(change30d, change90d) : 0;
+    // Ahora combinamos tendencia histórica con indicadores técnicos
+    let trendScore = hasHistoricalData ? this.calculateTrendScore(change30d, change90d) : 0;
+    
+    // Score de indicadores técnicos (-100 a +100) - SOLO si hay datos
+    let technicalScore = 0;
+    if (hasTechnicalData) {
+      technicalScore = technical.technicalScore; // Ya está en rango -100 a +100
+      console.log(`[PredictionCalc] Technical score: ${technicalScore} (${technical.trend}, RSI: ${technical.rsi14?.toFixed(1) || 'N/A'})`);
+    }
     
     // Score de sentimiento (-100 a +100) - SOLO si hay datos
     const sentimentScore = hasSentimentData ? (sentiment.bullishPercent - 50) * 2 : 0;
@@ -672,17 +707,19 @@ class PredictionCalculatorService {
     // Contar cuántos factores tienen datos
     // Los pesos reflejan la importancia de cada factor para predicciones a corto plazo
     // Total base se redistribuye a 1.00 entre factores disponibles
+    // NOTA: 11 factores ahora (añadido technical)
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.10 },
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.08 },
+      { name: 'technical', score: technicalScore, hasData: hasTechnicalData, baseWeight: 0.12 }, // Indicadores técnicos: muy importantes
       { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.06 },
-      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.15 }, // Noticias: impacto directo
-      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.08 }, // Macro: contexto general
-      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.09 }, // Competidores: contexto sector
-      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.09 }, // Forex: impacto divisas
-      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: 0.10 }, // Grandes inversores
-      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, baseWeight: 0.07 }, // Estacionalidad: patrones temporales
-      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.13 },
-      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.13 },
+      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.14 }, // Noticias: impacto directo
+      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.07 }, // Macro: contexto general
+      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.08 }, // Competidores: contexto sector
+      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.08 }, // Forex: impacto divisas
+      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: 0.09 }, // Grandes inversores
+      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, baseWeight: 0.06 }, // Estacionalidad: patrones temporales
+      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.11 },
+      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.11 },
     ];
     
     const availableFactors = factors.filter(f => f.hasData);
@@ -1116,6 +1153,21 @@ class PredictionCalculatorService {
         score: seasonality.seasonalScore,
         summary: seasonality.summary,
       } : undefined,
+      technicalAnalysis: hasTechnicalData ? {
+        trend: technical.trend,
+        score: technical.technicalScore,
+        rsi14: technical.rsi14 ?? undefined,
+        rsiSignal: technical.rsiSignal,
+        macdTrend: technical.macdTrend,
+        priceVsSMA200: technical.priceAboveSMA200 ? 'above' : 'below',
+        priceVsSMA50: technical.priceAboveSMA50 ? 'above' : 'below',
+        goldenCross: technical.goldenCross,
+        deathCross: technical.deathCross,
+        bollingerPosition: technical.bollingerPosition,
+        volumeSignal: technical.volumeSignal,
+        signals: technical.signals.filter(s => s.signal !== 'neutral').slice(0, 5).map(s => s.description),
+        summary: technical.summary,
+      } : undefined,
       timeframe: timeframeDays === 1 ? '1 día' : `${timeframeDays} días`,
       calculatedAt: new Date(),
       
@@ -1153,13 +1205,18 @@ class PredictionCalculatorService {
             formula: `(${change30d.toFixed(2)}% × 0.7) + (${change90d.toFixed(2)}% × 0.3) × 5`,
             result: Math.round(trendScore),
           },
+          ...(hasTechnicalData ? [{
+            step: '2. Score Técnico',
+            formula: `RSI: ${technical.rsi14?.toFixed(1) || 'N/A'}, MACD: ${technical.macdTrend}, SMA200: ${technical.priceAboveSMA200 ? 'encima' : 'debajo'}`,
+            result: Math.round(technicalScore),
+          }] : []),
           {
-            step: '2. Score de Sentimiento',
+            step: '3. Score de Sentimiento',
             formula: `(${sentiment.bullishPercent}% - 50) × 2`,
             result: Math.round(sentimentScore),
           },
           ...(hasNewsData ? [{
-            step: '3. Score de Noticias',
+            step: '4. Score de Noticias',
             formula: `Score base noticias: ${news.sentimentScore}`,
             result: Math.round(newsScore),
           }] : []),

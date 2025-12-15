@@ -652,4 +652,80 @@ export const styles = StyleSheet.create({
     color: '#555',
     fontFamily: 'monospace',
   },
+  // Technical Analysis Styles
+  technicalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  technicalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  technicalTrend: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  technicalScore: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  technicalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  technicalItem: {
+    width: '32%',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 6,
+    padding: 8,
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  technicalLabel: {
+    fontSize: 9,
+    color: '#888',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  technicalValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  technicalAlert: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 8,
+  },
+  technicalAlertText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  technicalSignals: {
+    marginBottom: 8,
+  },
+  technicalSignal: {
+    fontSize: 11,
+    color: '#555',
+    marginBottom: 2,
+  },
+  technicalSummary: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
 });

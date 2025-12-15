@@ -154,7 +154,8 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                            factor.name === 'institutional' ? '🏛️ Institucionales' :
                            factor.name === 'seasonality' ? '📅 Estacionalidad' :
                            factor.name === 'financials' ? '💰 Financieros' :
-                           factor.name === 'expectations' ? '🎯 Expectativas' : factor.name}
+                           factor.name === 'expectations' ? '🎯 Expectativas' :
+                           factor.name === 'technical' ? '📈 Técnico' : factor.name}
                         </Text>
                         <Text style={[
                           styles.factorScore,
@@ -230,6 +231,145 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               <Text style={styles.text}>Sin datos históricos disponibles</Text>
             )}
           </View>
+
+          {/* Indicadores Técnicos */}
+          {prediction.analysisData?.technicalAnalysis && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>📈 Indicadores Técnicos:</Text>
+              <View style={styles.technicalContainer}>
+                {/* Tendencia general */}
+                <View style={styles.technicalHeader}>
+                  <Text style={[
+                    styles.technicalTrend,
+                    { color: prediction.analysisData.technicalAnalysis.trend.includes('bullish') ? '#4CAF50' :
+                             prediction.analysisData.technicalAnalysis.trend.includes('bearish') ? '#F44336' : '#FF9800' }
+                  ]}>
+                    {prediction.analysisData.technicalAnalysis.trend === 'strong_bullish' ? '📈 Muy Alcista' :
+                     prediction.analysisData.technicalAnalysis.trend === 'bullish' ? '📈 Alcista' :
+                     prediction.analysisData.technicalAnalysis.trend === 'neutral' ? '➖ Neutral' :
+                     prediction.analysisData.technicalAnalysis.trend === 'bearish' ? '📉 Bajista' : '📉 Muy Bajista'}
+                  </Text>
+                  <Text style={[
+                    styles.technicalScore,
+                    { color: prediction.analysisData.technicalAnalysis.score > 15 ? '#4CAF50' :
+                             prediction.analysisData.technicalAnalysis.score < -15 ? '#F44336' : '#FF9800' }
+                  ]}>
+                    Score: {prediction.analysisData.technicalAnalysis.score > 0 ? '+' : ''}{prediction.analysisData.technicalAnalysis.score}
+                  </Text>
+                </View>
+
+                {/* Grid de indicadores */}
+                <View style={styles.technicalGrid}>
+                  {/* RSI */}
+                  {prediction.analysisData.technicalAnalysis.rsi14 !== undefined && (
+                    <View style={styles.technicalItem}>
+                      <Text style={styles.technicalLabel}>RSI (14)</Text>
+                      <Text style={[
+                        styles.technicalValue,
+                        { color: prediction.analysisData.technicalAnalysis.rsiSignal === 'oversold' ? '#4CAF50' :
+                                 prediction.analysisData.technicalAnalysis.rsiSignal === 'overbought' ? '#F44336' : '#666' }
+                      ]}>
+                        {prediction.analysisData.technicalAnalysis.rsi14.toFixed(1)}
+                        {prediction.analysisData.technicalAnalysis.rsiSignal === 'oversold' ? ' ⬇️' :
+                         prediction.analysisData.technicalAnalysis.rsiSignal === 'overbought' ? ' ⬆️' : ''}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* MACD */}
+                  <View style={styles.technicalItem}>
+                    <Text style={styles.technicalLabel}>MACD</Text>
+                    <Text style={[
+                      styles.technicalValue,
+                      { color: prediction.analysisData.technicalAnalysis.macdTrend === 'bullish' ? '#4CAF50' :
+                               prediction.analysisData.technicalAnalysis.macdTrend === 'bearish' ? '#F44336' : '#666' }
+                    ]}>
+                      {prediction.analysisData.technicalAnalysis.macdTrend === 'bullish' ? '📈 Alcista' :
+                       prediction.analysisData.technicalAnalysis.macdTrend === 'bearish' ? '📉 Bajista' : '➖ Neutral'}
+                    </Text>
+                  </View>
+
+                  {/* SMA 200 */}
+                  <View style={styles.technicalItem}>
+                    <Text style={styles.technicalLabel}>vs SMA 200</Text>
+                    <Text style={[
+                      styles.technicalValue,
+                      { color: prediction.analysisData.technicalAnalysis.priceVsSMA200 === 'above' ? '#4CAF50' : '#F44336' }
+                    ]}>
+                      {prediction.analysisData.technicalAnalysis.priceVsSMA200 === 'above' ? '⬆️ Encima' : '⬇️ Debajo'}
+                    </Text>
+                  </View>
+
+                  {/* SMA 50 */}
+                  <View style={styles.technicalItem}>
+                    <Text style={styles.technicalLabel}>vs SMA 50</Text>
+                    <Text style={[
+                      styles.technicalValue,
+                      { color: prediction.analysisData.technicalAnalysis.priceVsSMA50 === 'above' ? '#4CAF50' : '#F44336' }
+                    ]}>
+                      {prediction.analysisData.technicalAnalysis.priceVsSMA50 === 'above' ? '⬆️ Encima' : '⬇️ Debajo'}
+                    </Text>
+                  </View>
+
+                  {/* Bollinger */}
+                  <View style={styles.technicalItem}>
+                    <Text style={styles.technicalLabel}>Bollinger</Text>
+                    <Text style={[
+                      styles.technicalValue,
+                      { color: prediction.analysisData.technicalAnalysis.bollingerPosition === 'below' ? '#4CAF50' :
+                               prediction.analysisData.technicalAnalysis.bollingerPosition === 'above' ? '#F44336' : '#666' }
+                    ]}>
+                      {prediction.analysisData.technicalAnalysis.bollingerPosition === 'above' ? '⬆️ Superior' :
+                       prediction.analysisData.technicalAnalysis.bollingerPosition === 'below' ? '⬇️ Inferior' : '↔️ Dentro'}
+                    </Text>
+                  </View>
+
+                  {/* Volumen */}
+                  <View style={styles.technicalItem}>
+                    <Text style={styles.technicalLabel}>Volumen</Text>
+                    <Text style={[
+                      styles.technicalValue,
+                      { color: prediction.analysisData.technicalAnalysis.volumeSignal === 'high' ? '#2196F3' :
+                               prediction.analysisData.technicalAnalysis.volumeSignal === 'low' ? '#9E9E9E' : '#666' }
+                    ]}>
+                      {prediction.analysisData.technicalAnalysis.volumeSignal === 'high' ? '📊 Alto' :
+                       prediction.analysisData.technicalAnalysis.volumeSignal === 'low' ? '📉 Bajo' : '➖ Normal'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Cruces especiales */}
+                {(prediction.analysisData.technicalAnalysis.goldenCross || prediction.analysisData.technicalAnalysis.deathCross) && (
+                  <View style={styles.technicalAlert}>
+                    {prediction.analysisData.technicalAnalysis.goldenCross && (
+                      <Text style={[styles.technicalAlertText, { color: '#4CAF50' }]}>
+                        ✨ Cruce Dorado detectado (SMA50 &gt; SMA200)
+                      </Text>
+                    )}
+                    {prediction.analysisData.technicalAnalysis.deathCross && (
+                      <Text style={[styles.technicalAlertText, { color: '#F44336' }]}>
+                        ⚠️ Cruce Mortal detectado (SMA50 &lt; SMA200)
+                      </Text>
+                    )}
+                  </View>
+                )}
+
+                {/* Señales activas */}
+                {prediction.analysisData.technicalAnalysis.signals.length > 0 && (
+                  <View style={styles.technicalSignals}>
+                    {prediction.analysisData.technicalAnalysis.signals.slice(0, 3).map((signal, index) => (
+                      <Text key={index} style={styles.technicalSignal}>
+                        🎯 {signal}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+
+                {/* Resumen */}
+                <Text style={styles.technicalSummary}>{prediction.analysisData.technicalAnalysis.summary}</Text>
+              </View>
+            </View>
+          )}
 
           {/* Sentimiento RRSS */}
           <View style={styles.section}>

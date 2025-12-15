@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 15 de diciembre de 2025  
-**Commit actual:** `70fa7f8`
+**Commit actual:** `34c65e3`
 
 ---
 
@@ -9,7 +9,8 @@
 
 | Commit | Funcionalidad |
 |--------|---------------|
-| `70fa7f8` | Eliminado temporadas (estaciones del año) del factor seasonality |
+| `34c65e3` | **Factor de Indicadores Técnicos** (SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bandas de Bollinger, Análisis de Volumen, Cruces Dorado/Mortal) |
+| `0be2753` | Eliminado temporadas (estaciones del año) del factor seasonality |
 | `f74ebc7` | Changelog actualizado con funcionalidades implementadas |
 | `d1b1a21` | Predicción determinista y sin rangos de precio (precio objetivo único) |
 | `96d002b` | Explicación más detallada en las predicciones |
@@ -50,18 +51,21 @@
 
 ---
 
-## Resumen de Factores de Predicción (10)
+## Resumen de Factores de Predicción (11)
 
-1. **Trend** - Análisis de tendencia de precio
-2. **Sentiment** - Sentimiento de mercado
-3. **News** - Análisis de noticias
-4. **Macro** - Indicadores macroeconómicos
-5. **Competitors** - Análisis de competencia y sector
-6. **Forex** - Impacto de divisas
-7. **Institutional** - Grandes inversores institucionales
-8. **Seasonality** - Festivos y eventos por países
-9. **Financials** - Resultados financieros
-10. **Expectations** - Expectativas de mercado
+| # | Factor | Descripción |
+|---|--------|-------------|
+| 1 | **Trend** | Análisis de tendencias de precio y momentum histórico (cambios 30d, 90d, volatilidad) |
+| 2 | **Technical** | **NUEVO** - Indicadores técnicos: SMA (20/50/200), EMA (12/26), RSI 14, MACD, Bandas de Bollinger, Volumen, Cruces Dorado/Mortal |
+| 3 | **Sentiment** | Sentimiento de mercado extraído de redes (StockTwits, Reddit), Fear & Greed Index |
+| 4 | **News** | Impacto de noticias relevantes sobre el activo o sector (Yahoo Finance) |
+| 5 | **Macro** | Indicadores macroeconómicos: índices regionales, tipos de interés, VIX, commodities |
+| 6 | **Competitors** | Contexto relativo frente a competidores y sector: rendimiento comparativo |
+| 7 | **Forex** | Efectos de movimientos de divisas sobre activos internacionales |
+| 8 | **Institutional** | Movimientos de grandes inversores: ownership, insiders, top holders |
+| 9 | **Seasonality** | Festivos por país, eventos comerciales (Black Friday, Buen Fin), patrones históricos (Rally Santa Claus, Sell in May) |
+| 10 | **Financials** | Resultados financieros: ingresos, márgenes, deuda, P/E, rating analistas, precio objetivo |
+| 11 | **Expectations** | Expectativas de mercado: earnings surprise, EPS estimado, guidance |
 
 ---
 
