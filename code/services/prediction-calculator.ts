@@ -12,9 +12,11 @@ import { forexAnalysisService, ForexImpact } from './forex-analysis-service';
 import { InstitutionalActivity, institutionalInvestorsService } from './institutional-investors-service';
 import { macroEconomicService, MacroIndicators } from './macro-economic-service';
 import { newsService, NewsSummary } from './news-service';
+import { optionsService } from './options-service';
 import { SeasonalityAnalysis, seasonalityService } from './seasonality-service';
 import { sentimentService } from './sentiment-service';
 import { TechnicalAnalysis, technicalIndicatorsService } from './technical-indicators-service';
+import { vixService } from './vix-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
 export interface CalculatedPrediction {
@@ -46,6 +48,18 @@ export interface CalculatedPrediction {
     score: number; // 0-100, donde 50 es neutral
     source: string;
     hasData: boolean; // NUEVO: indica si es dato real
+    // Nuevos indicadores de sentimiento institucional
+    vix?: {
+      value: number;
+      sentiment: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency';
+      score: number;
+    };
+    putCallRatio?: {
+      ratio: number;
+      sentiment: 'extreme_fear' | 'bearish' | 'neutral' | 'bullish' | 'extreme_greed';
+      score: number;
+    };
+    overallScore?: number; // Score combinado -100 a +100
   };
   historical: {
     change30d: number;
@@ -472,7 +486,36 @@ class PredictionCalculatorService {
         console.log(`[PredictionCalc] Análisis técnico: ${technicalData.trend} (score: ${technicalData.technicalScore})`);
       }
 
-      // 11. Calcular predicción de forma determinística
+      // 11. Obtener VIX y Put/Call ratio (solo para stocks)
+      let vixData: { value: number; sentiment: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency'; score: number } | undefined;
+      let putCallData: { ratio: number; sentiment: 'extreme_fear' | 'bearish' | 'neutral' | 'bullish' | 'extreme_greed'; score: number } | undefined;
+      
+      if (type === 'stock') {
+        const [vixResult, pcResult] = await Promise.allSettled([
+          vixService.getCurrentVIX(),
+          optionsService.getMarketPutCallRatio(),
+        ]);
+
+        if (vixResult.status === 'fulfilled' && vixResult.value) {
+          vixData = {
+            value: vixResult.value.value,
+            sentiment: vixResult.value.sentiment,
+            score: vixResult.value.sentimentScore,
+          };
+          console.log(`[PredictionCalc] VIX obtenido: ${vixData.value.toFixed(2)} (${vixData.sentiment})`);
+        }
+
+        if (pcResult.status === 'fulfilled' && pcResult.value) {
+          putCallData = {
+            ratio: pcResult.value.pcRatio,
+            sentiment: pcResult.value.sentiment,
+            score: pcResult.value.sentimentScore,
+          };
+          console.log(`[PredictionCalc] Put/Call obtenido: ${putCallData.ratio.toFixed(2)} (${putCallData.sentiment})`);
+        }
+      }
+
+      // 12. Calcular predicción de forma determinística
       const prediction = this.calculateFromData(
         symbol,
         type,
@@ -516,6 +559,21 @@ class PredictionCalculatorService {
         change: prediction.predictedChange.toFixed(2) + '%',
       });
 
+      // 14. Añadir datos de VIX y Put/Call al sentiment
+      if (vixData) {
+        prediction.sentiment.vix = vixData;
+      }
+      if (putCallData) {
+        prediction.sentiment.putCallRatio = putCallData;
+      }
+      // Calcular score general combinado si hay datos
+      if (vixData || putCallData) {
+        const scores: number[] = [];
+        if (vixData) scores.push(vixData.score);
+        if (putCallData) scores.push(putCallData.score);
+        prediction.sentiment.overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      }
+
       return prediction;
     } catch (error: any) {
       console.error(`[PredictionCalc] Error:`, error.message);
@@ -533,6 +591,17 @@ class PredictionCalculatorService {
     try {
       const sentiment = await sentimentService.getSentimentForAsset(symbol, type);
       
+      // Usar el nuevo overallScore si está disponible (VIX + Put/Call + otros)
+      if (sentiment.overallScore !== 0) {
+        // Convertir de -100/+100 a 0-100
+        const bullishPercent = Math.round((sentiment.overallScore + 100) / 2);
+        return {
+          bullishPercent: Math.max(0, Math.min(100, bullishPercent)),
+          source: 'VIX + Put/Call + Social',
+          hasData: true,
+        };
+      }
+
       // Extraer % bullish de StockTwits si existe
       if (sentiment.stocktwits) {
         const match = sentiment.stocktwits.match(/Bullish:\s*(\d+)/);

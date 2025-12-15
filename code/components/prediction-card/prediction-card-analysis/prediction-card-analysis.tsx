@@ -373,9 +373,10 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
 
           {/* Sentimiento RRSS */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>🌐 Sentimiento en redes:</Text>
+            <Text style={styles.sectionTitle}>🌐 Sentimiento del mercado:</Text>
             {prediction.analysisData?.sentiment ? (
               <View style={styles.sentimentContainer}>
+                {/* Barra de sentimiento general */}
                 <View style={styles.sentimentBar}>
                   <View style={[
                     styles.sentimentFill,
@@ -396,6 +397,57 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                     Fuente: {prediction.analysisData.sentiment.source}
                   </Text>
                 </View>
+
+                {/* VIX y Put/Call Ratio - Indicadores institucionales */}
+                {(prediction.analysisData.sentiment.vix || prediction.analysisData.sentiment.putCallRatio) && (
+                  <View style={styles.institutionalSentiment}>
+                    {prediction.analysisData.sentiment.vix && (
+                      <View style={styles.vixContainer}>
+                        <Text style={styles.vixLabel}>📊 VIX (Índice del Miedo)</Text>
+                        <Text style={[
+                          styles.vixValue,
+                          { color: prediction.analysisData.sentiment.vix.sentiment === 'extreme_fear' ? '#F44336' :
+                                   prediction.analysisData.sentiment.vix.sentiment === 'fear' ? '#FF9800' :
+                                   prediction.analysisData.sentiment.vix.sentiment === 'neutral' ? '#9E9E9E' :
+                                   prediction.analysisData.sentiment.vix.sentiment === 'complacency' ? '#4CAF50' : '#2196F3' }
+                        ]}>
+                          {prediction.analysisData.sentiment.vix.value.toFixed(2)}
+                          {prediction.analysisData.sentiment.vix.sentiment === 'extreme_fear' ? ' 😱 Pánico' :
+                           prediction.analysisData.sentiment.vix.sentiment === 'fear' ? ' 😰 Miedo' :
+                           prediction.analysisData.sentiment.vix.sentiment === 'neutral' ? ' 😐 Normal' :
+                           prediction.analysisData.sentiment.vix.sentiment === 'complacency' ? ' 😌 Complacencia' : ' 😴 Calma extrema'}
+                        </Text>
+                      </View>
+                    )}
+                    {prediction.analysisData.sentiment.putCallRatio && (
+                      <View style={styles.pcRatioContainer}>
+                        <Text style={styles.pcRatioLabel}>📈 Put/Call Ratio (SPX)</Text>
+                        <Text style={[
+                          styles.pcRatioValue,
+                          { color: prediction.analysisData.sentiment.putCallRatio.sentiment === 'extreme_fear' ? '#F44336' :
+                                   prediction.analysisData.sentiment.putCallRatio.sentiment === 'bearish' ? '#FF9800' :
+                                   prediction.analysisData.sentiment.putCallRatio.sentiment === 'neutral' ? '#9E9E9E' :
+                                   prediction.analysisData.sentiment.putCallRatio.sentiment === 'bullish' ? '#4CAF50' : '#2196F3' }
+                        ]}>
+                          {prediction.analysisData.sentiment.putCallRatio.ratio.toFixed(2)}
+                          {prediction.analysisData.sentiment.putCallRatio.sentiment === 'extreme_fear' ? ' 🐻 Muy bajista' :
+                           prediction.analysisData.sentiment.putCallRatio.sentiment === 'bearish' ? ' 📉 Bajista' :
+                           prediction.analysisData.sentiment.putCallRatio.sentiment === 'neutral' ? ' ➖ Neutral' :
+                           prediction.analysisData.sentiment.putCallRatio.sentiment === 'bullish' ? ' 📈 Alcista' : ' 🚀 Muy alcista'}
+                        </Text>
+                      </View>
+                    )}
+                    {prediction.analysisData.sentiment.overallScore !== undefined && (
+                      <Text style={[
+                        styles.overallSentimentScore,
+                        { color: prediction.analysisData.sentiment.overallScore > 20 ? '#4CAF50' :
+                                 prediction.analysisData.sentiment.overallScore > -20 ? '#FF9800' : '#F44336' }
+                      ]}>
+                        Score institucional: {prediction.analysisData.sentiment.overallScore > 0 ? '+' : ''}{prediction.analysisData.sentiment.overallScore}
+                      </Text>
+                    )}
+                  </View>
+                )}
               </View>
             ) : (
               <Text style={styles.text}>Sin datos de sentimiento disponibles</Text>

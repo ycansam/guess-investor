@@ -94,6 +94,48 @@ export const styles = StyleSheet.create({
     color: '#888',
     fontStyle: 'italic',
   },
+  // Indicadores institucionales de sentimiento (VIX, Put/Call)
+  institutionalSentiment: {
+    marginTop: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  vixContainer: {
+    marginBottom: 8,
+  },
+  vixLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  vixValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pcRatioContainer: {
+    marginBottom: 8,
+  },
+  pcRatioLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  pcRatioValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  overallSentimentScore: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
   conclusionText: {
     fontSize: 13,
     color: '#333',

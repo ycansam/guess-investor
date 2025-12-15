@@ -29,6 +29,18 @@ export interface InvestmentPrediction {
     sentiment: {
       score: number; // 0-100, donde 50 es neutral
       source: string; // "StockTwits", "Fear & Greed Index", etc.
+      // Nuevos indicadores de sentimiento institucional
+      vix?: {
+        value: number;
+        sentiment: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency';
+        score: number; // -100 a +100
+      };
+      putCallRatio?: {
+        ratio: number;
+        sentiment: 'extreme_fear' | 'bearish' | 'neutral' | 'bullish' | 'extreme_greed';
+        score: number; // -100 a +100
+      };
+      overallScore?: number; // Score combinado -100 a +100
     };
     historical: {
       change30d: number; // Cambio % últimos 30 días

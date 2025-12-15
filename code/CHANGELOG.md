@@ -1,6 +1,6 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 15 de diciembre de 2025  
+**Última actualización:** 16 de diciembre de 2025  
 **Commit actual:** `pendiente`
 
 ---
@@ -9,6 +9,7 @@
 
 | Commit | Funcionalidad |
 |--------|---------------|
+| `pendiente` | **Factor Sentiment mejorado** - VIX Index, Put/Call Ratio (CBOE SPX), indicadores institucionales en UI |
 | `pendiente` | Fix: discrepancia entre % cambio del chat y tarjeta de predicción |
 | `34c65e3` | **Factor de Indicadores Técnicos** (SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bandas de Bollinger, Análisis de Volumen, Cruces Dorado/Mortal) |
 | `0be2753` | Eliminado temporadas (estaciones del año) del factor seasonality |
@@ -58,7 +59,7 @@
 |---|--------|-------------|
 | 1 | **Trend** | Análisis de tendencias de precio y momentum histórico (cambios 30d, 90d, volatilidad) |
 | 2 | **Technical** | **NUEVO** - Indicadores técnicos: SMA (20/50/200), EMA (12/26), RSI 14, MACD, Bandas de Bollinger, Volumen, Cruces Dorado/Mortal |
-| 3 | **Sentiment** | Sentimiento de mercado extraído de redes (StockTwits, Reddit), Fear & Greed Index |
+| 3 | **Sentiment** | Sentimiento de mercado: StockTwits, Reddit, Fear & Greed, **VIX Index**, **Put/Call Ratio** (CBOE SPX) |
 | 4 | **News** | Impacto de noticias relevantes sobre el activo o sector (Yahoo Finance) |
 | 5 | **Macro** | Indicadores macroeconómicos: índices regionales, tipos de interés, VIX, commodities |
 | 6 | **Competitors** | Contexto relativo frente a competidores y sector: rendimiento comparativo |
@@ -76,7 +77,7 @@
 |--------|-------------|-----------|---|
 | **Trend** | Cambios 30d/90d/1Y, volatilidad | - | 100% |
 | **Technical** | SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bollinger, Volumen, Cruces | Patrones chartistas, soportes/resistencias | ~80% |
-| **Sentiment** | StockTwits, Reddit, Fear & Greed (crypto) | Put/Call ratio, short interest, Twitter/X | ~40% |
+| **Sentiment** | StockTwits, Reddit, Fear & Greed (crypto), **VIX Index**, **Put/Call Ratio (CBOE SPX)** | Short interest (requiere API FINRA pagada), Twitter/X (requiere API pagada), options flow detallado | ~70% |
 | **News** | Yahoo News + análisis keywords | Calendario earnings, eventos corporativos (splits, M&A) | ~35% |
 | **Macro** | Índices regionales, bonos 10Y, VIX, commodities | Inflación (CPI), PIB, empleo (NFP), decisiones Fed/BCE | ~40% |
 | **Competitors** | Rendimiento relativo vs competidores mapeados | Cuota de mercado, comparación de ratios P/E | ~50% |
@@ -93,6 +94,8 @@
 | **Yahoo Finance Chart API** | Precios, históricos, OHLCV para indicadores técnicos |
 | **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings |
 | **Yahoo Finance Search** | Noticias |
+| **Yahoo Finance VIX** | Índice de volatilidad VIX (indicador de miedo) |
+| **CBOE Options API** | Put/Call Ratio de opciones SPX (indicador institucional) |
 | **StockTwits API** | Sentimiento USA/crypto |
 | **Reddit JSON** | Sentimiento social (r/wallstreetbets, r/stocks) |
 | **Alternative.me** | Fear & Greed Index (crypto) |
