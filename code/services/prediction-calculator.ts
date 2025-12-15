@@ -1359,7 +1359,7 @@ class PredictionCalculatorService {
           }] : []),
           {
             step: 'Score Combinado',
-            formula: availableFactors.map(f => `${f.name}(${f.score.toFixed(0)} × ${(f.baseWeight * 100).toFixed(0)}%)`).join(' + '),
+            formula: availableFactors.map(f => `${f.name}(${f.score.toFixed(0)} × ${((f.baseWeight / totalWeight) * 100).toFixed(0)}%)`).join(' + '),
             result: Math.round(combinedScore),
           },
           {
