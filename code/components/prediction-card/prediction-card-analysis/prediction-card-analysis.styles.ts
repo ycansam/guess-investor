@@ -427,10 +427,6 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  seasonalitySeason: {
-    fontSize: 11,
-    color: '#666',
-  },
   seasonalityRegion: {
     fontSize: 11,
     color: '#666',

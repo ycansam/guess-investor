@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 15 de diciembre de 2025  
-**Commit actual:** `aeaa8cc`
+**Commit actual:** `70fa7f8`
 
 ---
 
@@ -9,7 +9,8 @@
 
 | Commit | Funcionalidad |
 |--------|---------------|
-| `aeaa8cc` | Añadido changelog de revert |
+| `70fa7f8` | Eliminado temporadas (estaciones del año) del factor seasonality |
+| `f74ebc7` | Changelog actualizado con funcionalidades implementadas |
 | `d1b1a21` | Predicción determinista y sin rangos de precio (precio objetivo único) |
 | `96d002b` | Explicación más detallada en las predicciones |
 | `d0a7fb6` | Correcciones de confianza basada en factores existentes |

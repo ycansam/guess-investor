@@ -12,7 +12,6 @@
 export interface SeasonalityAnalysis {
   sector: string;
   region: string; // País/región detectada
-  currentSeason: string;
   seasonalEvents: SeasonalEvent[];
   seasonalScore: number; // -100 a +100
   hasData: boolean;
@@ -1931,7 +1930,6 @@ class SeasonalityService {
       return {
         sector: 'Desconocido',
         region: this.getRegionName(region),
-        currentSeason: this.getCurrentSeasonName(currentMonth, region),
         seasonalEvents: [],
         seasonalScore: 0,
         hasData: false,
@@ -2050,7 +2048,6 @@ class SeasonalityService {
     return {
       sector: this.getSectorName(sector),
       region: this.getRegionName(region),
-      currentSeason: this.getCurrentSeasonName(currentMonth, region),
       seasonalEvents: events.slice(0, 5), // Máximo 5 eventos
       seasonalScore: Math.round(seasonalScore),
       hasData: events.length > 0,
@@ -2110,26 +2107,6 @@ class SeasonalityService {
     }
     
     return Math.floor((eventDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  }
-  
-  private getCurrentSeasonName(month: number, region: string = 'global'): string {
-    // Hemisferio sur tiene estaciones invertidas
-    const southernHemisphere = ['australia', 'brazil', 'argentina', 'chile', 'south_africa'];
-    const isSouthern = southernHemisphere.includes(region);
-    
-    if (isSouthern) {
-      // Estaciones invertidas
-      if (month >= 3 && month <= 5) return 'Otoño';
-      if (month >= 6 && month <= 8) return 'Invierno';
-      if (month >= 9 && month <= 11) return 'Primavera';
-      return 'Verano';
-    } else {
-      // Hemisferio norte
-      if (month >= 3 && month <= 5) return 'Primavera';
-      if (month >= 6 && month <= 8) return 'Verano';
-      if (month >= 9 && month <= 11) return 'Otoño';
-      return 'Invierno';
-    }
   }
   
   private getRegionName(region: string): string {

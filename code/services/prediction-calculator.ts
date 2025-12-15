@@ -104,11 +104,10 @@ export interface CalculatedPrediction {
     summary: string;
   };
   
-  // Estacionalidad del mercado
+  // Estacionalidad del mercado (festivos y eventos por país)
   seasonality?: {
     sector: string;
     region: string;
-    currentSeason: string;
     events: string[]; // Nombres de eventos activos
     score: number;
     summary: string;
@@ -644,7 +643,7 @@ class PredictionCalculatorService {
     let seasonalityScore = 0;
     if (hasSeasonalityData) {
       seasonalityScore = seasonality.seasonalScore; // Ya está en rango -100 a +100
-      console.log(`[PredictionCalc] Seasonality score: ${seasonalityScore} (${seasonality.sector}, ${seasonality.currentSeason})`);
+      console.log(`[PredictionCalc] Seasonality score: ${seasonalityScore} (${seasonality.sector}, ${seasonality.region})`);
     }
     
     // Score de fundamentales (-100 a +100), solo para acciones
@@ -1113,7 +1112,6 @@ class PredictionCalculatorService {
       seasonality: hasSeasonalityData ? {
         sector: seasonality.sector,
         region: seasonality.region,
-        currentSeason: seasonality.currentSeason,
         events: seasonality.seasonalEvents.slice(0, 3).map(e => e.name),
         score: seasonality.seasonalScore,
         summary: seasonality.summary,

@@ -568,16 +568,13 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                      prediction.analysisData.seasonality.score < -15 ? '📉 Desfavorable' : '➖ Neutral'}
                   </Text>
                 </View>
-                <View style={styles.seasonalityMetaRow}>
-                  <Text style={styles.seasonalitySeason}>
-                    Estación: {prediction.analysisData.seasonality.currentSeason}
-                  </Text>
-                  {prediction.analysisData.seasonality.region && prediction.analysisData.seasonality.region !== 'global' && (
+                {prediction.analysisData.seasonality.region && prediction.analysisData.seasonality.region !== 'global' && (
+                  <View style={styles.seasonalityMetaRow}>
                     <Text style={styles.seasonalityRegion}>
                       {prediction.analysisData.seasonality.region}
                     </Text>
-                  )}
-                </View>
+                  </View>
+                )}
                 {prediction.analysisData.seasonality.events.length > 0 && (
                   <View style={styles.seasonalityEvents}>
                     {prediction.analysisData.seasonality.events.map((event, index) => (
