@@ -5,11 +5,17 @@
  * - Transacciones de insiders (compras/ventas recientes)
  * - Actividad neta de compra/venta
  * - Cambios en posiciones de fondos
+ * - COT Report (Commitment of Traders)
+ * - Flujos de ETFs del sector
+ * - Dark Pool activity y short volume
  * 
  * Fuente: Yahoo Finance quoteSummary (módulos: institutionOwnership, insiderTransactions, netSharePurchaseActivity)
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
+import { COTData } from './cot-report-service';
+import { DarkPoolData } from './dark-pools-service';
+import { ETFFlowData } from './etf-flows-service';
 
 export interface InstitutionalActivity {
   // Propiedad institucional
@@ -52,6 +58,11 @@ export interface InstitutionalActivity {
     change: number; // Cambio % en posición
   }>;
   
+  // NUEVOS: Datos avanzados de smart money
+  cotReport?: COTData;       // Commitment of Traders
+  etfFlows?: ETFFlowData;    // Flujos de ETFs del sector
+  darkPools?: DarkPoolData;  // Dark pool activity
+  
   // Score final (-100 a +100)
   institutionalScore: number;
   hasData: boolean;
@@ -72,8 +83,99 @@ class InstitutionalInvestorsService {
    * Obtiene datos de inversores institucionales para un símbolo
    */
   async getInstitutionalActivity(symbol: string, type: 'stock' | 'crypto'): Promise<InstitutionalActivity> {
-    // Cryptos no tienen inversores institucionales tradicionales
+    // Cryptos tienen datos limitados pero intentamos obtener lo posible
     if (type === 'crypto') {
+      return this.getCryptoInstitutionalData(symbol);
+    }
+    
+    // Verificar caché
+    const cached = institutionalCache.get(symbol);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log(`[Institutional] Cache hit: ${symbol}`);
+      return cached.data;
+    }
+    
+    console.log(`[Institutional] Obteniendo datos completos para ${symbol}`);
+    
+    try {
+      // Obtener todos los datos en paralelo
+      const [yahooData, cotData, etfFlowsData, darkPoolData] = await Promise.allSettled([
+        this.getYahooInstitutionalData(symbol),
+        cotReportService.getCOTData(symbol),
+        etfFlowsService.getETFFlows(symbol),
+        darkPoolsService.getDarkPoolData(symbol),
+      ]);
+      
+      // Extraer resultados
+      const yahoo = yahooData.status === 'fulfilled' ? yahooData.value : null;
+      const cot = cotData.status === 'fulfilled' ? cotData.value : null;
+      const etfFlows = etfFlowsData.status === 'fulfilled' ? etfFlowsData.value : null;
+      const darkPools = darkPoolData.status === 'fulfilled' ? darkPoolData.value : null;
+      
+      // Calcular score combinado
+      const { score, summary } = this.calculateCombinedScore(
+        yahoo?.institutionalOwnership ?? null,
+        yahoo?.insiderTransactions ?? null,
+        yahoo?.netSharePurchaseActivity ?? null,
+        yahoo?.topInstitutions ?? [],
+        cot,
+        etfFlows,
+        darkPools
+      );
+      
+      const activityData: InstitutionalActivity = {
+        institutionalOwnership: yahoo?.institutionalOwnership ?? null,
+        insiderTransactions: yahoo?.insiderTransactions ?? null,
+        netSharePurchaseActivity: yahoo?.netSharePurchaseActivity ?? null,
+        topInstitutions: yahoo?.topInstitutions ?? [],
+        cotReport: cot ?? undefined,
+        etfFlows: etfFlows ?? undefined,
+        darkPools: darkPools ?? undefined,
+        institutionalScore: score,
+        hasData: (yahoo?.hasData ?? false) || (cot?.hasData ?? false) || (etfFlows?.hasData ?? false) || (darkPools?.hasData ?? false),
+        summary,
+      };
+      
+      // Guardar en caché
+      institutionalCache.set(symbol, { data: activityData, timestamp: Date.now() });
+      
+      console.log(`[Institutional] Score combinado: ${score}, COT: ${cot?.cotScore ?? 'N/A'}, ETF: ${etfFlows?.etfFlowScore ?? 'N/A'}, DarkPool: ${darkPools?.darkPoolScore ?? 'N/A'}`);
+      
+      return activityData;
+      
+    } catch (error) {
+      console.error(`[Institutional] Error obteniendo datos:`, error);
+      return this.getEmptyResult('Error obteniendo datos de inversores institucionales');
+    }
+  }
+  
+  /**
+   * Obtiene datos de crypto (limitados)
+   */
+  private async getCryptoInstitutionalData(symbol: string): Promise<InstitutionalActivity> {
+    try {
+      // Para crypto, intentamos obtener COT de futuros de Bitcoin/Ethereum
+      const cotData = await cotReportService.getCOTData(symbol);
+      const darkPoolData = await darkPoolsService.getDarkPoolData(symbol);
+      
+      let score = 0;
+      if (cotData?.hasData) score += cotData.cotScore * 0.5;
+      if (darkPoolData?.hasData) score += darkPoolData.darkPoolScore * 0.5;
+      
+      return {
+        institutionalOwnership: null,
+        insiderTransactions: null,
+        netSharePurchaseActivity: null,
+        topInstitutions: [],
+        cotReport: cotData ?? undefined,
+        darkPools: darkPoolData ?? undefined,
+        institutionalScore: Math.round(score),
+        hasData: (cotData?.hasData ?? false) || (darkPoolData?.hasData ?? false),
+        summary: cotData?.hasData 
+          ? `Datos de futuros: ${cotData.summary}`
+          : 'Datos institucionales limitados para criptomonedas',
+      };
+    } catch (error) {
       return {
         institutionalOwnership: null,
         insiderTransactions: null,
@@ -84,16 +186,18 @@ class InstitutionalInvestorsService {
         summary: 'Las criptomonedas no tienen datos de inversores institucionales tradicionales',
       };
     }
-    
-    // Verificar caché
-    const cached = institutionalCache.get(symbol);
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(`[Institutional] Cache hit: ${symbol}`);
-      return cached.data;
-    }
-    
-    console.log(`[Institutional] Obteniendo datos para ${symbol}`);
-    
+  }
+  
+  /**
+   * Obtiene datos de Yahoo Finance
+   */
+  private async getYahooInstitutionalData(symbol: string): Promise<{
+    institutionalOwnership: InstitutionalActivity['institutionalOwnership'];
+    insiderTransactions: InstitutionalActivity['insiderTransactions'];
+    netSharePurchaseActivity: InstitutionalActivity['netSharePurchaseActivity'];
+    topInstitutions: InstitutionalActivity['topInstitutions'];
+    hasData: boolean;
+  } | null> {
     try {
       // Módulos de Yahoo Finance para inversores
       const modules = [
@@ -111,8 +215,8 @@ class InstitutionalInvestorsService {
       const data = await response.json();
       
       if (!data.quoteSummary?.result?.[0]) {
-        console.warn(`[Institutional] Sin datos para ${symbol}`);
-        return this.getEmptyResult('No se encontraron datos de inversores institucionales');
+        console.warn(`[Institutional] Sin datos Yahoo para ${symbol}`);
+        return null;
       }
       
       const result = data.quoteSummary.result[0];
@@ -129,34 +233,17 @@ class InstitutionalInvestorsService {
       // Parsear top instituciones
       const topInstitutions = this.parseTopInstitutions(result);
       
-      // Calcular score y generar resumen
-      const { score, summary } = this.calculateScore(
-        institutionalOwnership,
-        insiderTransactions,
-        netSharePurchaseActivity,
-        topInstitutions
-      );
-      
-      const activityData: InstitutionalActivity = {
+      return {
         institutionalOwnership,
         insiderTransactions,
         netSharePurchaseActivity,
         topInstitutions,
-        institutionalScore: score,
         hasData: institutionalOwnership !== null || insiderTransactions !== null || topInstitutions.length > 0,
-        summary,
       };
       
-      // Guardar en caché
-      institutionalCache.set(symbol, { data: activityData, timestamp: Date.now() });
-      
-      console.log(`[Institutional] Score: ${score}, hasData: ${activityData.hasData}`);
-      
-      return activityData;
-      
     } catch (error) {
-      console.error(`[Institutional] Error obteniendo datos:`, error);
-      return this.getEmptyResult('Error obteniendo datos de inversores institucionales');
+      console.error(`[Institutional] Error obteniendo datos de Yahoo:`, error);
+      return null;
     }
   }
   
@@ -430,6 +517,111 @@ class InstitutionalInvestorsService {
     }
     
     return { score, summary };
+  }
+  
+  /**
+   * Calcula score combinado incluyendo COT, ETF Flows y Dark Pools
+   */
+  private calculateCombinedScore(
+    ownership: InstitutionalActivity['institutionalOwnership'],
+    transactions: InstitutionalActivity['insiderTransactions'],
+    netActivity: InstitutionalActivity['netSharePurchaseActivity'],
+    topInstitutions: InstitutionalActivity['topInstitutions'],
+    cotData: COTData | null,
+    etfFlows: ETFFlowData | null,
+    darkPools: DarkPoolData | null
+  ): { score: number; summary: string } {
+    // Obtener score base de Yahoo Finance
+    const baseResult = this.calculateScore(ownership, transactions, netActivity, topInstitutions);
+    let combinedScore = baseResult.score;
+    const signals: string[] = [];
+    
+    // Extraer señales del resumen base
+    if (baseResult.summary && !baseResult.summary.includes('Sin señales')) {
+      const baseSignals = baseResult.summary.replace(/^.*?:/, '').trim();
+      if (baseSignals) signals.push(baseSignals);
+    }
+    
+    // Pesos para cada fuente de datos
+    const WEIGHT_YAHOO = 0.35;      // Yahoo Finance (ownership, insiders)
+    const WEIGHT_COT = 0.20;        // COT Report
+    const WEIGHT_ETF_FLOWS = 0.20;  // ETF Flows
+    const WEIGHT_DARK_POOLS = 0.25; // Dark Pools
+    
+    let totalWeight = WEIGHT_YAHOO;
+    let weightedScore = baseResult.score * WEIGHT_YAHOO;
+    
+    // Añadir COT Report si hay datos
+    if (cotData?.hasData) {
+      weightedScore += cotData.cotScore * WEIGHT_COT;
+      totalWeight += WEIGHT_COT;
+      
+      if (cotData.analysis.crowdedTrade) {
+        signals.push(`COT: Trade abarrotado en futuros`);
+      }
+      if (cotData.analysis.potentialReversal) {
+        signals.push(`COT: Posible reversión (divergencia smart money)`);
+      }
+      if (Math.abs(cotData.cotScore) > 30) {
+        const direction = cotData.cotScore > 0 ? 'alcista' : 'bajista';
+        signals.push(`COT: Señal ${direction} de futuros`);
+      }
+    }
+    
+    // Añadir ETF Flows si hay datos
+    if (etfFlows?.hasData) {
+      weightedScore += etfFlows.etfFlowScore * WEIGHT_ETF_FLOWS;
+      totalWeight += WEIGHT_ETF_FLOWS;
+      
+      if (etfFlows.sectorFlow.direction.includes('strong')) {
+        const direction = etfFlows.sectorFlow.direction.includes('inflow') ? 'entradas' : 'salidas';
+        signals.push(`ETF: Fuertes ${direction} en sector`);
+      }
+      if (etfFlows.relativeToMarket.sectorVsMarket !== 'inline') {
+        const comparison = etfFlows.relativeToMarket.sectorVsMarket === 'outperforming' 
+          ? 'superando' : 'por debajo de';
+        signals.push(`ETF: Sector ${comparison} mercado`);
+      }
+    }
+    
+    // Añadir Dark Pools si hay datos
+    if (darkPools?.hasData) {
+      weightedScore += darkPools.darkPoolScore * WEIGHT_DARK_POOLS;
+      totalWeight += WEIGHT_DARK_POOLS;
+      
+      if (darkPools.darkPoolActivity.sentiment === 'accumulation') {
+        signals.push(`Dark Pool: Acumulación institucional detectada`);
+      } else if (darkPools.darkPoolActivity.sentiment === 'distribution') {
+        signals.push(`Dark Pool: Distribución institucional detectada`);
+      }
+      
+      if (darkPools.darkPoolActivity.blockTradesDetected) {
+        signals.push(`Dark Pool: Block trades detectados`);
+      }
+      
+      if (darkPools.shortVolume?.isAbnormal) {
+        const shortLevel = darkPools.shortVolume.shortVolumeRatio > 45 ? 'alto' : 'bajo';
+        signals.push(`Short Volume: Nivel ${shortLevel} (${darkPools.shortVolume.shortVolumeRatio.toFixed(1)}%)`);
+      }
+    }
+    
+    // Normalizar score por peso total
+    combinedScore = Math.round(weightedScore / totalWeight);
+    combinedScore = Math.max(-100, Math.min(100, combinedScore));
+    
+    // Generar resumen
+    let summary: string;
+    if (signals.length === 0) {
+      summary = 'Sin señales significativas de smart money';
+    } else if (combinedScore > 30) {
+      summary = `🟢 Señales ALCISTAS de smart money: ${signals.join('. ')}`;
+    } else if (combinedScore < -30) {
+      summary = `🔴 Señales BAJISTAS de smart money: ${signals.join('. ')}`;
+    } else {
+      summary = `Señales mixtas de institucionales: ${signals.join('. ')}`;
+    }
+    
+    return { score: combinedScore, summary };
   }
 }
 

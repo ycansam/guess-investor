@@ -1,56 +1,57 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 16 de diciembre de 2025  
-**Commit actual:** `fd79316`
+**Última actualización:** 15 de diciembre de 2025  
+**Commit actual:** `ec4eb4e`
 
 ---
 
 ## Funcionalidades Implementadas
 
-| Commit | Funcionalidad |
-|--------|---------------|
-| `fd79316` | **Factor Sentiment mejorado** - VIX Index, Put/Call Ratio (CBOE SPX), indicadores institucionales en UI |
-| `pendiente` | **Factor News mejorado** - Eventos corporativos (earnings calendar, dividendos, splits, M&A), Acciones de analistas (upgrades/downgrades), Detección de eventos regulatorios (SEC, FDA, FTC, DOJ, EU, antitrust) |
-| `91a22e9` | Fix: discrepancia entre % cambio del chat y tarjeta de predicción + tabla cobertura changelog |
-| `1a01ef4` | **Factor de Indicadores Técnicos** (SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bandas de Bollinger, Análisis de Volumen, Cruces Dorado/Mortal) |
-| `0be2753` | Eliminado temporadas (estaciones del año) del factor seasonality |
-| `f74ebc7` | Changelog actualizado con funcionalidades implementadas |
-| `d1b1a21` | Predicción determinista y sin rangos de precio (precio objetivo único) |
-| `96d002b` | Explicación más detallada en las predicciones |
-| `d0a7fb6` | Correcciones de confianza basada en factores existentes |
-| `8d52e02` | Eventos por países a nivel global |
-| `0d09872` | Factor de festivos y días importantes por países |
-| `7e54d7a` | Factor de grandes inversores institucionales |
-| `421a82d` | Factor Forex y valor de la moneda de la empresa |
-| `9261367` | Factor de competencia y sector |
-| `a0d4ac6` | Fix en sumatorio de factores |
-| `fae9542` | Factor de noticias |
-| `9c5a736` | Predicción basada en confianza |
-| `582a22e` | Fix datos reales |
-| `ecbb155` | Fix predicciones sin datos |
-| `7fa52de` | Factor de expectativas de mercado |
-| `a9047e1` | Fecha de inicio de predicción |
-| `50eeffb` | IndexedDB funcionando con eliminación, fix Xiaomi y monedas |
-| `e5893b7` | Persistencia con IndexedDB |
-| `9c108ad` | Helpers de utilidad |
-| `eb4decf` | Separación de función de cálculo |
-| `0dc4b93` | Header separado en componente |
-| `a0be338` | División de componentes |
-| `8e9fa95` | Separación en componentes |
-| `e1bcad8` | Factor de resultados financieros |
-| `b121f18` | Modificación de card de predicción |
-| `1026e52` | IA funcionando rápido y determinista |
-| `b9d0a5d` | Uso exclusivo de Yahoo Finance |
-| `3abaedd` | Pantalla Home |
-| `3f090d6` | Modelo en .env |
-| `6668d47` | Prompt en .env |
-| `596dae9` | Refactor v2 Finnhub |
-| `5d3a8ec` | Refactorizado Finnhub |
-| `6e4e3fb` | Escalabilidad en finnhub-service |
-| `fe37485` | Primera versión funcionando |
-| `3ccf626` | Primera versión working |
-| `8af53f1` | Proyecto reseteado |
-| `bb43dbc` | Proyecto inicial |
+| Commit | Fecha | Funcionalidad |
+|--------|-------|---------------|
+| `pendiente` | - | **Factor Institutional mejorado** - COT Report (Commitment of Traders), Flujos ETFs del sector, Dark Pools (short volume, acumulación/distribución), Block trades |
+| `ec4eb4e` | 15/12/2025 | **Factor News mejorado** - Eventos corporativos (earnings calendar, dividendos, splits, M&A), Acciones de analistas (upgrades/downgrades), Detección de eventos regulatorios (SEC, FDA, FTC, DOJ, EU, antitrust) |
+| `fd79316` | 15/12/2025 | **Factor Sentiment mejorado** - VIX Index, Put/Call Ratio (CBOE SPX), indicadores institucionales en UI |
+| `91a22e9` | 15/12/2025 | Fix: discrepancia entre % cambio del chat y tarjeta de predicción + tabla cobertura changelog |
+| `1a01ef4` | 15/12/2025 | **Factor de Indicadores Técnicos** (SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bandas de Bollinger, Análisis de Volumen, Cruces Dorado/Mortal) |
+| `0be2753` | 15/12/2025 | Eliminado temporadas (estaciones del año) del factor seasonality |
+| `f74ebc7` | 15/12/2025 | Changelog actualizado con funcionalidades implementadas |
+| `d1b1a21` | 15/12/2025 | Predicción determinista y sin rangos de precio (precio objetivo único) |
+| `96d002b` | 15/12/2025 | Explicación más detallada en las predicciones |
+| `d0a7fb6` | 14/12/2025 | Correcciones de confianza basada en factores existentes |
+| `8d52e02` | 14/12/2025 | Eventos por países a nivel global |
+| `0d09872` | 14/12/2025 | Factor de festivos y días importantes por países |
+| `7e54d7a` | 14/12/2025 | Factor de grandes inversores institucionales |
+| `421a82d` | 14/12/2025 | Factor Forex y valor de la moneda de la empresa |
+| `9261367` | 14/12/2025 | Factor de competencia y sector |
+| `a0d4ac6` | 14/12/2025 | Fix en sumatorio de factores |
+| `fae9542` | 14/12/2025 | Factor de noticias |
+| `9c5a736` | 14/12/2025 | Predicción basada en confianza |
+| `582a22e` | 14/12/2025 | Fix datos reales |
+| `ecbb155` | 14/12/2025 | Fix predicciones sin datos |
+| `7fa52de` | 14/12/2025 | Factor de expectativas de mercado |
+| `a9047e1` | 14/12/2025 | Fecha de inicio de predicción |
+| `50eeffb` | 14/12/2025 | IndexedDB funcionando con eliminación, fix Xiaomi y monedas |
+| `e5893b7` | 13/12/2025 | Persistencia con IndexedDB |
+| `9c108ad` | 11/12/2025 | Helpers de utilidad |
+| `eb4decf` | 11/12/2025 | Separación de función de cálculo |
+| `0dc4b93` | 11/12/2025 | Header separado en componente |
+| `a0be338` | 11/12/2025 | División de componentes |
+| `8e9fa95` | 11/12/2025 | Separación en componentes |
+| `e1bcad8` | 11/12/2025 | Factor de resultados financieros |
+| `b121f18` | 11/12/2025 | Modificación de card de predicción |
+| `1026e52` | 10/12/2025 | IA funcionando rápido y determinista |
+| `b9d0a5d` | 10/12/2025 | Uso exclusivo de Yahoo Finance |
+| `3abaedd` | 09/12/2025 | Pantalla Home |
+| `3f090d6` | 09/12/2025 | Modelo en .env |
+| `6668d47` | 09/12/2025 | Prompt en .env |
+| `596dae9` | 09/12/2025 | Refactor v2 Finnhub |
+| `5d3a8ec` | 09/12/2025 | Refactorizado Finnhub |
+| `6e4e3fb` | 09/12/2025 | Escalabilidad en finnhub-service |
+| `fe37485` | 09/12/2025 | Primera versión funcionando |
+| `3ccf626` | 09/12/2025 | Primera versión working |
+| `8af53f1` | 08/12/2025 | Proyecto reseteado |
+| `bb43dbc` | 08/12/2025 | Proyecto inicial |
 
 ---
 
@@ -65,7 +66,7 @@
 | 5 | **Macro** | Indicadores macroeconómicos: índices regionales, tipos de interés, VIX, commodities |
 | 6 | **Competitors** | Contexto relativo frente a competidores y sector: rendimiento comparativo |
 | 7 | **Forex** | Efectos de movimientos de divisas sobre activos internacionales |
-| 8 | **Institutional** | Movimientos de grandes inversores: ownership, insiders, top holders |
+| 8 | **Institutional** | Movimientos de grandes inversores: ownership, insiders, top holders, **COT Report** (posiciones futuros), **Flujos ETFs** del sector, **Dark Pools** (short volume, acumulación/distribución) |
 | 9 | **Seasonality** | Festivos por país, eventos comerciales (Black Friday, Buen Fin), patrones históricos (Rally Santa Claus, Sell in May) |
 | 10 | **Financials** | Resultados financieros: ingresos, márgenes, deuda, P/E, rating analistas, precio objetivo |
 | 11 | **Expectations** | Expectativas de mercado: earnings surprise, EPS estimado, guidance |
@@ -83,7 +84,7 @@
 | **Macro** | Índices regionales, bonos 10Y, VIX, commodities | Inflación (CPI), PIB, empleo (NFP), decisiones Fed/BCE | ~40% |
 | **Competitors** | Rendimiento relativo vs competidores mapeados | Cuota de mercado, comparación de ratios P/E | ~50% |
 | **Forex** | Exposición por empresa, cambios de pares | Hedging, volatilidad FX | ~60% |
-| **Institutional** | % ownership, tendencia, insiders, top 5 fondos | COT report, 13F filings SEC, flujos ETFs | ~50% |
+| **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades) | 13F filings SEC detallados | ~75% |
 | **Seasonality** | 50+ eventos para 20+ países, patrones globales | Patrones históricos por acción específica | ~60% |
 | **Financials** | Ingresos, márgenes, EPS, P/E, deuda, ROE, rating analistas | FCF, CAPEX, balance completo | ~65% |
 | **Expectations** | Earnings surprise histórico, EPS estimado | Revenue surprise, revisiones analistas, fecha próx earnings | ~45% |
@@ -92,15 +93,17 @@
 
 | Fuente | Uso |
 |--------|-----|
-| **Yahoo Finance Chart API** | Precios, históricos, OHLCV para indicadores técnicos |
+| **Yahoo Finance Chart API** | Precios, históricos, OHLCV para indicadores técnicos, **volumen para análisis de dark pools** |
 | **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings, **calendarEvents** (earnings dates, dividendos), **upgradeDowngradeHistory** (acciones de analistas) |
+| **Yahoo Finance Options** | Datos de opciones para **análisis de dark pools** (put/call ratio, open interest, volumen inusual) |
 | **Yahoo Finance Search** | Noticias |
-| **Yahoo Finance VIX** | Índice de volatilidad VIX (indicador de miedo) |
+| **Yahoo Finance VIX** | Índice de volatilidad VIX (indicador de miedo), **estimación de posiciones COT** |
 | **CBOE Options API** | Put/Call Ratio de opciones SPX (indicador institucional) |
+| **ETFs Sectoriales** | Flujos de **SPY, QQQ, XLK, XLF**, etc. para detectar rotación sectorial |
 | **StockTwits API** | Sentimiento USA/crypto |
 | **Reddit JSON** | Sentimiento social (r/wallstreetbets, r/stocks) |
 | **Alternative.me** | Fear & Greed Index (crypto) |
-| **Datos hardcoded** | Competidores, exposición forex, eventos estacionales |
+| **Datos hardcoded** | Competidores, exposición forex, eventos estacionales, **mapeos stock-futuros para COT** |
 
 ---
 
