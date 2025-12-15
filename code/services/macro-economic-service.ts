@@ -5,6 +5,7 @@
  * - Tipos de interés (bonos)
  * - Commodities relevantes (petróleo, materias primas)
  * - Índices de volatilidad (VIX)
+ * - Indicadores económicos: CPI, GDP, NFP, PMI, Tasas de bancos centrales
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
@@ -45,6 +46,18 @@ export interface MacroIndicators {
     value: number;
     level: 'low' | 'medium' | 'high' | 'extreme';
   } | null;
+  
+  // NUEVO: Indicadores económicos avanzados
+  economicData?: {
+    cpi: { value: number; trend: string } | null;
+    gdp: { value: number; trend: string } | null;
+    unemployment: { rate: number; nfpChange: number | null } | null;
+    centralBankRate: { bank: string; rate: number; guidance: string } | null;
+    pmi: { composite: number; trend: string } | null;
+    economicCycle: string;
+    upcomingEvents: Array<{ name: string; date: Date; importance: string }>;
+    economicScore: number;
+  };
   
   // Score general
   macroScore: number; // -100 a +100
@@ -170,23 +183,25 @@ class MacroEconomicService {
       
       console.log(`[Macro] Región: ${region}, País: ${country}, Sector: ${sector}`);
       
-      // Obtener datos en paralelo
-      const [regionalIndex, interestRate, commodities, vix] = await Promise.all([
+      // Obtener datos en paralelo (incluyendo nuevos indicadores económicos)
+      const [regionalIndex, interestRate, commodities, vix, economicData] = await Promise.all([
         this.getRegionalIndex(region),
         this.getInterestRate(region),
         this.getCommodities(sector),
         this.getVIX(),
+        this.getEconomicData(country),
       ]);
       
-      // Calcular score macro
+      // Calcular score macro (ahora incluye datos económicos)
       const { score, outlook } = this.calculateMacroScore(
         regionalIndex,
         interestRate,
         commodities,
-        vix
+        vix,
+        economicData
       );
       
-      const summary = this.generateSummary(region, score, outlook, commodities);
+      const summary = this.generateSummary(region, score, outlook, commodities, economicData);
       
       const result: MacroIndicators = {
         region,
@@ -195,9 +210,10 @@ class MacroEconomicService {
         interestRate,
         commodities,
         volatilityIndex: vix,
+        economicData,
         macroScore: score,
         macroOutlook: outlook,
-        hasData: regionalIndex !== null || commodities.length > 0,
+        hasData: regionalIndex !== null || commodities.length > 0 || economicData !== undefined,
         summary,
       };
       
@@ -422,12 +438,13 @@ class MacroEconomicService {
     regionalIndex: MacroIndicators['regionalIndex'],
     interestRate: MacroIndicators['interestRate'],
     commodities: MacroIndicators['commodities'],
-    vix: MacroIndicators['volatilityIndex']
+    vix: MacroIndicators['volatilityIndex'],
+    economicData?: MacroIndicators['economicData']
   ): { score: number; outlook: 'favorable' | 'neutral' | 'unfavorable' } {
     let score = 0;
     let factors = 0;
     
-    // Índice regional (peso: 35%)
+    // Índice regional (peso: 25% - reducido para dar espacio a datos económicos)
     if (regionalIndex) {
       let indexScore = 0;
       if (regionalIndex.trend === 'bullish') indexScore = 30;
@@ -436,21 +453,21 @@ class MacroEconomicService {
       // Ajustar por magnitud
       indexScore += Math.min(Math.max(regionalIndex.change1m * 2, -20), 20);
       
-      score += indexScore * 0.35;
+      score += indexScore * 0.25;
       factors++;
     }
     
-    // Tipos de interés (peso: 25%)
+    // Tipos de interés (peso: 15%)
     if (interestRate) {
       let rateScore = 0;
       if (interestRate.impact === 'positive') rateScore = 20;
       else if (interestRate.impact === 'negative') rateScore = -25;
       
-      score += rateScore * 0.25;
+      score += rateScore * 0.15;
       factors++;
     }
     
-    // Commodities (peso: 25%)
+    // Commodities (peso: 15%)
     if (commodities.length > 0) {
       let commodityScore = 0;
       for (const c of commodities) {
@@ -459,11 +476,11 @@ class MacroEconomicService {
       }
       commodityScore = commodityScore / commodities.length; // Promedio
       
-      score += commodityScore * 0.25;
+      score += commodityScore * 0.15;
       factors++;
     }
     
-    // VIX (peso: 15%)
+    // VIX (peso: 10%)
     if (vix) {
       let vixScore = 0;
       if (vix.level === 'low') vixScore = 20;
@@ -471,8 +488,15 @@ class MacroEconomicService {
       else if (vix.level === 'high') vixScore = -15;
       else if (vix.level === 'extreme') vixScore = -30;
       
-      score += vixScore * 0.15;
+      score += vixScore * 0.10;
       factors++;
+    }
+    
+    // NUEVO: Datos económicos (peso: 35% - el más importante)
+    if (economicData && economicData.economicScore !== undefined) {
+      score += economicData.economicScore * 0.35;
+      factors++;
+      console.log(`[Macro] Economic data score: ${economicData.economicScore}, cycle: ${economicData.economicCycle}`);
     }
     
     // Si no hay factores, retornar neutral
@@ -481,7 +505,8 @@ class MacroEconomicService {
     }
     
     // Normalizar score si no tenemos todos los factores
-    score = score / (factors / 4);
+    const expectedFactors = 5; // Ahora son 5 factores
+    score = score / (factors / expectedFactors);
     
     // Limitar a -100 a +100
     score = Math.max(-100, Math.min(100, Math.round(score)));
@@ -501,7 +526,8 @@ class MacroEconomicService {
     region: string,
     score: number,
     outlook: string,
-    commodities: MacroIndicators['commodities']
+    commodities: MacroIndicators['commodities'],
+    economicData?: MacroIndicators['economicData']
   ): string {
     const regionNames: Record<string, string> = {
       'europe': 'Europa',
@@ -521,18 +547,124 @@ class MacroEconomicService {
       summary += 'condiciones mixtas';
     }
     
+    // Añadir ciclo económico si está disponible
+    if (economicData?.economicCycle && economicData.economicCycle !== 'unknown') {
+      const cycleNames: Record<string, string> = {
+        'early_expansion': 'expansión temprana',
+        'mid_expansion': 'expansión media',
+        'late_expansion': 'expansión tardía',
+        'recession': 'recesión',
+        'recovery': 'recuperación'
+      };
+      summary += ` (${cycleNames[economicData.economicCycle] || economicData.economicCycle})`;
+    }
+    
+    const parts: string[] = [];
+    
+    // Añadir datos económicos clave
+    if (economicData) {
+      if (economicData.cpi) {
+        parts.push(`CPI: ${economicData.cpi.value}%`);
+      }
+      if (economicData.gdp) {
+        parts.push(`PIB: ${economicData.gdp.value >= 0 ? '+' : ''}${economicData.gdp.value}%`);
+      }
+      if (economicData.unemployment) {
+        if (economicData.unemployment.nfpChange !== null) {
+          parts.push(`NFP: +${economicData.unemployment.nfpChange}K`);
+        }
+        parts.push(`Desempleo: ${economicData.unemployment.rate}%`);
+      }
+      if (economicData.centralBankRate) {
+        parts.push(`${economicData.centralBankRate.bank}: ${economicData.centralBankRate.rate}%`);
+      }
+      if (economicData.pmi) {
+        parts.push(`PMI: ${economicData.pmi.composite}`);
+      }
+    }
+    
     // Añadir detalle de commodities más relevantes
     const significantCommodities = commodities.filter(c => c.impact !== 'neutral');
     if (significantCommodities.length > 0) {
-      const details = significantCommodities.map(c => {
+      const commodityDetails = significantCommodities.map(c => {
         const arrow = c.change1m > 0 ? '↑' : '↓';
         const impact = c.impact === 'positive' ? '(+)' : '(-)';
         return `${c.name} ${arrow}${Math.abs(c.change1m).toFixed(1)}% ${impact}`;
       });
-      summary += '. ' + details.join(', ');
+      parts.push(...commodityDetails);
+    }
+    
+    if (parts.length > 0) {
+      summary += '. ' + parts.join(', ');
+    }
+    
+    // Añadir eventos próximos importantes
+    if (economicData?.upcomingEvents && economicData.upcomingEvents.length > 0) {
+      const highImportance = economicData.upcomingEvents.filter(e => e.importance === 'high');
+      if (highImportance.length > 0) {
+        summary += `. ⚠️ Próximos: ${highImportance.map(e => e.name).join(', ')}`;
+      }
     }
     
     return summary;
+  }
+  
+  /**
+   * Obtiene datos económicos avanzados para un país
+   */
+  private async getEconomicData(country: string): Promise<MacroIndicators['economicData'] | undefined> {
+    try {
+      // Mapear país a región del servicio económico
+      const countryToRegion: Record<string, 'US' | 'EU' | 'UK' | 'CN' | 'JP'> = {
+        'US': 'US',
+        'ES': 'EU', // España → Eurozona
+        'DE': 'EU', // Alemania → Eurozona
+        'FR': 'EU', // Francia → Eurozona
+        'IT': 'EU', // Italia → Eurozona
+        'NL': 'EU', // Holanda → Eurozona
+        'UK': 'UK',
+        'CN': 'CN',
+        'HK': 'CN', // Hong Kong → China
+        'JP': 'JP',
+      };
+      
+      const region = countryToRegion[country] || 'US';
+      const indicators = await economicIndicatorsService.getEconomicIndicators(region);
+      
+      if (!indicators.hasData) {
+        return undefined;
+      }
+      
+      return {
+        cpi: indicators.cpi ? {
+          value: indicators.cpi.value,
+          trend: indicators.cpi.trend
+        } : null,
+        gdp: indicators.gdp ? {
+          value: indicators.gdp.value,
+          trend: indicators.gdp.trend
+        } : null,
+        unemployment: indicators.employment ? {
+          rate: indicators.employment.unemploymentRate,
+          nfpChange: indicators.employment.nfpChange
+        } : null,
+        centralBankRate: indicators.centralBank ? {
+          bank: indicators.centralBank.bank,
+          rate: indicators.centralBank.currentRate,
+          guidance: indicators.centralBank.forwardGuidance
+        } : null,
+        pmi: indicators.pmi ? {
+          composite: indicators.pmi.composite,
+          trend: indicators.pmi.trend
+        } : null,
+        economicCycle: indicators.economicCycle,
+        upcomingEvents: indicators.upcomingEvents,
+        economicScore: indicators.overallScore
+      };
+    } catch (error) {
+      console.warn(`[Macro] Error obteniendo datos económicos:`, error);
+      return undefined;
+    }
   }
   
   /**

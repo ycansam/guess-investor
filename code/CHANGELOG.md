@@ -9,6 +9,7 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
+| `pendiente` | - | **Factor Macro mejorado** - CPI (Inflación), GDP (PIB), NFP (Empleo), PMI (Manufacturing/Services), Tasas bancos centrales (Fed/BCE/BoE/BoJ/PBOC), Ciclo económico, Eventos económicos próximos |
 | `pendiente` | - | **Factor Expectations mejorado** - Revenue Surprise (real vs estimado), Revisiones de analistas (7d/30d/90d trends), Fecha próximos earnings con riesgo, Beat Rate histórico, Whisper numbers |
 | `07b2853` | 15/12/2025 | **Factor Institutional mejorado** - COT Report (Commitment of Traders), Flujos ETFs del sector, Dark Pools (short volume, acumulación/distribución), Block trades |
 | `ec4eb4e` | 15/12/2025 | **Factor News mejorado** - Eventos corporativos (earnings calendar, dividendos, splits, M&A), Acciones de analistas (upgrades/downgrades), Detección de eventos regulatorios (SEC, FDA, FTC, DOJ, EU, antitrust) |
@@ -64,14 +65,13 @@
 | 2 | **Technical** | **NUEVO** - Indicadores técnicos: SMA (20/50/200), EMA (12/26), RSI 14, MACD, Bandas de Bollinger, Volumen, Cruces Dorado/Mortal |
 | 3 | **Sentiment** | Sentimiento de mercado: StockTwits, Reddit, Fear & Greed, **VIX Index**, **Put/Call Ratio** (CBOE SPX) |
 | 4 | **News** | Impacto de noticias: Yahoo Finance, **Eventos corporativos** (earnings calendar, dividendos, splits), **Acciones de analistas** (upgrades/downgrades), **Detección regulatoria** (SEC, FDA, FTC, DOJ, EU, antitrust) |
-| 5 | **Macro** | Indicadores macroeconómicos: índices regionales, tipos de interés, VIX, commodities |
+| 5 | **Macro** | Indicadores macroeconómicos: índices regionales, tipos de interés, VIX, commodities, **CPI (Inflación)**, **GDP (PIB)**, **NFP (Empleo)**, **PMI**, **Tasas bancos centrales** (Fed/BCE/BoE/BoJ/PBOC), **Ciclo económico**, **Eventos económicos próximos** |
 | 6 | **Competitors** | Contexto relativo frente a competidores y sector: rendimiento comparativo |
 | 7 | **Forex** | Efectos de movimientos de divisas sobre activos internacionales |
 | 8 | **Institutional** | Movimientos de grandes inversores: ownership, insiders, top holders, **COT Report** (posiciones futuros), **Flujos ETFs** del sector, **Dark Pools** (short volume, acumulación/distribución) |
 | 9 | **Seasonality** | Festivos por país, eventos comerciales (Black Friday, Buen Fin), patrones históricos (Rally Santa Claus, Sell in May) |
 | 10 | **Financials** | Resultados financieros: ingresos, márgenes, deuda, P/E, rating analistas, precio objetivo |
 | 11 | **Expectations** | Expectativas de mercado: **earnings surprise** (EPS + Revenue), **revisiones de analistas** (7d/30d/90d), EPS estimado, **fecha próximos earnings**, **beat rate** histórico |
-
 ---
 
 ## Cobertura por Factor
@@ -82,7 +82,7 @@
 | **Technical** | SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bollinger, Volumen, Cruces | Patrones chartistas, soportes/resistencias | ~80% |
 | **Sentiment** | StockTwits, Reddit, Fear & Greed (crypto), **VIX Index**, **Put/Call Ratio (CBOE SPX)** | Short interest (requiere API FINRA pagada), Twitter/X (requiere API pagada), options flow detallado | ~70% |
 | **News** | Yahoo News + análisis keywords, **Earnings calendar**, **Dividendos**, **Acciones de analistas** (upgrades/downgrades), **Detección de eventos regulatorios** (SEC, FDA, FTC, DOJ, EU, antitrust) | Splits históricos, M&A rumores | ~65% |
-| **Macro** | Índices regionales, bonos 10Y, VIX, commodities | Inflación (CPI), PIB, empleo (NFP), decisiones Fed/BCE | ~40% |
+| **Macro** | Índices regionales, bonos 10Y, VIX, commodities, **CPI (Inflación)**, **GDP (PIB)**, **NFP (Empleo)**, **Tasas Fed/BCE/BoE/BoJ/PBOC**, **PMI (Manufacturing/Services)**, **Ciclo económico**, **Eventos económicos próximos** | - | ~75% |
 | **Competitors** | Rendimiento relativo vs competidores mapeados | Cuota de mercado, comparación de ratios P/E | ~50% |
 | **Forex** | Exposición por empresa, cambios de pares | Hedging, volatilidad FX | ~60% |
 | **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades) | 13F filings SEC detallados | ~75% |
@@ -104,7 +104,8 @@
 | **StockTwits API** | Sentimiento USA/crypto |
 | **Reddit JSON** | Sentimiento social (r/wallstreetbets, r/stocks) |
 | **Alternative.me** | Fear & Greed Index (crypto) |
-| **Datos hardcoded** | Competidores, exposición forex, eventos estacionales, **mapeos stock-futuros para COT** |
+| **Datos económicos hardcoded** | **CPI, GDP, NFP, PMI, Tasas bancos centrales** (actualizados con datos oficiales de BLS, BEA, Fed, BCE, BoE, NBS) |
+| **Datos hardcoded** | Competidores, exposición forex, eventos estacionales, **mapeos stock-futuros para COT**, **calendario eventos económicos** |
 
 ---
 
