@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 16 de diciembre de 2025  
-**Commit actual:** `1f0a1d0`
+**Commit actual:** `f35ac1b`
 
 ---
 
@@ -9,7 +9,10 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
+| `f35ac1b` | 16/12/2025 | **Versión destacada** - Todos los 11 factores funcionando, Yahoo V8 API (gratis/ilimitado), soporte símbolos europeos |
+| `a9e2905` | 16/12/2025 | Añadido resultados financieros, expectativas y async storage, web scraping |
 | `1f0a1d0` | 16/12/2025 | Fix: Ticker GPS → GAP (Gap Inc delistado) |
+| `a0d6cd0` | 16/12/2025 | Changelog actualizado |
 | `486ceab` | 15/12/2025 | Fix: Pesos normalizados en fórmula de auditoría |
 | `cdfe4d6` | 15/12/2025 | **Factor Macro mejorado** - CPI (Inflación), GDP (PIB), NFP (Empleo), PMI (Manufacturing/Services), Tasas bancos centrales (Fed/BCE/BoE/BoJ/PBOC), Ciclo económico, Eventos económicos próximos |
 | `c7080c6` | 15/12/2025 | **Factor Expectations mejorado** - Revenue Surprise (real vs estimado), Revisiones de analistas (7d/30d/90d trends), Fecha próximos earnings con riesgo, Beat Rate histórico, Whisper numbers |
@@ -96,18 +99,28 @@
 
 | Fuente | Uso |
 |--------|-----|
-| **Yahoo Finance Chart API** | Precios, históricos, OHLCV para indicadores técnicos, **volumen para análisis de dark pools** |
-| **Yahoo Finance quoteSummary** | Fundamentales, institucional, earnings, **calendarEvents** (earnings dates, dividendos), **upgradeDowngradeHistory** (acciones de analistas), **earningsHistory** (EPS surprise histórico), **earningsTrend** (revisiones de analistas 7d/30d/90d, estimaciones EPS/Revenue), **earnings** (revenue trimestral) |
+| **Yahoo Finance V8 Chart API** | **GRATIS e ILIMITADO** - Precios en tiempo real, históricos, OHLCV, medias móviles (50d/200d), volumen |
+| **Yahoo Finance quoteSummary (RapidAPI)** | Fundamentales, institucional, earnings, **calendarEvents** (earnings dates, dividendos), **upgradeDowngradeHistory** (acciones de analistas), **earningsHistory** (EPS surprise histórico), **earningsTrend** (revisiones de analistas 7d/30d/90d, estimaciones EPS/Revenue), **earnings** (revenue trimestral) |
 | **Yahoo Finance Options** | Datos de opciones para **análisis de dark pools** (put/call ratio, open interest, volumen inusual) |
 | **Yahoo Finance Search** | Noticias |
 | **Yahoo Finance VIX** | Índice de volatilidad VIX (indicador de miedo), **estimación de posiciones COT** |
 | **CBOE Options API** | Put/Call Ratio de opciones SPX (indicador institucional) |
-| **ETFs Sectoriales** | Flujos de **SPY, QQQ, XLK, XLF**, etc. para detectar rotación sectorial |
+| **ETFs Sectoriales** | Flujos de **SPY, QQQ, XLK, XLF, EZU, VGK, FEZ**, etc. para detectar rotación sectorial (incluye Europa) |
 | **StockTwits API** | Sentimiento USA/crypto |
 | **Reddit JSON** | Sentimiento social (r/wallstreetbets, r/stocks) |
 | **Alternative.me** | Fear & Greed Index (crypto) |
 | **Datos económicos hardcoded** | **CPI, GDP, NFP, PMI, Tasas bancos centrales** (actualizados con datos oficiales de BLS, BEA, Fed, BCE, BoE, NBS) |
-| **Datos hardcoded** | Competidores, exposición forex, eventos estacionales, **mapeos stock-futuros para COT**, **calendario eventos económicos** |
+| **Datos hardcoded** | Competidores, exposición forex, eventos estacionales, **mapeos stock-futuros para COT** (incluye EURO STOXX 50), **calendario eventos económicos** |
+
+---
+
+## Símbolos Europeos Soportados
+
+| Mercado | Símbolos |
+|---------|----------|
+| **España (.MC)** | ITX, SAN, BBVA, TEF, IBE, REP, ACS |
+| **Alemania (.DE)** | SAP, SIE, BMW, VOW3 |
+| **Francia (.PA)** | MC (LVMH), OR (L'Oréal), TTE (TotalEnergies) |
 
 ---
 
