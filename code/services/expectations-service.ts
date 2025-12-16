@@ -14,7 +14,8 @@
  * - Yahoo Finance: earningsHistory, earningsTrend, calendarEvents
  */
 
-import { fetchWithCorsProxy } from './cors-proxy';
+import { rapidApiYahooService, YahooQuoteSummary } from './rapidapi-yahoo-service';
+import { yahooV8Service } from './yahoo-v8-service';
 
 // ============================================================================
 // INTERFACES
@@ -130,39 +131,245 @@ class ExpectationsService {
     try {
       console.log(`[Expectations] Obteniendo expectativas para ${symbol}`);
       
-      // Solicitar módulos de Yahoo Finance
-      const modules = [
-        'earningsHistory',    // Historial de earnings (EPS actual vs estimado)
-        'earningsTrend',      // Tendencias y revisiones
-        'calendarEvents',     // Próximos earnings
-        'earnings',           // Datos de earnings trimestrales con revenue
-      ].join(',');
-      
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
-      
-      const response = await fetchWithCorsProxy(url, {
-        signal: AbortSignal.timeout(15000),
-      });
-      
-      const data = await response.json();
-      const result = data.quoteSummary?.result?.[0];
-      
-      if (!result) {
-        console.log(`[Expectations] No hay datos para ${symbol}`);
+      // PASO 1: Verificar que el símbolo existe con Yahoo V8 (GRATIS)
+      const v8Data = await yahooV8Service.getQuote(symbol);
+      if (!v8Data || v8Data.regularMarketPrice === 0) {
+        console.log(`[Expectations] Símbolo no encontrado: ${symbol}`);
         return null;
       }
       
-      const expectations = this.parseExpectations(symbol, result);
+      // PASO 2: Intentar con RapidAPI para datos completos de earnings
+      if (rapidApiYahooService.isAvailable()) {
+        const rapidApiData = await rapidApiYahooService.getQuoteSummary(symbol);
+        if (rapidApiData && rapidApiData.dataAvailable && rapidApiData.earningsHistory) {
+          console.log(`[Expectations] Datos obtenidos via RapidAPI para ${symbol}`);
+          const expectations = this.parseFromRapidApi(symbol, rapidApiData);
+          expectationsCache.set(symbol, { data: expectations, timestamp: Date.now() });
+          return expectations;
+        }
+      }
       
-      // Guardar en caché
-      expectationsCache.set(symbol, { data: expectations, timestamp: Date.now() });
-      
-      return expectations;
+      // PASO 3: Generar datos básicos desde V8 (sin earnings detallados)
+      console.log(`[Expectations] Generando datos básicos desde V8 para ${symbol}`);
+      const basicExpectations = this.generateBasicExpectations(symbol, v8Data);
+      expectationsCache.set(symbol, { data: basicExpectations, timestamp: Date.now() });
+      return basicExpectations;
       
     } catch (error: any) {
       console.error(`[Expectations] Error para ${symbol}:`, error.message);
       return null;
     }
+  }
+  
+  /**
+   * Genera datos de expectativas básicos cuando no hay datos de RapidAPI
+   * Usa datos de tendencia de precio como proxy
+   */
+  private generateBasicExpectations(symbol: string, v8Data: any): ExpectationsData {
+    const now = new Date();
+    
+    // Calcular tendencia basada en medias móviles
+    const price = v8Data.regularMarketPrice || 0;
+    const ma50 = v8Data.fiftyDayAverage || price;
+    const ma200 = v8Data.twoHundredDayAverage || price;
+    
+    // Si precio > MA50 > MA200 = tendencia positiva
+    let trendScore = 50;
+    if (price > ma50 && ma50 > ma200) trendScore = 75;
+    else if (price < ma50 && ma50 < ma200) trendScore = 25;
+    else if (price > ma50) trendScore = 60;
+    else if (price < ma50) trendScore = 40;
+    
+    // Calcular momentum basado en cambio de precio
+    const priceChangePercent = v8Data.priceChangePercent || 0;
+    let momentumScore = 50;
+    if (priceChangePercent > 3) momentumScore = 80;
+    else if (priceChangePercent > 1) momentumScore = 65;
+    else if (priceChangePercent > 0) momentumScore = 55;
+    else if (priceChangePercent > -1) momentumScore = 45;
+    else if (priceChangePercent > -3) momentumScore = 35;
+    else momentumScore = 20;
+    
+    // Score general (conservador cuando no hay datos)
+    const overallScore = Math.round((trendScore + momentumScore) / 2);
+    
+    return {
+      symbol,
+      timestamp: now,
+      
+      // Sin datos de earnings disponibles
+      earningsSurprises: [],
+      lastEpsSurprise: null,
+      avgEpsSurprise: null,
+      lastRevenueSurprise: null,
+      avgRevenueSurprise: null,
+      beatRate: 0,
+      consistencyScore: 0,
+      
+      // Sin datos de revisiones
+      revisions: [],
+      overallRevisionTrend: 'unknown' as const,
+      revisionScore: 0,
+      
+      // Sin fecha de próximos earnings
+      nextEarnings: {
+        date: null,
+        daysUntil: null,
+        isWithin7Days: false,
+        isWithin30Days: false,
+        epsEstimate: null,
+        revenueEstimate: null,
+        whisperNumber: null,
+        historicalBeatRate: 0,
+      },
+      earningsRisk: 'low' as const,
+      
+      // Scores basados en tendencia de precio (conservadores)
+      epsSurpriseScore: 50,
+      revenueSurpriseScore: 50,
+      revisionScore_normalized: 50,
+      timingScore: 50,
+      
+      expectationsScore: overallScore,
+      hasData: false,
+      dataQuality: 'low' as const,
+      
+      // Resumen
+      summary: `Datos limitados. Tendencia de precio: ${trendScore > 50 ? 'positiva' : trendScore < 50 ? 'negativa' : 'neutral'}. Datos de earnings no disponibles.`,
+    };
+  }
+  
+  /**
+   * Parsea datos desde RapidAPI al formato ExpectationsData
+   */
+  private parseFromRapidApi(symbol: string, data: YahooQuoteSummary): ExpectationsData {
+    // Parsear earnings surprise desde earningsHistory
+    const earningsSurprises: EarningsSurprise[] = (data.earningsHistory || []).map((q) => ({
+      quarter: q.fiscalQuarter,
+      date: new Date(),
+      epsActual: q.epsActual,
+      epsEstimate: q.epsEstimate,
+      epsSurprisePercent: q.surprisePercent || 
+        (q.epsEstimate !== 0 ? ((q.epsActual - q.epsEstimate) / Math.abs(q.epsEstimate)) * 100 : 0),
+      revenueActual: null,
+      revenueEstimate: null,
+      revenueSurprisePercent: null,
+    }));
+    
+    let lastEpsSurprise: number | null = null;
+    let avgEpsSurprise: number | null = null;
+    let beatRate = 0;
+    
+    if (earningsSurprises.length > 0) {
+      lastEpsSurprise = earningsSurprises[0].epsSurprisePercent;
+      avgEpsSurprise = earningsSurprises.reduce((sum, e) => sum + e.epsSurprisePercent, 0) / earningsSurprises.length;
+      beatRate = earningsSurprises.filter(e => e.epsSurprisePercent > 0).length / earningsSurprises.length * 100;
+    }
+    
+    // Próximos earnings
+    const nextEarningsTimestamp = data.calendarEvents?.earningsDate;
+    const nextEarningsDate = nextEarningsTimestamp ? new Date(nextEarningsTimestamp * 1000) : null;
+    const now = new Date();
+    const daysUntil = nextEarningsDate 
+      ? Math.ceil((nextEarningsDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    
+    const nextEarnings: NextEarningsInfo = {
+      date: nextEarningsDate,
+      daysUntil,
+      isWithin7Days: daysUntil !== null && daysUntil <= 7 && daysUntil >= 0,
+      isWithin30Days: daysUntil !== null && daysUntil <= 30 && daysUntil >= 0,
+      epsEstimate: data.earningsTrend?.currentQuarterEstimate || null,
+      revenueEstimate: data.earningsTrend?.revenueEstimateCurrent || null,
+      whisperNumber: null,
+      historicalBeatRate: beatRate,
+    };
+    
+    // Revisiones (simplificado)
+    const revisions: AnalystRevision[] = [];
+    if (data.earningsTrend?.currentQuarterEstimate) {
+      revisions.push({
+        period: 'current',
+        label: 'Current Quarter',
+        epsEstimate: data.earningsTrend.currentQuarterEstimate,
+        epsEstimate7dAgo: null,
+        epsEstimate30dAgo: null,
+        epsEstimate90dAgo: null,
+        revenueEstimate: data.earningsTrend.revenueEstimateCurrent || 0,
+        numberOfAnalysts: data.numberOfAnalystOpinions || 0,
+        revisionTrend7d: null,
+        revisionTrend30d: null,
+        revisionTrend90d: null,
+      });
+    }
+    
+    // Calcular scores
+    const epsSurpriseScore = this.calculateEpsSurpriseScore(lastEpsSurprise, avgEpsSurprise, beatRate);
+    const revenueSurpriseScore = 50; // Sin datos de revenue surprise en RapidAPI
+    const revisionScoreNorm = 50; // Sin datos de revisiones históricas
+    const timingScore = this.calculateTimingScore(nextEarnings);
+    
+    // Determinar riesgo de earnings
+    let earningsRisk: 'high' | 'medium' | 'low' = 'low';
+    if (daysUntil !== null && daysUntil >= 0) {
+      if (daysUntil <= 7) earningsRisk = 'high';
+      else if (daysUntil <= 14) earningsRisk = 'medium';
+    }
+    
+    // Score combinado
+    const expectationsScore = Math.round(
+      epsSurpriseScore * 0.35 +
+      revenueSurpriseScore * 0.15 +
+      revisionScoreNorm * 0.25 +
+      timingScore * 0.25
+    );
+    
+    // Summary
+    let summary = '';
+    if (lastEpsSurprise !== null) {
+      if (lastEpsSurprise > 10) summary = `Superó expectativas (+${lastEpsSurprise.toFixed(1)}%)`;
+      else if (lastEpsSurprise > 0) summary = `Cumplió/superó ligeramente (+${lastEpsSurprise.toFixed(1)}%)`;
+      else summary = `No alcanzó expectativas (${lastEpsSurprise.toFixed(1)}%)`;
+    } else {
+      summary = 'Sin datos de earnings surprise';
+    }
+    
+    if (nextEarnings.isWithin7Days) {
+      summary += ' ⚠️ Earnings en próximos 7 días';
+    }
+    
+    // Determinar expectationsOutlook
+    let expectationsOutlook = 'Sin datos';
+    if (avgEpsSurprise !== null) {
+      if (avgEpsSurprise > 5) expectationsOutlook = 'Supera expectativas';
+      else if (avgEpsSurprise > -5) expectationsOutlook = 'Cumple expectativas';
+      else expectationsOutlook = 'Decepciona';
+    }
+    
+    return {
+      symbol,
+      timestamp: new Date(),
+      earningsSurprises,
+      lastEpsSurprise,
+      avgEpsSurprise,
+      lastRevenueSurprise: null,
+      avgRevenueSurprise: null,
+      beatRate,
+      consistencyScore: beatRate,
+      revisions,
+      overallRevisionTrend: 'unknown',
+      revisionScore: 0,
+      nextEarnings,
+      earningsRisk,
+      epsSurpriseScore,
+      revenueSurpriseScore,
+      revisionScore_normalized: revisionScoreNorm,
+      timingScore,
+      expectationsScore,
+      hasData: earningsSurprises.length > 0,
+      dataQuality: earningsSurprises.length >= 4 ? 'high' : earningsSurprises.length > 0 ? 'medium' : 'low',
+      summary,
+    };
   }
   
   /**

@@ -8,7 +8,8 @@
  * Usa Yahoo Finance quoteSummary módulos: calendarEvents, upgradeDowngradeHistory
  */
 
-import { fetchWithCorsProxy } from './cors-proxy';
+import { rapidApiYahooService, YahooQuoteSummary } from './rapidapi-yahoo-service';
+import { yahooV8Service } from './yahoo-v8-service';
 
 export interface EarningsEvent {
   date: Date;
@@ -95,36 +96,190 @@ class CorporateEventsService {
     try {
       console.log(`[CorporateEvents] Obteniendo eventos corporativos para ${symbol}`);
       
-      const modules = [
-        'calendarEvents',
-        'upgradeDowngradeHistory'
-      ].join(',');
-      
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
-      
-      const response = await fetchWithCorsProxy(url, {
-        signal: AbortSignal.timeout(15000),
-      });
-      
-      const data = await response.json();
-      const result = data.quoteSummary?.result?.[0];
-      
-      if (!result) {
-        console.log(`[CorporateEvents] No hay datos para ${symbol}`);
+      // PASO 1: Verificar que el símbolo existe con Yahoo V8 (GRATIS)
+      const v8Data = await yahooV8Service.getQuote(symbol);
+      if (!v8Data || v8Data.regularMarketPrice === 0) {
+        console.log(`[CorporateEvents] Símbolo no encontrado: ${symbol}`);
         return null;
       }
       
-      const events = this.parseEvents(symbol, result);
+      // PASO 2: Intentar con RapidAPI para datos completos
+      if (rapidApiYahooService.isAvailable()) {
+        const rapidApiData = await rapidApiYahooService.getQuoteSummary(symbol);
+        if (rapidApiData && rapidApiData.dataAvailable && 
+            (rapidApiData.calendarEvents || rapidApiData.upgradeDowngradeHistory)) {
+          console.log(`[CorporateEvents] Datos obtenidos via RapidAPI para ${symbol}`);
+          const events = this.parseFromRapidApi(symbol, rapidApiData);
+          eventsCache.set(symbol, { data: events, timestamp: Date.now() });
+          return events;
+        }
+      }
       
-      // Guardar en caché
-      eventsCache.set(symbol, { data: events, timestamp: Date.now() });
-      
-      return events;
+      // PASO 3: Generar datos básicos desde V8
+      console.log(`[CorporateEvents] Generando datos básicos desde V8 para ${symbol}`);
+      const basicEvents = this.generateBasicEvents(symbol, v8Data);
+      eventsCache.set(symbol, { data: basicEvents, timestamp: Date.now() });
+      return basicEvents;
       
     } catch (error: any) {
       console.error(`[CorporateEvents] Error para ${symbol}:`, error.message);
       return null;
     }
+  }
+  
+  /**
+   * Genera eventos básicos cuando no hay datos de RapidAPI
+   */
+  private generateBasicEvents(symbol: string, v8Data: any): CorporateEvents {
+    // Calcular impacto basado en tendencia de precio
+    const price = v8Data.regularMarketPrice || 0;
+    const ma50 = v8Data.fiftyDayAverage || price;
+    const ma200 = v8Data.twoHundredDayAverage || price;
+    
+    let trendImpact = 0;
+    if (price > ma50 && ma50 > ma200) trendImpact = 15;
+    else if (price < ma50 && ma50 < ma200) trendImpact = -15;
+    
+    return {
+      symbol,
+      
+      // Sin datos de earnings calendar
+      nextEarningsDate: null,
+      earningsImpact: 0,
+      
+      // Sin datos de dividendos
+      dividend: null,
+      dividendImpact: 0,
+      
+      // Sin splits recientes
+      recentSplit: null,
+      splitImpact: 0,
+      
+      // Sin upgrades/downgrades
+      recentAnalystActions: [],
+      analystActionsImpact: 0,
+      
+      // Score conservador basado en tendencia
+      overallImpact: trendImpact,
+      
+      summary: 'Datos de eventos corporativos no disponibles. Impacto estimado desde tendencia de precio.',
+    };
+  }
+  
+  /**
+   * Parsea datos desde RapidAPI al formato CorporateEvents
+   */
+  private parseFromRapidApi(symbol: string, data: YahooQuoteSummary): CorporateEvents {
+    const now = new Date();
+    
+    // Parsear próximo earnings
+    let nextEarningsDate: EarningsEvent | null = null;
+    if (data.calendarEvents?.earningsDate) {
+      const date = new Date(data.calendarEvents.earningsDate * 1000);
+      const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const month = date.getMonth();
+      const year = date.getFullYear();
+      const quarter = `Q${Math.ceil((month + 1) / 3)} ${year}`;
+      
+      nextEarningsDate = {
+        date,
+        daysUntil,
+        isUpcoming: daysUntil >= 0 && daysUntil <= 30,
+        quarter,
+        estimatedEPS: data.earningsTrend?.currentQuarterEstimate || null,
+        revenueEstimate: data.earningsTrend?.revenueEstimateCurrent || null,
+      };
+    }
+    
+    // Parsear dividendos
+    let dividend: DividendEvent | null = null;
+    if (data.dividendYield || data.calendarEvents?.dividendDate) {
+      const exDate = data.calendarEvents?.exDividendDate 
+        ? new Date(data.calendarEvents.exDividendDate * 1000)
+        : null;
+      const payDate = data.calendarEvents?.dividendDate
+        ? new Date(data.calendarEvents.dividendDate * 1000)
+        : null;
+      
+      const isUpcoming = exDate 
+        ? (exDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24) <= 30 && exDate > now
+        : false;
+      
+      dividend = {
+        exDate,
+        payDate,
+        amount: null, // No disponible directamente
+        yield: data.dividendYield ? data.dividendYield * 100 : null,
+        isUpcoming,
+      };
+    }
+    
+    // Parsear acciones de analistas desde upgradeDowngradeHistory
+    const recentAnalystActions: AnalystAction[] = (data.upgradeDowngradeHistory || [])
+      .slice(0, 10)
+      .filter((u) => {
+        const actionDate = new Date(u.epochGradeDate * 1000);
+        const daysSince = (now.getTime() - actionDate.getTime()) / (1000 * 60 * 60 * 24);
+        return daysSince <= 30; // Solo últimos 30 días
+      })
+      .map((u) => {
+        let action: AnalystAction['action'] = 'maintain';
+        let impact = 0;
+        
+        if (u.action === 'up' || u.action === 'upgrade') {
+          action = 'upgrade';
+          impact = 50;
+        } else if (u.action === 'down' || u.action === 'downgrade') {
+          action = 'downgrade';
+          impact = -50;
+        } else if (u.action === 'init' || u.action === 'initiated') {
+          action = 'init';
+          // El impacto depende del grade
+          const grade = u.toGrade?.toLowerCase() || '';
+          if (grade.includes('buy') || grade.includes('outperform')) impact = 30;
+          else if (grade.includes('sell') || grade.includes('underperform')) impact = -30;
+        }
+        
+        return {
+          date: new Date(u.epochGradeDate * 1000),
+          firm: u.firm,
+          action,
+          fromGrade: u.fromGrade || '',
+          toGrade: u.toGrade || '',
+          impact,
+        };
+      });
+    
+    // Calcular impactos
+    const earningsImpact = this.calculateEarningsImpact(nextEarningsDate);
+    const dividendImpact = this.calculateDividendImpact(dividend);
+    const splitImpact = 0; // No hay info de splits en este endpoint
+    const analystActionsImpact = this.calculateAnalystActionsImpact(recentAnalystActions);
+    
+    // Calcular impacto total
+    const overallImpact = Math.round(
+      earningsImpact * 0.3 + 
+      dividendImpact * 0.2 + 
+      splitImpact * 0.1 + 
+      analystActionsImpact * 0.4
+    );
+    
+    // Generar resumen
+    const summary = this.generateSummary(nextEarningsDate, dividend, null, recentAnalystActions);
+    
+    return {
+      symbol,
+      nextEarningsDate,
+      earningsImpact,
+      dividend,
+      dividendImpact,
+      recentSplit: null,
+      splitImpact,
+      recentAnalystActions,
+      analystActionsImpact,
+      overallImpact,
+      summary
+    };
   }
 
   /**

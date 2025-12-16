@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 15 de diciembre de 2025  
-**Commit actual:** `486ceab`
+**Última actualización:** 16 de diciembre de 2025  
+**Commit actual:** `1f0a1d0`
 
 ---
 
@@ -9,6 +9,7 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
+| `1f0a1d0` | 16/12/2025 | Fix: Ticker GPS → GAP (Gap Inc delistado) |
 | `486ceab` | 15/12/2025 | Fix: Pesos normalizados en fórmula de auditoría |
 | `cdfe4d6` | 15/12/2025 | **Factor Macro mejorado** - CPI (Inflación), GDP (PIB), NFP (Empleo), PMI (Manufacturing/Services), Tasas bancos centrales (Fed/BCE/BoE/BoJ/PBOC), Ciclo económico, Eventos económicos próximos |
 | `c7080c6` | 15/12/2025 | **Factor Expectations mejorado** - Revenue Surprise (real vs estimado), Revisiones de analistas (7d/30d/90d trends), Fecha próximos earnings con riesgo, Beat Rate histórico, Whisper numbers |
