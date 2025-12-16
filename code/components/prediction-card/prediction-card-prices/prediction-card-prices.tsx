@@ -12,16 +12,9 @@ export const PredictionCardPrices: React.FC<PredictionCardPricesProps> = ({ pred
   const directionColor = getDirectionColor(prediction.direction);
   
   // Determinar el precio objetivo a mostrar
-  // Si min y max son iguales o muy cercanos, mostrar solo un precio
-  const showSinglePrice = prediction.predictedPriceMin && prediction.predictedPriceMax && 
-    Math.abs(prediction.predictedPriceMax - prediction.predictedPriceMin) < 0.01;
-  
-  // Para SUBE: mostrar el max. Para BAJA: mostrar el min. Para MANTIENE: precio actual
-  const targetPrice = prediction.direction === 'up' 
-    ? prediction.predictedPriceMax 
-    : prediction.direction === 'down'
-      ? prediction.predictedPriceMin
-      : prediction.currentPrice;
+  // Siempre usar el precio predicho (predictedPriceMax), nunca el precio actual
+  // El precio predicho ya incluye el cambio esperado calculado
+  const targetPrice = prediction.predictedPriceMax || prediction.predictedPriceMin || prediction.predictedPrice;
 
   return (
     <View style={styles.container}>

@@ -843,22 +843,75 @@ class PredictionCalculatorService {
     // Score combinado: distribuir pesos SOLO entre factores con datos reales
     let combinedScore: number;
     
-    // Contar cuántos factores tienen datos
-    // Los pesos reflejan la importancia de cada factor para predicciones a corto plazo
-    // Total base se redistribuye a 1.00 entre factores disponibles
-    // NOTA: 11 factores ahora (añadido technical)
+    // --- PESOS DINÁMICOS SEGÚN TIMEFRAME ---
+    // Intradía (1 día): Factores de corto plazo dominan (trend, technical, sentiment, news)
+    // Swing (2-7 días): Balance entre técnico y fundamental
+    // Largo plazo (>7 días): Factores fundamentales dominan (financials, expectations, macro)
+    const getWeightsForTimeframe = (days: number): Record<string, number> => {
+      if (days <= 1) {
+        // INTRADÍA: Momentum y sentimiento son clave
+        return {
+          trend: 0.20,      // +150% - Tendencia reciente muy importante
+          technical: 0.25,  // +108% - Indicadores técnicos dominan
+          sentiment: 0.15,  // +150% - Sentimiento del día
+          news: 0.18,       // +29% - Noticias del momento
+          macro: 0.04,      // -43% - Macro menos relevante intradía
+          competitors: 0.04, // -50% - Competidores menos relevante
+          forex: 0.04,      // -50% - Forex menos relevante
+          institutional: 0.05, // -44% - Institucionales menos para 1 día
+          seasonality: 0.02, // -67% - Estacionalidad poco relevante
+          financials: 0.02,  // -82% - Financieros no afectan 1 día
+          expectations: 0.01, // -91% - Expectativas irrelevantes intradía
+        };
+      } else if (days <= 7) {
+        // SWING (2-7 días): Balance técnico-fundamental
+        return {
+          trend: 0.12,      // Tendencia importante
+          technical: 0.18,  // Técnicos siguen siendo clave
+          sentiment: 0.10,  // Sentimiento relevante
+          news: 0.15,       // Noticias pueden mover
+          macro: 0.08,      // Macro gana peso
+          competitors: 0.07, // Competidores normales
+          forex: 0.06,      // Forex normal
+          institutional: 0.10, // Institucionales importantes
+          seasonality: 0.04, // Estacionalidad algo más relevante
+          financials: 0.05,  // Financieros empiezan a importar
+          expectations: 0.05, // Expectativas empiezan a importar
+        };
+      } else {
+        // LARGO PLAZO (>7 días): Fundamentales dominan
+        return {
+          trend: 0.05,      // -38% - Tendencia menos decisiva
+          technical: 0.08,  // -33% - Técnicos menos importantes
+          sentiment: 0.04,  // -33% - Sentimiento puntual menos relevante
+          news: 0.08,       // -43% - Noticias se diluyen
+          macro: 0.12,      // +71% - Macro muy importante
+          competitors: 0.10, // +25% - Posición competitiva importa
+          forex: 0.08,      // Similar
+          institutional: 0.12, // +33% - Smart money clave
+          seasonality: 0.08, // +33% - Patrones estacionales aplican
+          financials: 0.13,  // +18% - Fundamentales clave
+          expectations: 0.12, // +9% - Expectativas de earnings
+        };
+      }
+    };
+    
+    const timeframeWeights = getWeightsForTimeframe(timeframeDays);
+    console.log(`[PredictionCalc] Timeframe: ${timeframeDays} días, pesos ajustados para ${timeframeDays <= 1 ? 'intradía' : timeframeDays <= 7 ? 'swing' : 'largo plazo'}`);
+    
+    // NOTA: 11 factores con pesos dinámicos según timeframe
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: 0.08 },
-      { name: 'technical', score: technicalScore, hasData: hasTechnicalData, baseWeight: 0.12 }, // Indicadores técnicos: muy importantes
-      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: 0.06 },
-      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: 0.14 }, // Noticias: impacto directo
-      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: 0.07 }, // Macro: contexto general
-      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: 0.08 }, // Competidores: contexto sector
-      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: 0.08 }, // Forex: impacto divisas
-      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: 0.09 }, // Grandes inversores
-      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, baseWeight: 0.06 }, // Estacionalidad: patrones temporales
-      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: 0.11 },
-      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: 0.11 },
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: timeframeWeights.trend },
+      { name: 'technical', score: technicalScore, hasData: hasTechnicalData, baseWeight: timeframeWeights.technical },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, baseWeight: timeframeWeights.sentiment },
+      { name: 'news', score: newsScore, hasData: hasNewsData, baseWeight: timeframeWeights.news },
+      { name: 'macro', score: macroScore, hasData: hasMacroData, baseWeight: timeframeWeights.macro },
+      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, baseWeight: timeframeWeights.competitors },
+      { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: timeframeWeights.forex },
+      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: timeframeWeights.institutional },
+      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, baseWeight: timeframeWeights.seasonality },
+      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: timeframeWeights.financials },
+      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: timeframeWeights.expectations },
     ];
     
     const availableFactors = factors.filter(f => f.hasData);
@@ -1034,162 +1087,34 @@ class PredictionCalculatorService {
     const dailyVolatility = volatility / Math.sqrt(252); // Volatilidad diaria
     const periodVolatility = dailyVolatility * Math.sqrt(timeframeDays);
     
-    // El cambio esperado se basa en la dirección y la volatilidad
-    let expectedChange: number;
-    if (direction === 'up') {
-      expectedChange = Math.min(periodVolatility * 0.5, 5); // Máximo 5% en 1 día
-    } else if (direction === 'down') {
-      expectedChange = -Math.min(periodVolatility * 0.5, 5);
-    } else {
-      expectedChange = 0;
-    }
+    // El cambio esperado se deriva DIRECTAMENTE del combinedScore
+    // combinedScore está en rango -100 a +100
+    // Convertir a % de cambio esperado basado en volatilidad
+    // Score de 100 = movimiento de ~1.5x volatilidad, Score de 0 = sin cambio
+    const scoreNormalized = combinedScore / 100; // -1 a +1
+    let expectedChange = scoreNormalized * periodVolatility * 1.2; // Factor de escala
     
-    // --- AJUSTES DE PRECIO CON REDISTRIBUCIÓN DE PESOS ---
-    // Cada ajuste tiene un peso base. Si no hay datos, los otros se redistribuyen.
-    
-    // Definir ajustes posibles con sus pesos base
-    interface PriceAdjustment {
-      name: string;
-      hasData: boolean;
-      baseWeight: number; // Peso base para redistribución
-      adjustment: number; // Ajuste calculado
-    }
-    
-    const priceAdjustments: PriceAdjustment[] = [];
-    
-    // 1. Precio objetivo de analistas (peso base: 0.25)
-    let targetAdjustment = 0;
+    // --- AJUSTE ADICIONAL: Precio objetivo de analistas ---
+    // Esto NO está incluido en combinedScore, así que lo añadimos aquí
+    // PERO: para intradía, el precio objetivo de analistas es IRRELEVANTE
+    // Solo aplica para swing/largo plazo
     const hasTargetData = financials !== null && financials.targetPrice > 0 && financials.currentVsTarget !== 0;
-    if (hasTargetData && financials) {
+    if (hasTargetData && financials && timeframeDays > 1) {
+      // Si los analistas ven potencial alcista/bajista significativo (>10%), influye
       const targetInfluence = Math.min(Math.abs(financials.currentVsTarget) / 100, 0.5);
       const targetDirection = financials.currentVsTarget > 0 ? 1 : -1;
-      targetAdjustment = targetInfluence * (periodVolatility * 0.3) * targetDirection;
-    }
-    priceAdjustments.push({ name: 'target', hasData: hasTargetData, baseWeight: 0.25, adjustment: targetAdjustment });
-    
-    // 2. Expectativas del mercado (peso base: 0.25)
-    let expectationsAdjustment = 0;
-    if (hasExpectationsData && financials && financials.expectationsScore !== undefined && financials.expectationsScore !== 50) {
-      const expectationsInfluence = (financials.expectationsScore - 50) / 100;
-      expectationsAdjustment = expectationsInfluence * periodVolatility * 0.4;
-      
-      // Bonus por sorpresa reciente fuerte
-      if (financials.lastEarningsSurprise && Math.abs(financials.lastEarningsSurprise) > 5) {
-        const surpriseBonus = Math.sign(financials.lastEarningsSurprise) * 
-                             Math.min(Math.abs(financials.lastEarningsSurprise) / 20, 0.5) * 
-                             periodVolatility * 0.2;
-        expectationsAdjustment += surpriseBonus;
-      }
-    }
-    priceAdjustments.push({ name: 'expectations', hasData: hasExpectationsData, baseWeight: 0.25, adjustment: expectationsAdjustment });
-    
-    // 3. Noticias recientes (peso base: 0.30)
-    let newsAdjustment = 0;
-    if (hasNewsData && news.sentimentScore !== 0) {
-      const newsInfluence = news.sentimentScore / 100;
-      newsAdjustment = newsInfluence * periodVolatility * 0.5;
-    }
-    priceAdjustments.push({ name: 'news', hasData: hasNewsData, baseWeight: 0.30, adjustment: newsAdjustment });
-    
-    // 4. Contexto macroeconómico (peso base: 0.15)
-    let macroAdjustment = 0;
-    if (hasMacroData && macro.macroScore !== 0) {
-      const macroInfluence = macro.macroScore / 100;
-      macroAdjustment = macroInfluence * periodVolatility * 0.3;
-    }
-    priceAdjustments.push({ name: 'macro', hasData: hasMacroData, baseWeight: 0.15, adjustment: macroAdjustment });
-    
-    // 5. Análisis de competidores (peso base: 0.20)
-    // Si los competidores caen, puede arrastrar el precio
-    // Si la empresa supera a competidores, puede impulsar el precio
-    let competitorsAdjustment = 0;
-    if (hasCompetitorsData && competitors.competitorScore !== 0) {
-      const competitorsInfluence = competitors.competitorScore / 100;
-      // Impacto similar a noticias - el sector afecta directamente
-      competitorsAdjustment = competitorsInfluence * periodVolatility * 0.4;
-      
-      // Bonus/penalización adicional si destaca mucho o está muy rezagado
-      if (competitors.outperforming && competitors.companyVsSector1w > 3) {
-        competitorsAdjustment += periodVolatility * 0.1; // Bonus por destacar
-      } else if (!competitors.outperforming && competitors.companyVsSector1w < -3) {
-        competitorsAdjustment -= periodVolatility * 0.1; // Penalización por rezago
-      }
-    }
-    priceAdjustments.push({ name: 'competitors', hasData: hasCompetitorsData, baseWeight: 0.18, adjustment: competitorsAdjustment });
-    
-    // 6. Tipos de cambio (peso base: 0.10)
-    // EUR fuerte = negativo para exportadores europeos
-    // Impacto moderado pero constante
-    let forexAdjustment = 0;
-    if (hasForexData && forex.forexScore !== 0) {
-      const forexInfluence = forex.forexScore / 100;
-      // Impacto más moderado que noticias - es un factor de fondo
-      forexAdjustment = forexInfluence * periodVolatility * 0.25;
-    }
-    priceAdjustments.push({ name: 'forex', hasData: hasForexData, baseWeight: 0.10, adjustment: forexAdjustment });
-    
-    // 7. Inversores institucionales (peso base: 0.12)
-    // Las compras de insiders y grandes fondos son señales muy importantes
-    // "Follow the smart money" - si los que mejor conocen la empresa compran, es buena señal
-    let institutionalAdjustment = 0;
-    if (hasInstitutionalData && institutional.institutionalScore !== 0) {
-      const instInfluence = institutional.institutionalScore / 100;
-      // Impacto significativo - las compras de insiders predicen bien
-      institutionalAdjustment = instInfluence * periodVolatility * 0.4;
-      
-      // Bonus/penalización extra si hay transacciones de insiders claras
-      if (institutional.insiderTransactions) {
-        const netShares = institutional.insiderTransactions.netShares;
-        if (netShares > 100000) {
-          institutionalAdjustment += periodVolatility * 0.15; // Insiders comprando fuerte
-        } else if (netShares < -100000) {
-          institutionalAdjustment -= periodVolatility * 0.15; // Insiders vendiendo fuerte
-        }
-      }
-    }
-    priceAdjustments.push({ name: 'institutional', hasData: hasInstitutionalData, baseWeight: 0.12, adjustment: institutionalAdjustment });
-    
-    // 8. Estacionalidad (peso base: 0.08)
-    // Patrones temporales como Black Friday, temporada turística, etc.
-    // Impacto moderado pero predecible
-    let seasonalityAdjustment = 0;
-    if (hasSeasonalityData && seasonality.seasonalScore !== 0) {
-      const seasonInfluence = seasonality.seasonalScore / 100;
-      // Impacto moderado - la estacionalidad es un factor de fondo
-      seasonalityAdjustment = seasonInfluence * periodVolatility * 0.3;
-      
-      // Bonus extra si hay eventos de alto impacto próximos (Black Friday, Navidad, etc.)
-      const highImpactEvents = seasonality.seasonalEvents.filter(e => e.impact === 'high' && e.daysUntil <= 14);
-      if (highImpactEvents.length > 0) {
-        const eventBonus = highImpactEvents[0].type === 'positive' ? 0.1 : -0.1;
-        seasonalityAdjustment += periodVolatility * eventBonus;
-      }
-    }
-    priceAdjustments.push({ name: 'seasonality', hasData: hasSeasonalityData, baseWeight: 0.08, adjustment: seasonalityAdjustment });
-    
-    // Calcular ajuste total con redistribución de pesos
-    const availablePriceAdjustments = priceAdjustments.filter(a => a.hasData);
-    
-    if (availablePriceAdjustments.length > 0) {
-      const totalAdjustmentWeight = availablePriceAdjustments.reduce((sum, a) => sum + a.baseWeight, 0);
-      
-      // Aplicar cada ajuste con su peso normalizado
-      for (const adj of availablePriceAdjustments) {
-        const normalizedWeight = adj.baseWeight / totalAdjustmentWeight; // Normalizar a suma = 1
-        const weightedAdjustment = adj.adjustment * normalizedWeight;
-        expectedChange += weightedAdjustment;
-        
-        console.log(`[PredictionCalc] Ajuste ${adj.name}: ${weightedAdjustment.toFixed(2)}% (peso: ${(normalizedWeight * 100).toFixed(0)}%)`);
-      }
-      
-      console.log(`[PredictionCalc] Ajustes disponibles: ${availablePriceAdjustments.length}/${priceAdjustments.length}`);
-    } else {
-      console.log(`[PredictionCalc] Sin ajustes adicionales - solo tendencia histórica`);
+      // Peso aumenta con el timeframe (0% para 1d, 15% para 7d, 25% para 30d)
+      const timeframeWeight = Math.min(timeframeDays / 30, 1) * 0.25;
+      const targetAdjustment = targetInfluence * (periodVolatility * timeframeWeight) * targetDirection;
+      expectedChange += targetAdjustment;
+      console.log(`[PredictionCalc] Ajuste precio objetivo analistas: ${targetAdjustment.toFixed(2)}% (${financials.currentVsTarget.toFixed(1)}% vs objetivo, peso timeframe: ${(timeframeWeight * 100).toFixed(0)}%)`);
     }
     
-    // Limitar el cambio máximo razonable para el timeframe
+    // Aplicar límites según timeframe
     const maxChange = Math.min(periodVolatility * 1.5, timeframeDays === 1 ? 8 : 15);
     expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
+    
+    console.log(`[PredictionCalc] Cambio esperado final: ${expectedChange.toFixed(2)}% (score: ${combinedScore.toFixed(1)}, volatilidad periodo: ${periodVolatility.toFixed(2)}%)`);
 
     // --- CÁLCULO DE PRECIO OBJETIVO ÚNICO ---
     // No dar rangos inútiles - dar UN precio objetivo basado en el análisis
