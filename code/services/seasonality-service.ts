@@ -1394,7 +1394,7 @@ const SYMBOL_TO_SECTOR: Record<string, string> = {
   'H&M-B.ST': 'retail',
   'NKE': 'retail',
   'LULU': 'retail',
-  'GPS': 'retail',
+  'GAP': 'retail',
   'TJX': 'retail',
   'COST': 'retail',
   'WMT': 'retail',

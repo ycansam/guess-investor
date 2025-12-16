@@ -54,7 +54,7 @@ const COMPANY_COMPETITORS: Record<string, { sector: string; sectorName: string; 
     sectorName: 'Moda y Textil',
     competitors: [
       { symbol: 'HM-B.ST', name: 'H&M' },
-      { symbol: 'GPS', name: 'Gap Inc' },
+      { symbol: 'GAP', name: 'Gap Inc' },
     ]
   },
   
