@@ -960,44 +960,66 @@ class PredictionCalculatorService {
     console.log(`[PredictionCalc] Factores relevantes: ${relevantFactors.map(f => f.name).join(', ')}`);
     console.log(`[PredictionCalc] Factores disponibles: ${availableRelevantFactors.map(f => f.name).join(', ')}`);
     
-    // Calcular coherencia SOLO entre factores relevantes y disponibles
+    // Calcular coherencia PONDERADA por los pesos del timeframe
+    // Así, para intradía, trend/technical/sentiment pesan más en la coherencia que seasonality/financials
     let signalCoherence = 50; // Base neutral
-    let signalStrength = 0; // Fuerza promedio de las señales
+    let signalStrength = 0; // Fuerza ponderada de las señales
     
     if (availableRelevantFactors.length >= 1) {
-      const positiveSignals = availableRelevantFactors.filter(f => f.score > 10).length;
-      const negativeSignals = availableRelevantFactors.filter(f => f.score < -10).length;
-      const strongPositive = availableRelevantFactors.filter(f => f.score > 30).length;
-      const strongNegative = availableRelevantFactors.filter(f => f.score < -30).length;
+      // Calcular peso total de factores disponibles
+      const totalAvailableWeight = availableRelevantFactors.reduce((sum, f) => sum + f.baseWeight, 0);
       
-      // Fuerza promedio de las señales (0-100)
-      signalStrength = Math.min(100, Math.abs(
-        availableRelevantFactors.reduce((sum, f) => sum + f.score, 0) / availableRelevantFactors.length
-      ));
+      // Suma ponderada de señales positivas y negativas
+      let positiveWeightedSum = 0; // Peso total de señales positivas (score > 10)
+      let negativeWeightedSum = 0; // Peso total de señales negativas (score < -10)
+      let strongPositiveWeight = 0; // Peso de señales muy fuertes (score > 30)
+      let strongNegativeWeight = 0; // Peso de señales muy fuertes (score < -30)
+      
+      for (const factor of availableRelevantFactors) {
+        const normalizedWeight = factor.baseWeight / totalAvailableWeight;
+        if (factor.score > 10) {
+          positiveWeightedSum += normalizedWeight;
+          if (factor.score > 30) strongPositiveWeight += normalizedWeight;
+        } else if (factor.score < -10) {
+          negativeWeightedSum += normalizedWeight;
+          if (factor.score < -30) strongNegativeWeight += normalizedWeight;
+        }
+      }
+      
+      // Fuerza ponderada de las señales (0-100)
+      const weightedScoreSum = availableRelevantFactors.reduce((sum, f) => {
+        const normalizedWeight = f.baseWeight / totalAvailableWeight;
+        return sum + (Math.abs(f.score) * normalizedWeight);
+      }, 0);
+      signalStrength = Math.min(100, weightedScoreSum);
+      
+      const totalNonNeutralWeight = positiveWeightedSum + negativeWeightedSum;
       
       if (availableRelevantFactors.length === 1) {
         // Solo 1 factor: confianza limitada, depende de la fuerza
         signalCoherence = signalStrength > 30 ? 50 : 40;
+      } else if (totalNonNeutralWeight < 0.1) {
+        // Casi todas las señales son neutrales (poco peso no-neutral)
+        signalCoherence = 45;
       } else {
-        // 2+ factores: calcular coherencia
-        const totalNonNeutral = positiveSignals + negativeSignals;
+        // Calcular coherencia basada en el peso dominante
+        const dominantWeight = Math.max(positiveWeightedSum, negativeWeightedSum);
+        const coherenceRatio = dominantWeight / totalNonNeutralWeight;
         
-        if (totalNonNeutral === 0) {
-          // Todas las señales neutrales
-          signalCoherence = 45;
-        } else if (positiveSignals === totalNonNeutral || negativeSignals === totalNonNeutral) {
-          // Todas las señales van en la misma dirección
+        if (coherenceRatio > 0.85) {
+          // Las señales con peso van casi todas en la misma dirección
           signalCoherence = 75;
-          // Bonus si además son fuertes
-          if (strongPositive >= 2 || strongNegative >= 2) {
+          // Bonus si además son fuertes (peso significativo con score >30)
+          if (strongPositiveWeight > 0.3 || strongNegativeWeight > 0.3) {
             signalCoherence = 85;
           }
         } else {
-          // Señales contradictorias
-          const coherenceRatio = Math.max(positiveSignals, negativeSignals) / totalNonNeutral;
-          signalCoherence = 30 + (coherenceRatio * 25); // 30-55%
+          // Señales contradictorias - coherencia proporcional al ratio
+          signalCoherence = 30 + (coherenceRatio * 40); // 30-70%
         }
       }
+      
+      console.log(`[PredictionCalc] Coherencia ponderada: pos=${(positiveWeightedSum*100).toFixed(0)}%, neg=${(negativeWeightedSum*100).toFixed(0)}%, ratio=${totalNonNeutralWeight > 0 ? (Math.max(positiveWeightedSum, negativeWeightedSum) / totalNonNeutralWeight * 100).toFixed(0) : 0}%`);
     }
     
     // Calcular confianza final
