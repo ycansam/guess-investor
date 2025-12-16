@@ -9,6 +9,7 @@
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
+import { economicIndicatorsService } from './economic-indicators-service';
 
 export interface MacroIndicators {
   region: string;

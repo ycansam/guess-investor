@@ -125,6 +125,21 @@ const STOCK_TO_SECTOR_ETF_MAP: Record<string, { sector: string; etfs: string[] }
   // Crypto
   'BTC-USD': { sector: 'Crypto', etfs: ['BITO', 'BTF', 'GBTC'] },
   'ETH-USD': { sector: 'Crypto', etfs: ['ETHE', 'ETHU'] },
+  
+  // Acciones europeas (usan ETFs de Europa como proxy)
+  'ITX.MC': { sector: 'Consumer Discretionary EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'SAN.MC': { sector: 'Financials EU', etfs: ['EUFN', 'EZU', 'VGK'] },
+  'BBVA.MC': { sector: 'Financials EU', etfs: ['EUFN', 'EZU', 'VGK'] },
+  'TEF.MC': { sector: 'Communication EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'IBE.MC': { sector: 'Utilities EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'REP.MC': { sector: 'Energy EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'SAP.DE': { sector: 'Technology EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'SIE.DE': { sector: 'Industrials EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'BMW.DE': { sector: 'Consumer Discretionary EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'VOW3.DE': { sector: 'Consumer Discretionary EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'MC.PA': { sector: 'Consumer Discretionary EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'OR.PA': { sector: 'Consumer Staples EU', etfs: ['EZU', 'VGK', 'FEZ'] },
+  'TTE.PA': { sector: 'Energy EU', etfs: ['EZU', 'VGK', 'FEZ'] },
 };
 
 // ETFs principales del mercado

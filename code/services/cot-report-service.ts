@@ -107,6 +107,24 @@ const STOCK_TO_FUTURES_MAP: Record<string, { future: string; name: string }> = {
   
   // EUR/USD Forex
   'FXE': { future: 'EUR', name: 'EURO FX' },
+  
+  // Acciones europeas (usan EURO STOXX 50 como proxy)
+  'ITX.MC': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'SAN.MC': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'BBVA.MC': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'TEF.MC': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'IBE.MC': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'REP.MC': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'ACS.MC': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  // Alemanas
+  'SAP.DE': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'SIE.DE': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'BMW.DE': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'VOW3.DE': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  // Francesas
+  'MC.PA': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'OR.PA': { future: 'ESTX50', name: 'EURO STOXX 50' },
+  'TTE.PA': { future: 'ESTX50', name: 'EURO STOXX 50' },
 };
 
 // Datos históricos de COT para cálculo de extremos
@@ -117,6 +135,7 @@ const COT_HISTORICAL_EXTREMES: Record<string, { maxLong: number; maxShort: numbe
   'CL': { maxLong: 700000, maxShort: -400000 },
   'GC': { maxLong: 400000, maxShort: -150000 },
   'BTC': { maxLong: 25000, maxShort: -15000 },
+  'ESTX50': { maxLong: 200000, maxShort: -150000 }, // Euro Stoxx 50
 };
 
 // Cache
