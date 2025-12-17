@@ -1,9 +1,11 @@
 /**
  * Servicio unificado de sentimiento de mercado
- * Combina datos de StockTwits, Fear & Greed Index, Reddit, VIX y Put/Call Ratio
+ * Combina datos de Finviz, Fear & Greed Index, Reddit, VIX y Put/Call Ratio
+ * NOTA: Finviz reemplaza a StockTwits (bloqueado por Cloudflare)
  */
 
 import { fearGreedService } from './fear-greed-service';
+import { FinvizData, finvizService } from './finviz-service';
 import { optionsService } from './options-service';
 import { redditService } from './reddit-service';
 import { stocktwitsService } from './stocktwits-service';
@@ -13,12 +15,14 @@ export interface MarketSentiment {
   symbol?: string;
   type: 'stock' | 'crypto';
   stocktwits: string | null;
+  finviz: string | null; // Nueva fuente principal
   fearGreed: string | null;
   reddit: string | null;
   vix: string | null;
   putCallRatio: string | null;
   summary: string;
   overallScore: number; // -100 a +100
+  finvizData?: FinvizData | null; // Datos raw de Finviz
   timestamp: Date;
 }
 
@@ -30,31 +34,38 @@ class SentimentService {
     console.log(`[Sentiment] Obteniendo sentimiento para ${symbol} (${type})`);
 
     const results = await Promise.allSettled([
-      this.getStockTwitsSentiment(symbol),
+      type === 'stock' ? this.getFinvizData(symbol) : Promise.resolve(null),
+      this.getStockTwitsSentiment(symbol), // Fallback, suele fallar por Cloudflare
       type === 'crypto' ? this.getFearGreedSentiment() : Promise.resolve(null),
       this.getRedditSentiment(symbol, type),
       type === 'stock' ? this.getVIXSentiment() : Promise.resolve(null),
       type === 'stock' ? this.getPutCallRatioSentiment() : Promise.resolve(null),
     ]);
 
-    const stocktwits = results[0].status === 'fulfilled' ? results[0].value : null;
-    const fearGreed = results[1].status === 'fulfilled' ? results[1].value : null;
-    const reddit = results[2].status === 'fulfilled' ? results[2].value : null;
-    const vix = results[3].status === 'fulfilled' ? results[3].value : null;
-    const putCallRatio = results[4].status === 'fulfilled' ? results[4].value : null;
+    const finvizData = results[0].status === 'fulfilled' ? results[0].value : null;
+    const stocktwits = results[1].status === 'fulfilled' ? results[1].value : null;
+    const fearGreed = results[2].status === 'fulfilled' ? results[2].value : null;
+    const reddit = results[3].status === 'fulfilled' ? results[3].value : null;
+    const vix = results[4].status === 'fulfilled' ? results[4].value : null;
+    const putCallRatio = results[5].status === 'fulfilled' ? results[5].value : null;
 
-    // Calcular score general
-    const overallScore = await this.calculateOverallScore(type);
+    // Formatear Finviz para display
+    const finviz = finvizData ? finvizService.formatForAI(finvizData) : null;
+
+    // Calcular score general (ahora incluye Finviz)
+    const overallScore = await this.calculateOverallScore(type, finvizData);
 
     return {
       symbol,
       type,
       stocktwits,
+      finviz,
+      finvizData,
       fearGreed,
       reddit,
       vix,
       putCallRatio,
-      summary: this.generateSummary(stocktwits, fearGreed, reddit, vix, putCallRatio),
+      summary: this.generateSummary(stocktwits, fearGreed, reddit, vix, putCallRatio, finviz),
       overallScore,
       timestamp: new Date(),
     };
@@ -84,22 +95,42 @@ class SentimentService {
     return {
       type,
       stocktwits: null,
+      finviz: null,
+      finvizData: null,
       fearGreed,
       reddit,
       vix,
       putCallRatio,
-      summary: this.generateSummary(null, fearGreed, reddit, vix, putCallRatio),
+      summary: this.generateSummary(null, fearGreed, reddit, vix, putCallRatio, null),
       overallScore,
       timestamp: new Date(),
     };
   }
 
   /**
-   * Obtiene sentimiento de StockTwits
+   * Obtiene datos de Finviz (reemplaza StockTwits que está bloqueado)
+   */
+  private async getFinvizData(symbol: string): Promise<FinvizData | null> {
+    try {
+      return await finvizService.getData(symbol);
+    } catch (error) {
+      console.log(`[Sentiment] Error obteniendo Finviz para ${symbol}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Obtiene sentimiento de StockTwits (fallback, suele estar bloqueado por Cloudflare)
    */
   private async getStockTwitsSentiment(symbol: string): Promise<string | null> {
-    const data = await stocktwitsService.getSentiment(symbol);
-    return data ? stocktwitsService.formatForAI(data) : null;
+    try {
+      const data = await stocktwitsService.getSentiment(symbol);
+      return data ? stocktwitsService.formatForAI(data) : null;
+    } catch (error) {
+      // StockTwits suele fallar por Cloudflare, no loggear como error
+      console.log(`[Sentiment] StockTwits no disponible para ${symbol}`);
+      return null;
+    }
   }
 
   /**
@@ -145,21 +176,33 @@ class SentimentService {
   /**
    * Calcula un score de sentimiento general combinando todas las fuentes
    */
-  private async calculateOverallScore(type: 'stock' | 'crypto'): Promise<number> {
+  private async calculateOverallScore(type: 'stock' | 'crypto', finvizData?: FinvizData | null): Promise<number> {
     const scores: { score: number; weight: number }[] = [];
 
     try {
+      // Finviz (peso alto - datos de analistas y técnicos muy fiables)
+      if (finvizData) {
+        // Score de analistas (recomendación + target)
+        if (finvizData.analystScore !== 0) {
+          scores.push({ score: finvizData.analystScore, weight: 35 });
+        }
+        // Score técnico (RSI, SMAs)
+        if (finvizData.technicalScore !== 0) {
+          scores.push({ score: finvizData.technicalScore, weight: 20 });
+        }
+      }
+
       // VIX (solo para stocks) - peso alto porque es muy confiable
       if (type === 'stock') {
         const vixData = await vixService.getCurrentVIX();
         if (vixData) {
-          scores.push({ score: vixData.sentimentScore, weight: 30 });
+          scores.push({ score: vixData.sentimentScore, weight: 25 });
         }
 
-        // Put/Call Ratio - peso alto para stocks
+        // Put/Call Ratio - peso medio para stocks
         const pcData = await optionsService.getMarketPutCallRatio();
         if (pcData) {
-          scores.push({ score: pcData.sentimentScore, weight: 25 });
+          scores.push({ score: pcData.sentimentScore, weight: 20 });
         }
       }
 
@@ -197,10 +240,12 @@ class SentimentService {
     fearGreed: string | null,
     reddit: string | null,
     vix: string | null,
-    putCallRatio: string | null
+    putCallRatio: string | null,
+    finviz: string | null
   ): string {
     const sources: string[] = [];
     
+    if (finviz) sources.push('Finviz (Analysts)');
     if (stocktwits) sources.push('StockTwits');
     if (fearGreed) sources.push('Fear & Greed Index');
     if (reddit) sources.push('Reddit');
@@ -234,7 +279,12 @@ class SentimentService {
       output += `\n${scoreEmoji} SCORE GENERAL: ${sentiment.overallScore > 0 ? '+' : ''}${sentiment.overallScore}/100 (${scoreLabel})\n`;
     }
 
-    // VIX primero (indicador institucional principal)
+    // Finviz primero (datos de analistas - muy importantes)
+    if (sentiment.finviz) {
+      output += `\n📊 FINVIZ (Consensus de Analistas):\n${sentiment.finviz}\n`;
+    }
+
+    // VIX (indicador institucional principal)
     if (sentiment.vix) {
       output += sentiment.vix;
     }
@@ -256,7 +306,7 @@ class SentimentService {
       output += sentiment.reddit;
     }
 
-    if (!sentiment.stocktwits && !sentiment.fearGreed && !sentiment.reddit && !sentiment.vix && !sentiment.putCallRatio) {
+    if (!sentiment.finviz && !sentiment.stocktwits && !sentiment.fearGreed && !sentiment.reddit && !sentiment.vix && !sentiment.putCallRatio) {
       output += '\nℹ️ No se encontró información de sentimiento para este activo.\n';
     }
 
