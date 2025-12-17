@@ -3,8 +3,10 @@
  * basándose en datos reales de mercado y sentimiento.
  * 
  * NO usa IA para los números, solo datos matemáticos reales.
+ * Los pesos de factores pueden ser optimizados por el sistema ML de Python.
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { CorporateEvents, corporateEventsService } from './corporate-events-service';
@@ -20,6 +22,21 @@ import { sentimentService } from './sentiment-service';
 import { TechnicalAnalysis, technicalIndicatorsService } from './technical-indicators-service';
 import { vixService } from './vix-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
+
+// Clave para pesos aprendidos en AsyncStorage
+const LEARNED_WEIGHTS_KEY = 'learned-weights';
+
+// Interfaz para pesos aprendidos
+interface LearnedWeights {
+  version: string;
+  updated_at: string | null;
+  training_samples: number;
+  weights: {
+    intraday: Record<string, number>;
+    swing: Record<string, number>;
+    long: Record<string, number>;
+  } | null;
+}
 
 export interface CalculatedPrediction {
   asset: string;
@@ -41,6 +58,8 @@ export interface CalculatedPrediction {
     assetGroupDescription: string; // Descripción legible
     relevantFactors: string[]; // Factores que aplican a este tipo de activo
     availableFactors: { name: string; score: number; hasData: boolean }[]; // Todos los factores con su score
+    weightsUsed: Record<string, number>; // Pesos usados para cada factor (para ML)
+    usingLearnedWeights: boolean; // Si se usaron pesos aprendidos por ML
     confidenceExplanation: string; // Por qué la confianza es X%
     signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
   };
@@ -559,7 +578,7 @@ class PredictionCalculatorService {
       }
 
       // 12. Calcular predicción de forma determinística
-      const prediction = this.calculateFromData(
+      const prediction = await this.calculateFromData(
         symbol,
         type,
         quote.price,
@@ -707,7 +726,7 @@ class PredictionCalculatorService {
    * - Confianza: basada en coherencia de señales + cantidad de datos
    * - Precio objetivo: basado en volatilidad histórica real + precio objetivo analistas
    */
-  private calculateFromData(
+  private async calculateFromData(
     symbol: string,
     type: 'stock' | 'crypto',
     currentPrice: number,
@@ -724,7 +743,7 @@ class PredictionCalculatorService {
     technical: TechnicalAnalysis,
     timeframeDays: number,
     expectationsEnhanced: ExpectationsData | null = null
-  ): CalculatedPrediction {
+  ): Promise<CalculatedPrediction> {
     // --- FLAGS DE DATOS DISPONIBLES ---
     const hasHistoricalData = historical !== null && (historical.change30d !== 0 || historical.change90d !== 0);
     const hasSentimentData = sentiment.hasData;
@@ -844,60 +863,59 @@ class PredictionCalculatorService {
     let combinedScore: number;
     
     // --- PESOS DINÁMICOS SEGÚN TIMEFRAME ---
+    // Los pesos pueden venir del sistema ML (aprendidos) o usar defaults
     // Intradía (1 día): Factores de corto plazo dominan (trend, technical, sentiment, news)
     // Swing (2-7 días): Balance entre técnico y fundamental
     // Largo plazo (>7 días): Factores fundamentales dominan (financials, expectations, macro)
-    const getWeightsForTimeframe = (days: number): Record<string, number> => {
-      if (days <= 1) {
-        // INTRADÍA: Momentum y sentimiento son clave
-        return {
-          trend: 0.20,      // +150% - Tendencia reciente muy importante
-          technical: 0.25,  // +108% - Indicadores técnicos dominan
-          sentiment: 0.15,  // +150% - Sentimiento del día
-          news: 0.18,       // +29% - Noticias del momento
-          macro: 0.04,      // -43% - Macro menos relevante intradía
-          competitors: 0.04, // -50% - Competidores menos relevante
-          forex: 0.04,      // -50% - Forex menos relevante
-          institutional: 0.05, // -44% - Institucionales menos para 1 día
-          seasonality: 0.02, // -67% - Estacionalidad poco relevante
-          financials: 0.02,  // -82% - Financieros no afectan 1 día
-          expectations: 0.01, // -91% - Expectativas irrelevantes intradía
-        };
-      } else if (days <= 7) {
-        // SWING (2-7 días): Balance técnico-fundamental
-        return {
-          trend: 0.12,      // Tendencia importante
-          technical: 0.18,  // Técnicos siguen siendo clave
-          sentiment: 0.10,  // Sentimiento relevante
-          news: 0.15,       // Noticias pueden mover
-          macro: 0.08,      // Macro gana peso
-          competitors: 0.07, // Competidores normales
-          forex: 0.06,      // Forex normal
-          institutional: 0.10, // Institucionales importantes
-          seasonality: 0.04, // Estacionalidad algo más relevante
-          financials: 0.05,  // Financieros empiezan a importar
-          expectations: 0.05, // Expectativas empiezan a importar
-        };
-      } else {
-        // LARGO PLAZO (>7 días): Fundamentales dominan
-        return {
-          trend: 0.05,      // -38% - Tendencia menos decisiva
-          technical: 0.08,  // -33% - Técnicos menos importantes
-          sentiment: 0.04,  // -33% - Sentimiento puntual menos relevante
-          news: 0.08,       // -43% - Noticias se diluyen
-          macro: 0.12,      // +71% - Macro muy importante
-          competitors: 0.10, // +25% - Posición competitiva importa
-          forex: 0.08,      // Similar
-          institutional: 0.12, // +33% - Smart money clave
-          seasonality: 0.08, // +33% - Patrones estacionales aplican
-          financials: 0.13,  // +18% - Fundamentales clave
-          expectations: 0.12, // +9% - Expectativas de earnings
-        };
+    
+    // Pesos por defecto (se usan si no hay pesos aprendidos)
+    const DEFAULT_WEIGHTS = {
+      intraday: {
+        trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
+        macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
+        seasonality: 0.02, financials: 0.02, expectations: 0.01
+      },
+      swing: {
+        trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
+        macro: 0.08, competitors: 0.07, forex: 0.06, institutional: 0.10,
+        seasonality: 0.04, financials: 0.05, expectations: 0.05
+      },
+      long: {
+        trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08,
+        macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
+        seasonality: 0.08, financials: 0.13, expectations: 0.12
       }
     };
     
+    // Intentar cargar pesos aprendidos de AsyncStorage
+    let learnedWeights: LearnedWeights | null = null;
+    try {
+      const stored = await AsyncStorage.getItem(LEARNED_WEIGHTS_KEY);
+      if (stored) {
+        learnedWeights = JSON.parse(stored);
+        if (learnedWeights?.weights && learnedWeights.training_samples > 0) {
+          console.log(`[PredictionCalc] 🧠 Usando pesos aprendidos (${learnedWeights.training_samples} muestras)`);
+        }
+      }
+    } catch (error) {
+      console.log(`[PredictionCalc] No hay pesos aprendidos, usando defaults`);
+    }
+    
+    const getWeightsForTimeframe = (days: number): Record<string, number> => {
+      const timeframeKey = days <= 1 ? 'intraday' : days <= 7 ? 'swing' : 'long';
+      
+      // Usar pesos aprendidos si existen
+      if (learnedWeights?.weights?.[timeframeKey]) {
+        return learnedWeights.weights[timeframeKey];
+      }
+      
+      // Fallback a pesos por defecto
+      return DEFAULT_WEIGHTS[timeframeKey];
+    };
+    
     const timeframeWeights = getWeightsForTimeframe(timeframeDays);
-    console.log(`[PredictionCalc] Timeframe: ${timeframeDays} días, pesos ajustados para ${timeframeDays <= 1 ? 'intradía' : timeframeDays <= 7 ? 'swing' : 'largo plazo'}`);
+    const usingLearned = learnedWeights?.weights !== null;
+    console.log(`[PredictionCalc] Timeframe: ${timeframeDays} días, pesos ${usingLearned ? '🧠 aprendidos' : 'defaults'} para ${timeframeDays <= 1 ? 'intradía' : timeframeDays <= 7 ? 'swing' : 'largo plazo'}`);
     
     // NOTA: 11 factores con pesos dinámicos según timeframe
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
@@ -1098,6 +1116,8 @@ class PredictionCalculatorService {
       assetGroupDescription: groupConfig.description,
       relevantFactors: groupConfig.relevantFactors,
       availableFactors: factors.map(f => ({ name: f.name, score: Math.round(f.score), hasData: f.hasData })),
+      weightsUsed: timeframeWeights, // Pesos usados para ML
+      usingLearnedWeights: learnedWeights?.weights !== null && learnedWeights?.training_samples > 0,
       confidenceExplanation,
       signalSummary,
     };

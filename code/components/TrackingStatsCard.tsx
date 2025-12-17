@@ -3,8 +3,9 @@
  * Muestra precisión histórica, predicciones pendientes y verificadas
  */
 
+import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { predictionTrackingService, TrackedPrediction, TrackingStats } from '../services/prediction-tracking-service';
 
 interface TrackingStatsCardProps {
@@ -16,6 +17,7 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const [predictions, setPredictions] = useState<TrackedPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
 
   useEffect(() => {
@@ -49,6 +51,31 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       console.error('Error verifying predictions:', error);
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleExportForML = async () => {
+    setExporting(true);
+    try {
+      const jsonData = await predictionTrackingService.exportForML();
+      
+      // Copiar al portapapeles
+      if (Platform.OS === 'web') {
+        await navigator.clipboard.writeText(jsonData);
+      } else {
+        await Clipboard.setStringAsync(jsonData);
+      }
+      
+      Alert.alert(
+        '✅ Datos exportados',
+        `Se han copiado ${stats?.verified || 0} predicciones verificadas al portapapeles.\\n\\nPega el contenido en python/data/predictions_data.json y ejecuta el script de entrenamiento.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error exporting for ML:', error);
+      Alert.alert('Error', 'No se pudieron exportar los datos');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -95,7 +122,13 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
 
       <ScrollView style={styles.content}>
         {activeTab === 'stats' ? (
-          <StatsView stats={stats} onVerify={handleVerify} verifying={verifying} />
+          <StatsView 
+            stats={stats} 
+            onVerify={handleVerify} 
+            verifying={verifying}
+            onExport={handleExportForML}
+            exporting={exporting}
+          />
         ) : (
           <HistoryView predictions={predictions} />
         )}
@@ -109,7 +142,9 @@ const StatsView: React.FC<{
   stats: TrackingStats | null; 
   onVerify: () => void;
   verifying: boolean;
-}> = ({ stats, onVerify, verifying }) => {
+  onExport: () => void;
+  exporting: boolean;
+}> = ({ stats, onVerify, verifying, onExport, exporting }) => {
   if (!stats || stats.totalPredictions === 0) {
     return (
       <View style={styles.emptyState}>
@@ -221,6 +256,23 @@ const StatsView: React.FC<{
           ) : (
             <Text style={styles.verifyButtonText}>
               🔄 Verificar predicciones pendientes ({stats.pending})
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Botón exportar para ML */}
+      {stats.verified > 0 && (
+        <TouchableOpacity 
+          style={[styles.exportButton, exporting && styles.verifyButtonDisabled]}
+          onPress={onExport}
+          disabled={exporting}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.verifyButtonText}>
+              🧠 Exportar para entrenamiento ML ({stats.verified})
             </Text>
           )}
         </TouchableOpacity>
@@ -478,6 +530,13 @@ const styles = StyleSheet.create({
   },
   verifyButton: {
     backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  exportButton: {
+    backgroundColor: '#8b5cf6',
     borderRadius: 8,
     padding: 12,
     alignItems: 'center',

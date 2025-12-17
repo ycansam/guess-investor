@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "updated_at": null,
+  "training_samples": 0,
+  "weights": null,
+  "metadata": {
+    "description": "Este archivo se actualiza automáticamente por el sistema ML de Python",
+    "instructions": "1. Exporta predicciones verificadas desde la app (botón Exportar en Tracking)",
+    "step2": "2. Copia el JSON a python/data/predictions_data.json",
+    "step3": "3. Ejecuta: python python/weight_optimizer.py",
+    "step4": "4. Los nuevos pesos se guardarán aquí automáticamente"
+  }
+}

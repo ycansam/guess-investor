@@ -96,6 +96,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         
         // Registrar predicción para tracking (comparación con resultados reales)
         if (prediction.symbol && prediction.currentPrice) {
+          // Extraer scores de factores y pesos del analysisData
+          const factorScores: Record<string, number> = {};
+          const factorWeightsUsed: Record<string, number> = {};
+          
+          if (prediction.analysisData?.factorBreakdown?.availableFactors) {
+            for (const factor of prediction.analysisData.factorBreakdown.availableFactors) {
+              if (factor.hasData) {
+                factorScores[factor.name] = factor.score;
+              }
+            }
+          }
+          if (prediction.analysisData?.factorBreakdown?.weightsUsed) {
+            Object.assign(factorWeightsUsed, prediction.analysisData.factorBreakdown.weightsUsed);
+          }
+          
           predictionTrackingService.trackPrediction({
             id: prediction.id,
             symbol: prediction.symbol,
@@ -108,6 +123,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             confidence: prediction.confidence,
             currentPrice: prediction.currentPrice,
             timeframe: prediction.timeframe,
+            factorScores,
+            factorWeightsUsed,
           }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
         }
       }
@@ -243,6 +260,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         
         // Registrar predicción para tracking (comparación con resultados reales)
         if (prediction.symbol && prediction.currentPrice) {
+          // Extraer scores de factores y pesos del analysisData
+          const factorScores: Record<string, number> = {};
+          const factorWeightsUsed: Record<string, number> = {};
+          
+          if (prediction.analysisData?.factorBreakdown?.availableFactors) {
+            for (const factor of prediction.analysisData.factorBreakdown.availableFactors) {
+              if (factor.hasData) {
+                factorScores[factor.name] = factor.score;
+              }
+            }
+          }
+          if (prediction.analysisData?.factorBreakdown?.weightsUsed) {
+            Object.assign(factorWeightsUsed, prediction.analysisData.factorBreakdown.weightsUsed);
+          }
+          
           predictionTrackingService.trackPrediction({
             id: prediction.id,
             symbol: prediction.symbol,
@@ -255,6 +287,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             confidence: prediction.confidence,
             currentPrice: prediction.currentPrice,
             timeframe: prediction.timeframe,
+            factorScores,
+            factorWeightsUsed,
           }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
         }
       }

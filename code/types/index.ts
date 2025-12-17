@@ -138,6 +138,8 @@ export interface InvestmentPrediction {
       assetGroupDescription: string; // Descripción legible
       relevantFactors: string[]; // Factores que aplican a este tipo de activo
       availableFactors: { name: string; score: number; hasData: boolean }[];
+      weightsUsed?: Record<string, number>; // Pesos usados para cada factor (para ML)
+      usingLearnedWeights?: boolean; // Si se usaron pesos aprendidos por ML
       confidenceExplanation: string; // Por qué la confianza es X%
       signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
     };

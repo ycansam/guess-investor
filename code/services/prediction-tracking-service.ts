@@ -29,6 +29,10 @@ export interface TrackedPrediction {
   
   priceAtPrediction: number; // Precio cuando se hizo la predicción
   
+  // Scores de cada factor (para ML)
+  factorScores?: Record<string, number>; // { trend: 25.5, sentiment: -10.2, ... }
+  factorWeightsUsed?: Record<string, number>; // Pesos usados en esta predicción
+  
   // Resultados (se llenan cuando llega la fecha objetivo)
   status: 'pending' | 'verified' | 'expired' | 'error';
   actualPrice?: number; // Precio real en la fecha objetivo
@@ -115,6 +119,8 @@ class PredictionTrackingService {
     confidence: number;
     currentPrice: number;
     timeframe: string; // "1 día", "1 semana", "1 mes", etc.
+    factorScores?: Record<string, number>; // Scores de cada factor
+    factorWeightsUsed?: Record<string, number>; // Pesos usados
   }): Promise<void> {
     await this.load();
     
@@ -145,6 +151,8 @@ class PredictionTrackingService {
       predictedPriceMax: prediction.predictedPriceMax,
       confidence: prediction.confidence,
       priceAtPrediction: prediction.currentPrice,
+      factorScores: prediction.factorScores,
+      factorWeightsUsed: prediction.factorWeightsUsed,
       status: 'pending',
     };
     
@@ -389,6 +397,47 @@ class PredictionTrackingService {
     const day = date.getDay();
     if (day === 0) date.setDate(date.getDate() + 1); // Domingo → Lunes
     if (day === 6) date.setDate(date.getDate() + 2); // Sábado → Lunes
+  }
+  
+  /**
+   * Exporta predicciones verificadas en formato JSON para el sistema ML de Python
+   * Retorna string JSON listo para guardar en archivo o copiar
+   */
+  async exportForML(): Promise<string> {
+    await this.load();
+    
+    const verified = this.predictions.filter(p => p.status === 'verified');
+    
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      total_predictions: this.predictions.length,
+      verified_count: verified.length,
+      verified_predictions: verified.map(p => ({
+        id: p.id,
+        symbol: p.symbol,
+        assetType: p.assetType,
+        timeframeDays: p.timeframeDays,
+        predictedDirection: p.predictedDirection,
+        predictedChange: p.predictedChange,
+        predictedPriceMin: p.predictedPriceMin,
+        predictedPriceMax: p.predictedPriceMax,
+        confidence: p.confidence,
+        priceAtPrediction: p.priceAtPrediction,
+        factorScores: p.factorScores || {},
+        factorWeightsUsed: p.factorWeightsUsed || {},
+        actualPrice: p.actualPrice,
+        actualChange: p.actualChange,
+        actualDirection: p.actualDirection,
+        directionCorrect: p.directionCorrect,
+        priceError: p.priceError,
+        withinRange: p.withinRange,
+        predictionDate: p.predictionDate,
+        verifiedAt: p.verifiedAt,
+      })),
+    };
+    
+    return JSON.stringify(exportData, null, 2);
   }
   
   /**
