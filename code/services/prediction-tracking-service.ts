@@ -1,11 +1,11 @@
 /**
  * Servicio de Tracking de Predicciones
  * Registra todas las predicciones y las compara con resultados reales
- * Usa IndexedDB para persistencia
+ * Usa AsyncStorage para persistencia (compatible con React Native)
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssetType } from '../types';
-import { storageService } from './storage-service';
 import { yahooV8Service } from './yahoo-v8-service';
 
 const TRACKING_STORAGE_KEY = 'prediction-tracking';
@@ -71,14 +71,14 @@ class PredictionTrackingService {
   private loaded = false;
   
   /**
-   * Carga las predicciones desde storage
+   * Carga las predicciones desde AsyncStorage
    */
   async load(): Promise<void> {
     if (this.loaded) return;
     
     try {
-      const data = await storageService.load<TrackedPrediction[]>(TRACKING_STORAGE_KEY);
-      this.predictions = data || [];
+      const data = await AsyncStorage.getItem(TRACKING_STORAGE_KEY);
+      this.predictions = data ? JSON.parse(data) : [];
       this.loaded = true;
       console.log(`[Tracking] Cargadas ${this.predictions.length} predicciones`);
     } catch (error) {
@@ -89,11 +89,11 @@ class PredictionTrackingService {
   }
   
   /**
-   * Guarda las predicciones en storage
+   * Guarda las predicciones en AsyncStorage
    */
   private async save(): Promise<void> {
     try {
-      await storageService.save(TRACKING_STORAGE_KEY, this.predictions);
+      await AsyncStorage.setItem(TRACKING_STORAGE_KEY, JSON.stringify(this.predictions));
       console.log(`[Tracking] Guardadas ${this.predictions.length} predicciones`);
     } catch (error) {
       console.error('[Tracking] Error guardando predicciones:', error);

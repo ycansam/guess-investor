@@ -1,7 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { geminiService } from '../services/gemini-service';
 import { predictionTrackingService } from '../services/prediction-tracking-service';
-import { storageService } from '../services/storage-service';
 import { ChatMessage, ChatState, InvestmentPrediction, PredictionState } from '../types';
 
 const PREDICTIONS_STORAGE_KEY = 'predictions-data';
@@ -135,15 +135,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ error });
   },
 
-  // Añadir predicción y guardar en IndexedDB
+  // Añadir predicción y guardar en AsyncStorage
   addPrediction: (prediction) => {
     set((state) => {
       const newPredictions = [prediction, ...state.predictions];
-      // Guardar en IndexedDB de forma asíncrona
-      storageService.save(PREDICTIONS_STORAGE_KEY, {
+      // Guardar en AsyncStorage de forma asíncrona
+      AsyncStorage.setItem(PREDICTIONS_STORAGE_KEY, JSON.stringify({
         predictions: newPredictions,
         lastAnalysis: new Date(),
-      });
+      })).catch(err => console.error('[ChatStore] Error guardando predicciones:', err));
       return {
         predictions: newPredictions,
         lastAnalysis: new Date(),
@@ -155,41 +155,46 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   removePrediction: (id) => {
     set((state) => {
       const newPredictions = state.predictions.filter((p) => p.id !== id);
-      // Guardar en IndexedDB de forma asíncrona
-      storageService.save(PREDICTIONS_STORAGE_KEY, {
+      // Guardar en AsyncStorage de forma asíncrona
+      AsyncStorage.setItem(PREDICTIONS_STORAGE_KEY, JSON.stringify({
         predictions: newPredictions,
         lastAnalysis: state.lastAnalysis,
-      });
+      })).catch(err => console.error('[ChatStore] Error guardando predicciones:', err));
       return {
         predictions: newPredictions,
       };
     });
   },
 
-  // Limpiar predicciones y borrar de IndexedDB
+  // Limpiar predicciones y borrar de AsyncStorage
   clearPredictions: () => {
-    storageService.remove(PREDICTIONS_STORAGE_KEY);
+    AsyncStorage.removeItem(PREDICTIONS_STORAGE_KEY)
+      .catch(err => console.error('[ChatStore] Error eliminando predicciones:', err));
     set({ predictions: [], lastAnalysis: null });
   },
 
-  // Cargar predicciones desde IndexedDB al iniciar
+  // Cargar predicciones desde AsyncStorage al iniciar
   loadPredictions: async () => {
     console.log('[ChatStore] Iniciando carga de predicciones...');
     try {
-      const data = await storageService.load<{
-        predictions: InvestmentPrediction[];
-        lastAnalysis: string | null;
-      }>(PREDICTIONS_STORAGE_KEY);
+      const stored = await AsyncStorage.getItem(PREDICTIONS_STORAGE_KEY);
       
-      if (data && data.predictions) {
-        console.log(`[ChatStore] Cargadas ${data.predictions.length} predicciones`);
-        set({
-          predictions: data.predictions.map((p) => ({
-            ...p,
-            createdAt: new Date(p.createdAt),
-          })),
-          lastAnalysis: data.lastAnalysis ? new Date(data.lastAnalysis) : null,
-        });
+      if (stored) {
+        const data = JSON.parse(stored) as {
+          predictions: InvestmentPrediction[];
+          lastAnalysis: string | null;
+        };
+        
+        if (data && data.predictions) {
+          console.log(`[ChatStore] Cargadas ${data.predictions.length} predicciones`);
+          set({
+            predictions: data.predictions.map((p) => ({
+              ...p,
+              createdAt: new Date(p.createdAt),
+            })),
+            lastAnalysis: data.lastAnalysis ? new Date(data.lastAnalysis) : null,
+          });
+        }
       } else {
         console.log('[ChatStore] No hay predicciones guardadas');
       }
