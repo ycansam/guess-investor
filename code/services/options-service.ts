@@ -5,6 +5,7 @@
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
+import { vixService } from './vix-service';
 
 interface OptionsData {
   symbol: string;
@@ -169,9 +170,78 @@ class OptionsService {
 
   /**
    * Obtiene el Put/Call ratio general del mercado (SPX) como referencia
+   * Si falla CBOE o los datos son inválidos, estima el ratio basándose en el VIX
    */
   async getMarketPutCallRatio(): Promise<SPXOptionsResponse | null> {
-    return this.getSPXPutCallRatio();
+    // Primero intentar obtener datos reales de CBOE
+    const realData = await this.getSPXPutCallRatio();
+    
+    // Verificar si los datos son válidos (ratio de exactamente 1.00 indica fallo de parseo)
+    if (realData && realData.pcRatio !== 1.00) {
+      return realData;
+    }
+    
+    // Fallback: estimar Put/Call ratio basándose en el VIX
+    console.log('[Options] CBOE sin datos válidos, estimando Put/Call ratio desde VIX...');
+    try {
+      const vixData = await vixService.getCurrentVIX();
+      if (vixData) {
+        // Mapear VIX a Put/Call ratio estimado:
+        // VIX 10-15: PC ratio ~0.75-0.85 (bullish)
+        // VIX 15-20: PC ratio ~0.85-1.00 (neutral)
+        // VIX 20-25: PC ratio ~1.00-1.15 (slightly bearish)
+        // VIX 25-30: PC ratio ~1.15-1.30 (bearish)
+        // VIX 30+: PC ratio ~1.30+ (extreme fear)
+        const vixValue = vixData.value;
+        let estimatedPCRatio: number;
+        let sentiment: 'extreme_fear' | 'bearish' | 'neutral' | 'bullish' | 'extreme_greed';
+        let sentimentScore: number;
+        
+        if (vixValue < 12) {
+          estimatedPCRatio = 0.65 + (vixValue - 10) * 0.05;
+          sentiment = 'extreme_greed';
+          sentimentScore = 80;
+        } else if (vixValue < 16) {
+          estimatedPCRatio = 0.75 + (vixValue - 12) * 0.025;
+          sentiment = 'bullish';
+          sentimentScore = 40;
+        } else if (vixValue < 20) {
+          estimatedPCRatio = 0.85 + (vixValue - 16) * 0.0375;
+          sentiment = 'neutral';
+          sentimentScore = 0;
+        } else if (vixValue < 25) {
+          estimatedPCRatio = 1.00 + (vixValue - 20) * 0.03;
+          sentiment = 'bearish';
+          sentimentScore = -40;
+        } else if (vixValue < 30) {
+          estimatedPCRatio = 1.15 + (vixValue - 25) * 0.03;
+          sentiment = 'bearish';
+          sentimentScore = -60;
+        } else {
+          estimatedPCRatio = 1.30 + (vixValue - 30) * 0.02;
+          sentiment = 'extreme_fear';
+          sentimentScore = -80;
+        }
+        
+        // Limitar ratio a rango razonable
+        estimatedPCRatio = Math.max(0.5, Math.min(2.0, estimatedPCRatio));
+        
+        console.log(`[Options] Put/Call ratio estimado desde VIX (${vixValue.toFixed(1)}): ${estimatedPCRatio.toFixed(2)} (${sentiment})`);
+        
+        return {
+          symbol: 'SPX',
+          pcRatio: estimatedPCRatio,
+          pcRatioVolume: estimatedPCRatio, // Usar mismo valor para ambos
+          sentiment,
+          sentimentScore,
+          timestamp: new Date(),
+        };
+      }
+    } catch (error) {
+      console.error('[Options] Error estimando Put/Call ratio desde VIX:', error);
+    }
+    
+    return null;
   }
 
   /**
