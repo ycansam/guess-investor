@@ -1113,8 +1113,33 @@ class PredictionCalculatorService {
     // combinedScore está en rango -100 a +100
     // Convertir a % de cambio esperado basado en volatilidad
     // Score de 100 = movimiento de ~1.5x volatilidad, Score de 0 = sin cambio
+    
+    // --- FACTOR DE ESCALA DINÁMICO ---
+    // Más agresivo cuando las señales son coherentes, conservador cuando hay contradicción
+    // Confianza alta (>70%) = señales claras = predicción más agresiva
+    // Confianza baja (<50%) = mucha incertidumbre = predicción conservadora
+    let scaleFactor: number;
+    if (confidence >= 75) {
+      // Señales muy coherentes - ser agresivo
+      scaleFactor = 2.5;
+    } else if (confidence >= 65) {
+      // Señales coherentes - moderadamente agresivo
+      scaleFactor = 2.0;
+    } else if (confidence >= 55) {
+      // Señales mixtas pero con dirección - normal
+      scaleFactor = 1.5;
+    } else if (confidence >= 45) {
+      // Señales contradictorias - conservador
+      scaleFactor = 1.0;
+    } else {
+      // Muy poca confianza - muy conservador
+      scaleFactor = 0.7;
+    }
+    
     const scoreNormalized = combinedScore / 100; // -1 a +1
-    let expectedChange = scoreNormalized * periodVolatility * 1.2; // Factor de escala
+    let expectedChange = scoreNormalized * periodVolatility * scaleFactor;
+    
+    console.log(`[PredictionCalc] Factor de escala: ${scaleFactor} (confianza: ${confidence.toFixed(0)}%)`);
     
     // --- AJUSTE ADICIONAL: Precio objetivo de analistas ---
     // Esto NO está incluido en combinedScore, así que lo añadimos aquí
