@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { geminiService } from '../services/gemini-service';
+import { predictionTrackingService } from '../services/prediction-tracking-service';
 import { storageService } from '../services/storage-service';
 import { ChatMessage, ChatState, InvestmentPrediction, PredictionState } from '../types';
 
@@ -92,6 +93,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         
         assistantMessage.prediction = prediction;
         addPrediction(prediction);
+        
+        // Registrar predicción para tracking (comparación con resultados reales)
+        if (prediction.symbol && prediction.currentPrice) {
+          predictionTrackingService.trackPrediction({
+            id: prediction.id,
+            symbol: prediction.symbol,
+            asset: prediction.asset,
+            assetType: prediction.assetType,
+            direction: prediction.direction,
+            predictedChange: prediction.predictedChange || 0,
+            predictedPriceMin: prediction.predictedPriceMin || prediction.currentPrice,
+            predictedPriceMax: prediction.predictedPriceMax || prediction.currentPrice,
+            confidence: prediction.confidence,
+            currentPrice: prediction.currentPrice,
+            timeframe: prediction.timeframe,
+          }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
+        }
       }
 
       addMessage(assistantMessage);
@@ -217,6 +235,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         
         assistantMessage.prediction = prediction;
         get().addPrediction(prediction);
+        
+        // Registrar predicción para tracking (comparación con resultados reales)
+        if (prediction.symbol && prediction.currentPrice) {
+          predictionTrackingService.trackPrediction({
+            id: prediction.id,
+            symbol: prediction.symbol,
+            asset: prediction.asset,
+            assetType: prediction.assetType,
+            direction: prediction.direction,
+            predictedChange: prediction.predictedChange || 0,
+            predictedPriceMin: prediction.predictedPriceMin || prediction.currentPrice,
+            predictedPriceMax: prediction.predictedPriceMax || prediction.currentPrice,
+            confidence: prediction.confidence,
+            currentPrice: prediction.currentPrice,
+            timeframe: prediction.timeframe,
+          }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
+        }
       }
 
       get().addMessage(assistantMessage);

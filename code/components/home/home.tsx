@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { Header } from '../_shared/header';
 import { PredictionsList } from '../predictions-list';
+import { TrackingStatsCard } from '../TrackingStatsCard';
 import { ChatView } from './chat-view';
 import { TabBar, TabType } from './tab-bar';
 import { useHome } from './use-home';
 
 export function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [showTracking, setShowTracking] = useState(false);
 
   const {
     messages,
@@ -22,7 +24,25 @@ export function Home() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      <Header title="Guess Investor" />
+      <Header 
+        title="Guess Investor" 
+        actionIcon="📊"
+        onActionPress={() => setShowTracking(true)}
+      />
+
+      {/* Modal de Tracking Stats */}
+      <Modal
+        visible={showTracking}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTracking(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <TrackingStatsCard onClose={() => setShowTracking(false)} />
+          </View>
+        </View>
+      </Modal>
 
       <TabBar
         activeTab={activeTab}
@@ -51,5 +71,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
   },
 });

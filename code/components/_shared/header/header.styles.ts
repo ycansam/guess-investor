@@ -23,4 +23,12 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1A1A1A',
   },
+  actionButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#F0F9FF',
+  },
+  actionIcon: {
+    fontSize: 20,
+  },
 });
