@@ -1,0 +1,53 @@
+{
+  "version": "2.0",
+  "exported_at": "2025-12-18T21:46:47.361Z",
+  "verified_count": 2,
+  "predictions": [
+    {
+      "id": "q0zkuq6p8kc",
+      "symbol": "AMZN",
+      "asset_type": "stock",
+      "timeframe_days": 1,
+      "timeframe": "intraday",
+      "predicted_direction": "neutral",
+      "predicted_change": -0.05,
+      "predicted_price_min": 188.3,
+      "predicted_price_max": 188.3,
+      "confidence": 52,
+      "price_at_prediction": 188.39,
+      "factor_scores": {},
+      "factor_weights": {},
+      "actual_price": 226.76,
+      "actual_change": 20.37,
+      "actual_direction": "up",
+      "direction_correct": false,
+      "price_error": 20.42,
+      "within_range": false,
+      "prediction_date": "2025-12-17T22:21:22.612Z",
+      "verified_at": "2025-12-18T21:29:13.519Z"
+    },
+    {
+      "id": "vvh2k0zp1j",
+      "symbol": "AMZN",
+      "asset_type": "stock",
+      "timeframe_days": 1,
+      "timeframe": "intraday",
+      "predicted_direction": "neutral",
+      "predicted_change": -0.05,
+      "predicted_price_min": 188.3,
+      "predicted_price_max": 188.3,
+      "confidence": 52,
+      "price_at_prediction": 188.39,
+      "factor_scores": {},
+      "factor_weights": {},
+      "actual_price": 226.76,
+      "actual_change": 20.37,
+      "actual_direction": "up",
+      "direction_correct": false,
+      "price_error": 20.42,
+      "within_range": false,
+      "prediction_date": "2025-12-17T22:12:32.727Z",
+      "verified_at": "2025-12-18T21:29:13.519Z"
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export type TabType = 'chat' | 'predictions';
+export type TabType = 'market' | 'chat' | 'predictions';
 
 interface TabBarProps {
   activeTab: TabType;
@@ -13,6 +13,20 @@ interface TabBarProps {
 export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps) {
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'market' && styles.activeTab]}
+        onPress={() => onTabChange('market')}
+      >
+        <Ionicons
+          name="trending-up-outline"
+          size={20}
+          color={activeTab === 'market' ? '#007AFF' : '#666'}
+        />
+        <Text style={[styles.tabText, activeTab === 'market' && styles.activeTabText]}>
+          Mercado
+        </Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={[styles.tab, activeTab === 'chat' && styles.activeTab]}
         onPress={() => onTabChange('chat')}
@@ -37,7 +51,7 @@ export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps
           color={activeTab === 'predictions' ? '#007AFF' : '#666'}
         />
         <Text style={[styles.tabText, activeTab === 'predictions' && styles.activeTabText]}>
-          Predicciones {predictionsCount > 0 && `(${predictionsCount})`}
+          {predictionsCount > 0 ? `(${predictionsCount})` : 'Pred.'}
         </Text>
       </TouchableOpacity>
     </View>

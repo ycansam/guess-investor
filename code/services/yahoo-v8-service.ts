@@ -9,7 +9,16 @@
  * ¡GRATIS y SIN LÍMITES!
  */
 
+import { Platform } from 'react-native';
+
 const YAHOO_V8_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
+
+// Proxies CORS para web (rotamos si uno falla)
+const CORS_PROXIES = [
+  'https://api.allorigins.win/raw?url=',
+  'https://corsproxy.io/?',
+  'https://api.codetabs.com/v1/proxy?quest=',
+];
 
 /**
  * Datos del endpoint v8/chart
@@ -68,24 +77,70 @@ export interface YahooV8Data {
 const cache = new Map<string, { data: YahooV8Data; timestamp: number }>();
 const CACHE_DURATION = 60 * 1000; // 1 minuto (datos casi en tiempo real)
 
+let currentProxyIndex = 0;
+
+/**
+ * Obtiene la URL con proxy CORS si estamos en web
+ */
+function getUrlWithProxy(symbol: string, range: string, interval: string, proxyIndex: number): string {
+  const baseUrl = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+  
+  if (Platform.OS === 'web') {
+    const proxy = CORS_PROXIES[proxyIndex];
+    return `${proxy}${encodeURIComponent(baseUrl)}`;
+  }
+  
+  return baseUrl;
+}
+
+/**
+ * Intenta fetch con reintentos usando diferentes proxies
+ */
+async function fetchWithRetry(symbol: string, range: string, interval: string): Promise<Response | null> {
+  if (Platform.OS !== 'web') {
+    const url = getUrlWithProxy(symbol, range, interval, 0);
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+    return response.ok ? response : null;
+  }
+
+  // En web, intentar con cada proxy
+  for (let i = 0; i < CORS_PROXIES.length; i++) {
+    const proxyIndex = (currentProxyIndex + i) % CORS_PROXIES.length;
+    const url = getUrlWithProxy(symbol, range, interval, proxyIndex);
+    
+    try {
+      console.log(`[YahooV8] Trying proxy ${proxyIndex + 1}/${CORS_PROXIES.length} for ${symbol}...`);
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      
+      if (response.ok) {
+        currentProxyIndex = proxyIndex; // Recordar el proxy que funcionó
+        return response;
+      }
+    } catch (error) {
+      console.log(`[YahooV8] Proxy ${proxyIndex + 1} failed for ${symbol}`);
+    }
+  }
+  
+  return null;
+}
+
 /**
  * Obtiene datos de un símbolo via v8/chart
  */
 async function fetchSymbol(symbol: string, range: string = '1d', interval: string = '1m'): Promise<YahooV8Data | null> {
   try {
-    const url = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
-    
     console.log(`[YahooV8] Fetching ${symbol}...`);
     
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      signal: AbortSignal.timeout(10000),
-    });
+    const response = await fetchWithRetry(symbol, range, interval);
     
-    if (!response.ok) {
-      console.error(`[YahooV8] HTTP ${response.status} for ${symbol}`);
+    if (!response) {
+      console.error(`[YahooV8] All proxies failed for ${symbol}`);
       return null;
     }
     

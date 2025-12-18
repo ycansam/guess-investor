@@ -4,11 +4,11 @@ import { Header } from '../_shared/header';
 import { PredictionsList } from '../predictions-list';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { ChatView } from './chat-view';
+import { MarketList } from './market-list';
 import { TabBar, TabType } from './tab-bar';
 import { useHome } from './use-home';
-
 export function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [activeTab, setActiveTab] = useState<TabType>('market');
   const [showTracking, setShowTracking] = useState(false);
 
   const {
@@ -50,7 +50,9 @@ export function Home() {
         predictionsCount={predictions.length}
       />
 
-      {activeTab === 'chat' ? (
+      {activeTab === 'market' ? (
+        <MarketList />
+      ) : activeTab === 'chat' ? (
         <ChatView
           messages={messages}
           isLoading={isLoading}
