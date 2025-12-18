@@ -5,6 +5,7 @@ import { PredictionsList } from '../predictions-list';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { ChatView } from './chat-view';
 import { MarketList } from './market-list';
+import { MarketPredictions } from './market-predictions';
 import { TabBar, TabType } from './tab-bar';
 import { useHome } from './use-home';
 export function Home() {
@@ -52,6 +53,8 @@ export function Home() {
 
       {activeTab === 'market' ? (
         <MarketList />
+      ) : activeTab === 'training' ? (
+        <MarketPredictions />
       ) : activeTab === 'chat' ? (
         <ChatView
           messages={messages}
