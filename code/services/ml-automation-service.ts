@@ -1,93 +1,53 @@
 /**
  * Servicio de Automatización ML
  * Se encarga de verificar predicciones automáticamente y
- * sincronizar los datos con el sistema de Python para entrenamiento
+ * entrenar el modelo cuando hay suficientes datos.
+ * 
+ * TODO EL PROCESO ES 100% AUTOMÁTICO - NO REQUIERE INTERVENCIÓN
+ * 
+ * El entrenamiento se hace:
+ * 1. En TypeScript (dentro de la app)
+ * 2. Enviando datos al servidor Python local (si está corriendo)
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { predictionTrackingService, TrackedPrediction } from './prediction-tracking-service';
+import { weightOptimizerService } from './weight-optimizer-service';
 
 // Claves de almacenamiento
-const LAST_VERIFICATION_KEY = 'ml-last-verification';
-const LAST_EXPORT_KEY = 'ml-last-export';
 const ML_SYNC_STATUS_KEY = 'ml-sync-status';
-const ML_TRAINING_DATA_KEY = 'ml-training-data';
+const ML_EXPORT_KEY = 'ml-export-data';
 const LEARNED_WEIGHTS_KEY = 'learned-weights';
+
+// Servidor Python local
+const PYTHON_SERVER_URL = 'http://localhost:8765';
 
 // Configuración
 const AUTO_VERIFY_INTERVAL_HOURS = 6; // Verificar cada 6 horas
-const MIN_PREDICTIONS_FOR_EXPORT = 10; // Mínimo para exportar
-const EXPORT_INTERVAL_HOURS = 24; // Exportar máximo cada 24 horas
+const MIN_PREDICTIONS_FOR_TRAINING = 10; // Mínimo para entrenar
+const TRAINING_INTERVAL_HOURS = 24; // Entrenar máximo cada 24 horas
+const MIN_NEW_PREDICTIONS_TO_RETRAIN = 3; // Mínimo de nuevas para re-entrenar
 
 export interface MLSyncStatus {
   lastVerification: string | null;
-  lastExport: string | null;
+  lastTraining: string | null;
   predictionsVerified: number;
-  predictionsExported: number;
+  lastTrainingSamples: number;
   weightsVersion: number;
   isTraining: boolean;
-}
-
-/**
- * Convierte timeframeDays a categoría para ML
- */
-function getTimeframeCategory(timeframeDays: number): 'intraday' | 'swing' | 'long' {
-  if (timeframeDays <= 1) return 'intraday';
-  if (timeframeDays <= 7) return 'swing';
-  return 'long';
-}
-
-/**
- * Prepara las predicciones verificadas en formato para Python ML
- */
-function formatForPythonML(predictions: TrackedPrediction[]): object {
-  return predictions.map(p => ({
-    // Identificación
-    id: p.id,
-    symbol: p.symbol,
-    asset_type: p.assetType,
-    
-    // Timeframe
-    timeframe_days: p.timeframeDays,
-    timeframe: getTimeframeCategory(p.timeframeDays),
-    
-    // Predicción
-    predicted_direction: p.predictedDirection,
-    predicted_change: p.predictedChange,
-    predicted_price_min: p.predictedPriceMin,
-    predicted_price_max: p.predictedPriceMax,
-    confidence: p.confidence,
-    price_at_prediction: p.priceAtPrediction,
-    
-    // Factor scores (renombrados para Python)
-    factor_scores: p.factorScores || {},
-    factor_weights: p.factorWeightsUsed || {},
-    
-    // Resultados reales
-    actual_price: p.actualPrice,
-    actual_change: p.actualChange,
-    actual_direction: p.actualDirection,
-    
-    // Métricas de error
-    direction_correct: p.directionCorrect,
-    price_error: p.priceError,
-    within_range: p.withinRange,
-    
-    // Timestamps
-    prediction_date: p.predictionDate,
-    verified_at: p.verifiedAt,
-  }));
+  pythonServerAvailable: boolean;
 }
 
 class MLAutomationService {
   private isProcessing = false;
   private status: MLSyncStatus = {
     lastVerification: null,
-    lastExport: null,
+    lastTraining: null,
     predictionsVerified: 0,
-    predictionsExported: 0,
+    lastTrainingSamples: 0,
     weightsVersion: 0,
     isTraining: false,
+    pythonServerAvailable: false,
   };
   
   /**
@@ -130,23 +90,24 @@ class MLAutomationService {
   }
   
   /**
-   * Verifica si debemos exportar datos para entrenamiento
+   * Verifica si debemos entrenar el modelo
    */
-  private shouldExport(verifiedCount: number): boolean {
+  private shouldTrain(verifiedCount: number): boolean {
     // Necesitamos mínimo de predicciones
-    if (verifiedCount < MIN_PREDICTIONS_FOR_EXPORT) return false;
+    if (verifiedCount < MIN_PREDICTIONS_FOR_TRAINING) return false;
     
-    // Si nunca hemos exportado, hacerlo
-    if (!this.status.lastExport) return true;
+    // Si nunca hemos entrenado, hacerlo
+    if (!this.status.lastTraining) return true;
     
-    // Si hay nuevas predicciones desde el último export
-    if (verifiedCount > this.status.predictionsExported) {
-      const lastExport = new Date(this.status.lastExport);
+    // Si hay nuevas predicciones desde el último entrenamiento
+    const newPredictions = verifiedCount - this.status.lastTrainingSamples;
+    if (newPredictions >= MIN_NEW_PREDICTIONS_TO_RETRAIN) {
+      const lastTraining = new Date(this.status.lastTraining);
       const now = new Date();
-      const hoursSinceLastExport = (now.getTime() - lastExport.getTime()) / (1000 * 60 * 60);
+      const hoursSinceLastTraining = (now.getTime() - lastTraining.getTime()) / (1000 * 60 * 60);
       
-      // Solo exportar si pasaron suficientes horas
-      return hoursSinceLastExport >= EXPORT_INTERVAL_HOURS;
+      // Solo entrenar si pasaron suficientes horas
+      return hoursSinceLastTraining >= TRAINING_INTERVAL_HOURS;
     }
     
     return false;
@@ -155,29 +116,29 @@ class MLAutomationService {
   /**
    * Ejecuta el ciclo completo de automatización ML
    * - Verifica predicciones pendientes que ya cumplieron su fecha
-   * - Exporta datos si hay suficientes predicciones nuevas
-   * - Retorna resumen de lo que se hizo
+   * - Entrena el modelo si hay suficientes predicciones nuevas
+   * - TODO ES AUTOMÁTICO
    */
   async runAutomation(): Promise<{
     verified: number;
-    exported: boolean;
+    trained: boolean;
     message: string;
   }> {
     if (this.isProcessing) {
-      return { verified: 0, exported: false, message: 'Proceso en curso...' };
+      return { verified: 0, trained: false, message: 'Proceso en curso...' };
     }
     
     this.isProcessing = true;
     await this.loadStatus();
     
     let verifiedCount = 0;
-    let exported = false;
+    let trained = false;
     const messages: string[] = [];
     
     try {
       // 1. Verificar predicciones pendientes
       if (this.shouldVerify()) {
-        console.log('[ML Auto] Verificando predicciones pendientes...');
+        console.log('[ML Auto] 🔍 Verificando predicciones pendientes...');
         const verified = await predictionTrackingService.verifyPendingPredictions();
         verifiedCount = verified.length;
         
@@ -190,22 +151,35 @@ class MLAutomationService {
         }
       }
       
-      // 2. Obtener total de predicciones verificadas
-      const stats = await predictionTrackingService.getStats();
+      // 2. Obtener todas las predicciones verificadas
+      const allPredictions = await predictionTrackingService.getAllPredictions();
+      const verifiedPredictions = allPredictions.filter(p => p.status === 'verified');
       
-      // 3. Exportar datos si corresponde
-      if (this.shouldExport(stats.verified)) {
-        console.log('[ML Auto] Exportando datos para ML...');
-        exported = await this.exportTrainingData();
-        
-        if (exported) {
-          this.status.lastExport = new Date().toISOString();
-          this.status.predictionsExported = stats.verified;
-          messages.push(`📤 Datos exportados para entrenamiento (${stats.verified} predicciones)`);
-        }
+      // 3. Exportar datos para Python (siempre que haya verificadas)
+      if (verifiedPredictions.length > 0) {
+        await this.exportForPython(verifiedPredictions);
       }
       
-      // 4. Limpiar predicciones antiguas (cada verificación)
+      // 4. Entrenar modelo si corresponde
+      if (this.shouldTrain(verifiedPredictions.length)) {
+        console.log('[ML Auto] 🧠 Iniciando entrenamiento automático...');
+        this.status.isTraining = true;
+        await this.saveStatus();
+        
+        const result = await weightOptimizerService.train(verifiedPredictions);
+        
+        if (result) {
+          trained = true;
+          this.status.lastTraining = new Date().toISOString();
+          this.status.lastTrainingSamples = verifiedPredictions.length;
+          this.status.weightsVersion++;
+          messages.push(`🧠 Modelo entrenado (${(result.improvement * 100).toFixed(1)}% mejora)`);
+        }
+        
+        this.status.isTraining = false;
+      }
+      
+      // 5. Limpiar predicciones antiguas (cada verificación)
       if (verifiedCount > 0) {
         await predictionTrackingService.cleanOldPredictions(90);
       }
@@ -215,108 +189,16 @@ class MLAutomationService {
     } catch (error) {
       console.error('[ML Auto] Error en automatización:', error);
       messages.push('⚠️ Error en proceso de automatización');
+      this.status.isTraining = false;
     } finally {
       this.isProcessing = false;
     }
     
     return {
       verified: verifiedCount,
-      exported,
+      trained,
       message: messages.length > 0 ? messages.join('\n') : 'Sin cambios',
     };
-  }
-  
-  /**
-   * Exporta los datos de entrenamiento a un archivo JSON
-   * que el sistema Python puede leer
-   */
-  async exportTrainingData(): Promise<boolean> {
-    try {
-      const allPredictions = await predictionTrackingService.getAllPredictions();
-      const verified = allPredictions.filter(p => p.status === 'verified');
-      
-      if (verified.length === 0) {
-        console.log('[ML Auto] No hay predicciones verificadas para exportar');
-        return false;
-      }
-      
-      const exportData = {
-        version: '2.0',
-        exported_at: new Date().toISOString(),
-        app_version: '1.0.0',
-        total_predictions: allPredictions.length,
-        verified_count: verified.length,
-        predictions: formatForPythonML(verified),
-      };
-      
-      // Guardar en AsyncStorage (para acceso desde la app)
-      await AsyncStorage.setItem(ML_TRAINING_DATA_KEY, JSON.stringify(exportData));
-      console.log(`[ML Auto] Datos exportados a AsyncStorage (${verified.length} predicciones)`);
-      
-      return true;
-      
-    } catch (error) {
-      console.error('[ML Auto] Error exportando datos:', error);
-      return false;
-    }
-  }
-  
-  /**
-   * Obtiene los datos de entrenamiento como string JSON
-   * Útil para mostrar en UI o copiar
-   */
-  async getTrainingDataJSON(): Promise<string> {
-    const data = await AsyncStorage.getItem(ML_TRAINING_DATA_KEY);
-    return data || '{}';
-  }
-  
-  /**
-   * Carga pesos aprendidos desde AsyncStorage
-   */
-  async loadLearnedWeights(): Promise<Record<string, Record<string, number>> | null> {
-    try {
-      const stored = await AsyncStorage.getItem(LEARNED_WEIGHTS_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (data.weights && data.training_samples > 0) {
-          console.log(`[ML Auto] Pesos aprendidos cargados (${data.training_samples} muestras)`);
-          return data.weights;
-        }
-      }
-      
-      return null;
-      
-    } catch (error) {
-      console.error('[ML Auto] Error cargando pesos:', error);
-      return null;
-    }
-  }
-  
-  /**
-   * Guarda pesos aprendidos (llamado después del entrenamiento)
-   */
-  async saveLearnedWeights(
-    weights: Record<string, Record<string, number>>,
-    trainingSamples: number
-  ): Promise<void> {
-    try {
-      const data = {
-        weights,
-        training_samples: trainingSamples,
-        updated_at: new Date().toISOString(),
-        version: this.status.weightsVersion + 1,
-      };
-      
-      await AsyncStorage.setItem(LEARNED_WEIGHTS_KEY, JSON.stringify(data));
-      
-      this.status.weightsVersion = data.version;
-      await this.saveStatus();
-      
-      console.log(`[ML Auto] Pesos guardados (versión ${data.version})`);
-      
-    } catch (error) {
-      console.error('[ML Auto] Error guardando pesos:', error);
-    }
   }
   
   /**
@@ -333,32 +215,157 @@ class MLAutomationService {
   }
   
   /**
-   * Fuerza una verificación inmediata (ignora el intervalo)
+   * Exporta datos para que Python los pueda leer
    */
-  async forceVerification(): Promise<TrackedPrediction[]> {
+  private async exportForPython(predictions: TrackedPrediction[]): Promise<void> {
+    try {
+      const exportData = {
+        version: '2.0',
+        exported_at: new Date().toISOString(),
+        verified_count: predictions.length,
+        predictions: predictions.map(p => ({
+          id: p.id,
+          symbol: p.symbol,
+          asset_type: p.assetType,
+          timeframe_days: p.timeframeDays,
+          timeframe: p.timeframeDays <= 1 ? 'intraday' : p.timeframeDays <= 7 ? 'swing' : 'long',
+          predicted_direction: p.predictedDirection,
+          predicted_change: p.predictedChange,
+          predicted_price_min: p.predictedPriceMin,
+          predicted_price_max: p.predictedPriceMax,
+          confidence: p.confidence,
+          price_at_prediction: p.priceAtPrediction,
+          factor_scores: p.factorScores || {},
+          factor_weights: p.factorWeightsUsed || {},
+          actual_price: p.actualPrice,
+          actual_change: p.actualChange,
+          actual_direction: p.actualDirection,
+          direction_correct: p.directionCorrect,
+          price_error: p.priceError,
+          within_range: p.withinRange,
+          prediction_date: p.predictionDate,
+          verified_at: p.verifiedAt,
+        })),
+      };
+      
+      // Guardar en AsyncStorage para acceso interno y TypeScript optimizer
+      await AsyncStorage.setItem(ML_EXPORT_KEY, JSON.stringify(exportData));
+      console.log(`[ML Auto] 📤 Datos exportados (${predictions.length} predicciones)`);
+      
+      // Intentar enviar al servidor Python local
+      await this.sendToPythonServer(exportData);
+      
+    } catch (error) {
+      console.error('[ML Auto] Error exportando para Python:', error);
+    }
+  }
+  
+  /**
+   * Envía datos al servidor Python local y solicita entrenamiento
+   */
+  private async sendToPythonServer(data: object): Promise<void> {
+    try {
+      // Enviar predicciones
+      const response = await fetch(`${PYTHON_SERVER_URL}/predictions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      
+      if (response.ok) {
+        console.log('[ML Auto] 🐍 Datos enviados al servidor Python');
+        this.status.pythonServerAvailable = true;
+        
+        // Solicitar entrenamiento
+        const trainResponse = await fetch(`${PYTHON_SERVER_URL}/train`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        
+        if (trainResponse.ok) {
+          const result = await trainResponse.json();
+          if (result.success) {
+            console.log('[ML Auto] 🐍 Entrenamiento Python completado');
+            
+            // Obtener pesos actualizados del servidor
+            await this.fetchWeightsFromPython();
+          }
+        }
+      }
+    } catch (error) {
+      // El servidor Python no está corriendo - no es un error crítico
+      this.status.pythonServerAvailable = false;
+      console.log('[ML Auto] ℹ️ Servidor Python no disponible (usando TypeScript)');
+    }
+  }
+  
+  /**
+   * Obtiene los pesos entrenados del servidor Python
+   */
+  private async fetchWeightsFromPython(): Promise<void> {
+    try {
+      const response = await fetch(`${PYTHON_SERVER_URL}/weights`);
+      if (response.ok) {
+        const weightsData = await response.json();
+        if (weightsData.weights) {
+          await AsyncStorage.setItem(LEARNED_WEIGHTS_KEY, JSON.stringify(weightsData));
+          console.log('[ML Auto] 🐍 Pesos de Python cargados');
+        }
+      }
+    } catch (error) {
+      // Silencioso - el servidor no está disponible
+    }
+  }
+  
+  /**
+   * Obtiene los datos exportados como JSON string
+   */
+  async getExportedData(): Promise<string> {
+    const data = await AsyncStorage.getItem(ML_EXPORT_KEY);
+    return data || '{}';
+  }
+  
+  /**
+   * Fuerza una verificación y entrenamiento inmediato
+   */
+  async forceTraining(): Promise<{ verified: number; trained: boolean }> {
+    // Verificar predicciones
     const verified = await predictionTrackingService.verifyPendingPredictions();
     
     this.status.lastVerification = new Date().toISOString();
     this.status.predictionsVerified += verified.length;
+    
+    // Obtener todas las verificadas
+    const allPredictions = await predictionTrackingService.getAllPredictions();
+    const verifiedPredictions = allPredictions.filter(p => p.status === 'verified');
+    
+    // Exportar para Python
+    if (verifiedPredictions.length > 0) {
+      await this.exportForPython(verifiedPredictions);
+    }
+    
+    // Entrenar
+    let trained = false;
+    if (verifiedPredictions.length >= MIN_PREDICTIONS_FOR_TRAINING) {
+      const result = await weightOptimizerService.train(verifiedPredictions);
+      if (result) {
+        trained = true;
+        this.status.lastTraining = new Date().toISOString();
+        this.status.lastTrainingSamples = verifiedPredictions.length;
+        this.status.weightsVersion++;
+      }
+    }
+    
     await this.saveStatus();
     
-    return verified;
+    return { verified: verified.length, trained };
   }
   
   /**
-   * Fuerza una exportación inmediata
+   * Obtiene el historial de entrenamientos
    */
-  async forceExport(): Promise<boolean> {
-    const success = await this.exportTrainingData();
-    
-    if (success) {
-      const stats = await predictionTrackingService.getStats();
-      this.status.lastExport = new Date().toISOString();
-      this.status.predictionsExported = stats.verified;
-      await this.saveStatus();
-    }
-    
-    return success;
+  async getTrainingHistory() {
+    return weightOptimizerService.getHistory();
   }
 }
 
@@ -368,7 +375,7 @@ export const mlAutomationService = new MLAutomationService();
 export function startMLAutomation(): void {
   // Ejecutar inmediatamente al cargar la app
   mlAutomationService.runAutomation().then(result => {
-    if (result.verified > 0 || result.exported) {
+    if (result.verified > 0 || result.trained) {
       console.log('[ML Auto]', result.message);
     }
   });

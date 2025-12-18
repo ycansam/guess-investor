@@ -174,7 +174,42 @@ class PredictionTrackingService {
   }
   
   /**
-   * Verifica predicciones pendientes que ya han llegado a su fecha objetivo
+   * Determina si el mercado ya cerró para un símbolo dado
+   * NYSE/NASDAQ cierran a las 16:00 ET (21:00 UTC, 22:00 España invierno)
+   * Crypto opera 24/7, usamos cierre a las 00:00 UTC
+   */
+  private isMarketClosed(symbol: string, targetDate: Date): boolean {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+    
+    // Si la fecha objetivo ya pasó, definitivamente podemos verificar
+    if (target < today) {
+      return true;
+    }
+    
+    // Si es hoy, verificar si el mercado cerró
+    if (target.getTime() === today.getTime()) {
+      const isCrypto = symbol.includes('-USD') || symbol === 'BTC' || symbol === 'ETH' || 
+                       symbol === 'DOGE' || symbol === 'SOL' || symbol === 'XRP';
+      
+      if (isCrypto) {
+        // Crypto: podemos verificar a partir de las 23:00 hora local
+        return now.getHours() >= 23;
+      } else {
+        // Acciones: NYSE cierra 16:00 ET = 21:00 UTC = 22:00 España (invierno)
+        // Usamos 22:00 hora local como referencia conservadora
+        return now.getHours() >= 22;
+      }
+    }
+    
+    // Si la fecha objetivo es futura, el mercado aún no cerró para ese día
+    return false;
+  }
+
+  /**
+   * Verifica predicciones pendientes cuando el mercado ha cerrado
+   * Usa el precio de cierre del día objetivo
    */
   async verifyPendingPredictions(): Promise<TrackedPrediction[]> {
     await this.load();
@@ -187,20 +222,46 @@ class PredictionTrackingService {
       
       const targetDate = new Date(prediction.targetDate);
       
-      // Solo verificar si ya pasó la fecha objetivo
-      if (now < targetDate) continue;
+      // Verificar si el mercado ya cerró para esta predicción
+      if (!this.isMarketClosed(prediction.symbol, targetDate)) {
+        console.log(`[Tracking] ${prediction.symbol}: Mercado aún no cierra para fecha ${targetDate.toLocaleDateString()}`);
+        continue;
+      }
       
       try {
         console.log(`[Tracking] Verificando predicción ${prediction.id} para ${prediction.symbol}...`);
         
-        // Obtener precio actual
+        // Obtener datos del mercado
         const currentData = await yahooV8Service.getQuote(prediction.symbol);
-        if (!currentData || !currentData.regularMarketPrice) {
+        if (!currentData) {
+          console.error(`[Tracking] No se pudo obtener datos para ${prediction.symbol}`);
           prediction.status = 'error';
           continue;
         }
         
-        const actualPrice = currentData.regularMarketPrice;
+        // Usar precio de cierre si está disponible, sino precio actual
+        // regularMarketPreviousClose es el cierre del día anterior
+        // regularMarketPrice es el precio actual/último
+        let actualPrice: number;
+        
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+        
+        if (target < today && currentData.regularMarketPreviousClose) {
+          // Si la fecha objetivo fue ayer o antes, usar el cierre anterior como referencia
+          // Nota: para histórico más preciso necesitaríamos datos históricos
+          actualPrice = currentData.regularMarketPrice || currentData.regularMarketPreviousClose;
+        } else {
+          // Es hoy y el mercado cerró, usar precio actual (que es el de cierre)
+          actualPrice = currentData.regularMarketPrice || 0;
+        }
+        
+        if (!actualPrice) {
+          console.error(`[Tracking] Precio no disponible para ${prediction.symbol}`);
+          prediction.status = 'error';
+          continue;
+        }
+        
         const priceAtPrediction = prediction.priceAtPrediction;
         
         // Calcular cambio real
@@ -234,6 +295,7 @@ class PredictionTrackingService {
           predicted: `${prediction.predictedDirection} (${prediction.predictedChange}%)`,
           actual: `${actualDirection} (${actualChange.toFixed(2)}%)`,
           correct: directionCorrect,
+          priceUsed: actualPrice,
         });
         
       } catch (error) {

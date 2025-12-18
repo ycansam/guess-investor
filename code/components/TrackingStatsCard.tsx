@@ -40,15 +40,91 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     }
   };
 
+  // Helper para mostrar alertas en web y móvil
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message, [{ text: 'OK' }]);
+    }
+  };
+
   const handleVerify = async () => {
+    console.log('[TrackingStatsCard] handleVerify llamado');
     setVerifying(true);
     try {
+      console.log('[TrackingStatsCard] Llamando a verifyPendingPredictions...');
       const verified = await predictionTrackingService.verifyPendingPredictions();
+      console.log('[TrackingStatsCard] Resultado:', verified.length, 'verificadas');
       if (verified.length > 0) {
+        showAlert('✅ Verificación completada', `Se verificaron ${verified.length} predicción(es).`);
         await loadData(); // Recargar datos
+      } else {
+        // Mostrar por qué no se verificó nada
+        const pending = await predictionTrackingService.getPendingPredictions();
+        console.log('[TrackingStatsCard] Pendientes:', pending.length);
+        if (pending.length === 0) {
+          showAlert('ℹ️ Sin pendientes', 'No hay predicciones pendientes de verificar.');
+        } else {
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          
+          // Ordenar por fecha más cercana
+          const sorted = pending.sort((a, b) => 
+            new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()
+          );
+          
+          // Mostrar info con hora de cierre del mercado
+          const fechasInfo = sorted.slice(0, 5).map(p => {
+            const fecha = new Date(p.targetDate);
+            const target = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+            const isCrypto = p.symbol.includes('-USD') || p.symbol === 'BTC' || p.symbol === 'ETH';
+            const closeHour = isCrypto ? 23 : 22;
+            
+            let estado = '';
+            if (target < today) {
+              estado = '✓ Listo';
+            } else if (target.getTime() === today.getTime()) {
+              if (now.getHours() >= closeHour) {
+                estado = '✓ Mercado cerrado';
+              } else {
+                estado = `Cierre a las ${closeHour}:00`;
+              }
+            } else {
+              const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+              estado = diffDays === 1 ? 'Mañana' : `${diffDays} días`;
+            }
+            
+            return `• ${p.symbol}: ${fecha.toLocaleDateString('es-ES')} (${estado})`;
+          }).join('\n');
+          
+          console.log('[TrackingStatsCard] Fechas info:', fechasInfo);
+          
+          // Verificar si hay alguna lista para verificar
+          const readyToVerify = sorted.some(p => {
+            const fecha = new Date(p.targetDate);
+            const target = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+            const isCrypto = p.symbol.includes('-USD') || p.symbol === 'BTC' || p.symbol === 'ETH';
+            const closeHour = isCrypto ? 23 : 22;
+            
+            if (target < today) return true;
+            if (target.getTime() === today.getTime() && now.getHours() >= closeHour) return true;
+            return false;
+          });
+          
+          if (!readyToVerify) {
+            showAlert(
+              'ℹ️ Esperando cierre de mercado', 
+              `Las predicciones se verificarán cuando el mercado cierre:\n\n${fechasInfo}\n\n📊 NYSE/NASDAQ: 22:00\n₿ Crypto: 23:00`
+            );
+          } else {
+            showAlert('⚠️ Error', `Algunas predicciones están listas pero hubo error al obtener precios:\n\n${fechasInfo}`);
+          }
+        }
       }
     } catch (error) {
       console.error('Error verifying predictions:', error);
+      showAlert('❌ Error', `No se pudieron verificar: ${error}`);
     } finally {
       setVerifying(false);
     }
@@ -244,6 +320,11 @@ const StatsView: React.FC<{
         </View>
       )}
 
+      {/* Predicciones pendientes con tiempo restante */}
+      {stats.pending > 0 && (
+        <PendingPredictionsSection stats={stats} />
+      )}
+
       {/* Botón verificar */}
       {stats.pending > 0 && (
         <TouchableOpacity 
@@ -371,6 +452,105 @@ const ConfidenceRow: React.FC<{ label: string; accuracy: number }> = ({ label, a
     <Text style={styles.confidenceValue}>{accuracy}%</Text>
   </View>
 );
+
+// Componente para mostrar predicciones pendientes con tiempo restante
+const PendingPredictionsSection: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
+  const [pendingPredictions, setPendingPredictions] = useState<TrackedPrediction[]>([]);
+  
+  useEffect(() => {
+    const loadPending = async () => {
+      const pending = await predictionTrackingService.getPendingPredictions();
+      // Ordenar por fecha más cercana
+      pending.sort((a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime());
+      setPendingPredictions(pending);
+    };
+    loadPending();
+  }, [stats.pending]);
+
+  const getMarketCloseInfo = (targetDate: string, symbol: string) => {
+    const now = new Date();
+    const fecha = new Date(targetDate);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+    
+    const isCrypto = symbol.includes('-USD') || symbol === 'BTC' || symbol === 'ETH' || 
+                     symbol === 'DOGE' || symbol === 'SOL' || symbol === 'XRP';
+    
+    // Hora de cierre del mercado
+    const closeHour = isCrypto ? 23 : 22; // 22:00 para acciones, 23:00 para crypto
+    
+    // Si la fecha objetivo ya pasó
+    if (target < today) {
+      return { text: '✓ Listo', color: '#10b981', ready: true };
+    }
+    
+    // Si es hoy
+    if (target.getTime() === today.getTime()) {
+      if (now.getHours() >= closeHour) {
+        return { text: '✓ Cerrado', color: '#10b981', ready: true };
+      } else {
+        const hoursToClose = closeHour - now.getHours();
+        return { 
+          text: `Cierre en ${hoursToClose}h`, 
+          color: hoursToClose <= 2 ? '#10b981' : '#f59e0b', 
+          ready: false 
+        };
+      }
+    }
+    
+    // Si es futuro
+    const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 1) {
+      return { text: 'Mañana', color: '#f59e0b', ready: false };
+    } else {
+      return { text: `${diffDays} días`, color: '#6b7280', ready: false };
+    }
+  };
+
+  const getDirectionIcon = (direction: string) => {
+    switch (direction) {
+      case 'up': return '📈';
+      case 'down': return '📉';
+      default: return '➡️';
+    }
+  };
+
+  if (pendingPredictions.length === 0) return null;
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>⏳ Predicciones Pendientes</Text>
+      <View style={styles.pendingList}>
+        {pendingPredictions.slice(0, 5).map((pred, index) => {
+          const timeInfo = getMarketCloseInfo(pred.targetDate, pred.symbol);
+          return (
+            <View key={pred.id || index} style={styles.pendingItem}>
+              <View style={styles.pendingLeft}>
+                <Text style={styles.pendingSymbol}>{pred.symbol}</Text>
+                <Text style={styles.pendingDirection}>
+                  {getDirectionIcon(pred.predictedDirection)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange.toFixed(1)}%
+                </Text>
+              </View>
+              <View style={styles.pendingRight}>
+                <View style={[styles.timeBadge, { backgroundColor: timeInfo.color + '20' }]}>
+                  <Text style={[styles.timeText, { color: timeInfo.color }]}>
+                    {timeInfo.ready ? '✓ ' : '⏱ '}{timeInfo.text}
+                  </Text>
+                </View>
+                <Text style={styles.pendingDate}>
+                  {new Date(pred.targetDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+        {pendingPredictions.length > 5 && (
+          <Text style={styles.moreText}>+{pendingPredictions.length - 5} más...</Text>
+        )}
+      </View>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -595,5 +775,55 @@ const styles = StyleSheet.create({
   },
   incorrect: {
     color: '#ef4444',
+  },
+  // Estilos para predicciones pendientes
+  pendingList: {
+    gap: 8,
+  },
+  pendingItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1f2937',
+    borderRadius: 8,
+    padding: 10,
+  },
+  pendingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pendingSymbol: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+    minWidth: 50,
+  },
+  pendingDirection: {
+    color: '#9ca3af',
+    fontSize: 13,
+  },
+  pendingRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  timeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  timeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  pendingDate: {
+    color: '#6b7280',
+    fontSize: 11,
+  },
+  moreText: {
+    color: '#6b7280',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });
