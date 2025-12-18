@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 16 de diciembre de 2025  
-**Commit actual:** `f35ac1b`
+**Última actualización:** 18 de diciembre de 2025  
+**Commit actual:** `pendiente`
 
 ---
 
@@ -9,6 +9,12 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
+| `pendiente` | 18/12/2025 | **Sistema ML Python** - Servidor HTTP para entrenamiento, arquitectura modular (config/, models/, utils/), gradiente descendente con momentum |
+| `pendiente` | 18/12/2025 | **Auto-aprendizaje** - weight-optimizer-service.ts, integración automática con servidor Python, pesos aprendidos en AsyncStorage |
+| `pendiente` | 18/12/2025 | **Verificación por cierre de mercado** - Predicciones se verifican al cierre (22:00 acciones, 23:00 crypto), uso de precio de cierre |
+| `pendiente` | 18/12/2025 | **UI Predicciones Pendientes** - Nueva sección mostrando tiempo hasta cierre, estado por activo, badges de color |
+| `pendiente` | 18/12/2025 | **Scripts de inicio** - start-all.bat para ejecutar Python + Expo juntos, comandos npm para servidor |
+| `pendiente` | 18/12/2025 | **Documentación** - README.md en root con descripción completa, CHANGELOG movido a root |
 | `f35ac1b` | 16/12/2025 | **Versión destacada** - Todos los 11 factores funcionando, Yahoo V8 API (gratis/ilimitado), soporte símbolos europeos |
 | `a9e2905` | 16/12/2025 | Añadido resultados financieros, expectativas y async storage, web scraping |
 | `1f0a1d0` | 16/12/2025 | Fix: Ticker GPS → GAP (Gap Inc delistado) |
@@ -59,6 +65,54 @@
 | `3ccf626` | 09/12/2025 | Primera versión working |
 | `8af53f1` | 08/12/2025 | Proyecto reseteado |
 | `bb43dbc` | 08/12/2025 | Proyecto inicial |
+
+---
+
+## Sistema de Machine Learning (Nuevo 18/12/2025)
+
+### Arquitectura
+
+```
+python/
+├── server.py              # Servidor HTTP (localhost:8765)
+├── main.py                # CLI para entrenamiento manual
+└── src/
+    ├── config/settings.py # Configuración central
+    ├── models/
+    │   ├── optimizer.py   # Gradiente descendente con momentum
+    │   └── loss_function.py
+    └── utils/
+        ├── data_loader.py
+        └── file_utils.py
+```
+
+### Función de Pérdida
+
+```
+Loss = α·DirectionLoss + β·MagnitudeLoss + γ·RangeLoss
+```
+
+| Componente | Peso | Descripción |
+|------------|------|-------------|
+| DirectionLoss | α=0.5 | Penaliza errores de dirección (sube/baja) |
+| MagnitudeLoss | β=0.35 | Penaliza errores en magnitud del cambio |
+| RangeLoss | γ=0.15 | Penaliza si precio real fuera del rango predicho |
+
+### Endpoints del Servidor
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/status` | GET | Estado del servidor |
+| `/weights` | GET | Pesos actuales aprendidos |
+| `/predictions` | POST | Recibir predicciones de la app |
+| `/train` | POST | Ejecutar entrenamiento |
+
+### Verificación de Predicciones
+
+| Tipo de Activo | Hora de Cierre | Cuándo Verificar |
+|----------------|----------------|------------------|
+| Acciones (NYSE/NASDAQ) | 16:00 ET | Después de 22:00 hora local |
+| Crypto | 24/7 | Después de 23:00 hora local |
 
 ---
 
