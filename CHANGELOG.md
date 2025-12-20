@@ -9,6 +9,11 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
+| `pendiente` | 18/12/2025 | **Ordenación en Predicciones** - Ordenar por precio (€↑/↓) o cambio (%↑/↓), conversión EUR consistente |
+| `pendiente` | 18/12/2025 | **Confianza consistente** - Predicciones usan predictionCalculatorService real en vez de fórmula simplificada |
+| `pendiente` | 18/12/2025 | **Modo Eliminar** - Selector Predict/Delete, eliminar predicciones seleccionadas de la cache |
+| `pendiente` | 18/12/2025 | **Cache persistente** - Predicciones guardadas en AsyncStorage, persisten entre recargas |
+| `pendiente` | 18/12/2025 | **Pestaña Predicciones** - Nueva pestaña "Predic." para entrenar IA con predicciones por timeframe |
 | `pendiente` | 18/12/2025 | **Sistema ML Python** - Servidor HTTP para entrenamiento, arquitectura modular (config/, models/, utils/), gradiente descendente con momentum |
 | `pendiente` | 18/12/2025 | **Auto-aprendizaje** - weight-optimizer-service.ts, integración automática con servidor Python, pesos aprendidos en AsyncStorage |
 | `pendiente` | 18/12/2025 | **Verificación por cierre de mercado** - Predicciones se verifican al cierre (22:00 acciones, 23:00 crypto), uso de precio de cierre |

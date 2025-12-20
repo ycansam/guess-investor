@@ -490,14 +490,14 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
                   {cached.direction === 'up' ? '📈' : cached.direction === 'down' ? '📉' : '➡️'}
                 </Text>
                 <Text style={styles.predictionText}>
-                  {cached.predictedChange >= 0 ? '+' : ''}{cached.predictedChange.toFixed(2)}%
+                  {(cached.predictedChange ?? 0) >= 0 ? '+' : ''}{(cached.predictedChange ?? 0).toFixed(2)}%
                 </Text>
                 <Text style={styles.confidenceText}>
-                  ({cached.confidence}%)
+                  ({cached.confidence ?? 0}%)
                 </Text>
               </View>
               <Text style={styles.targetPrice}>
-                → {formatPrice(cached.targetPrice, item.currency)}
+                → {formatPrice(cached.targetPrice ?? 0, item.currency)}
               </Text>
             </View>
           ) : isPredicting ? (
@@ -727,7 +727,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#0f0f0f',
   },
   listContent: {
     paddingBottom: 20,
@@ -747,15 +747,15 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#ffffff',
   },
   lastUpdate: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#6b7280',
   },
   description: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#a0a0a0',
     paddingHorizontal: 16,
     paddingBottom: 12,
   },
@@ -772,17 +772,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1a1a1a',
     borderRadius: 20,
     marginRight: 8,
   },
   timeframeChipActive: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#6366f1',
   },
   timeframeLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: '#a0a0a0',
     marginRight: 6,
   },
   timeframeLabelActive: {
@@ -790,10 +790,10 @@ const styles = StyleSheet.create({
   },
   timeframeDuration: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#6b7280',
   },
   timeframeDurationActive: {
-    color: '#dbeafe',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   countBadge: {
     marginLeft: 6,
@@ -834,14 +834,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1a1a1a',
   },
   sortChipActive: {
     backgroundColor: '#6366f1',
   },
   sortChipText: {
     fontSize: 11,
-    color: '#6b7280',
+    color: '#a0a0a0',
     fontWeight: '500',
   },
   sortChipTextActive: {
@@ -854,11 +854,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#2e2e2e',
   },
   statsText: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: '#6b7280',
   },
   clearText: {
     fontSize: 13,
@@ -872,7 +872,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#2e2e2e',
   },
   assetRowDesktop: {
     paddingHorizontal: 24,
@@ -881,7 +881,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#252525',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -896,7 +896,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 2,
   },
   subInfo: {
@@ -910,7 +910,7 @@ const styles = StyleSheet.create({
   },
   priceInline: {
     fontSize: 12,
-    color: '#111827',
+    color: '#a0a0a0',
     fontWeight: '500',
   },
   // Action container
@@ -919,7 +919,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   predictButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#6366f1',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 16,
@@ -965,7 +965,7 @@ const styles = StyleSheet.create({
   },
   predictingText: {
     fontSize: 11,
-    color: '#3b82f6',
+    color: '#6366f1',
     marginLeft: 6,
   },
   // Checkbox styles
@@ -980,14 +980,14 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#d1d5db',
-    backgroundColor: '#ffffff',
+    borderColor: '#4b5563',
+    backgroundColor: '#1a1a1a',
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxSelected: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
+    backgroundColor: '#6366f1',
+    borderColor: '#6366f1',
   },
   checkboxDisabled: {
     opacity: 0.4,
@@ -1018,9 +1018,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#1a1a1a',
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: '#2e2e2e',
   },
   selectAllButton: {
     flexDirection: 'row',
@@ -1028,24 +1028,24 @@ const styles = StyleSheet.create({
   },
   selectAllText: {
     fontSize: 14,
-    color: '#374151',
+    color: '#a0a0a0',
     marginLeft: 8,
   },
   selectableCount: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#6b7280',
     marginLeft: 4,
   },
   predictAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#6366f1',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
   },
   predictAllButtonDisabled: {
-    backgroundColor: '#9ca3af',
+    backgroundColor: '#4b5563',
   },
   predictAllIcon: {
     fontSize: 16,
@@ -1067,10 +1067,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1a1a1a',
   },
   modeButtonActive: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#6366f1',
   },
   modeButtonDeleteActive: {
     backgroundColor: '#ef4444',
@@ -1078,7 +1078,7 @@ const styles = StyleSheet.create({
   modeButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#6b7280',
+    color: '#a0a0a0',
   },
   modeButtonTextActive: {
     color: '#ffffff',
@@ -1106,7 +1106,7 @@ const styles = StyleSheet.create({
   },
   // Asset row delete mode
   assetRowDeleteMode: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: '#2d1515',
   },
   checkboxDeleteSelected: {
     backgroundColor: '#ef4444',

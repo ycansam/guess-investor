@@ -324,7 +324,7 @@ function getChangeColor(change?: number): string {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#0f0f0f',
   },
   listContent: {
     paddingBottom: 20,
@@ -348,11 +348,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#ffffff',
   },
   lastUpdate: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#6b7280',
   },
   // Selector de ordenación
   sortContainer: {
@@ -367,12 +367,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1a1a1a',
     borderRadius: 20,
     marginRight: 8,
   },
   sortChipActive: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#6366f1',
   },
   sortIcon: {
     fontSize: 14,
@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
   sortLabel: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#6b7280',
+    color: '#a0a0a0',
   },
   sortLabelActive: {
     color: '#ffffff',
@@ -396,38 +396,38 @@ const styles = StyleSheet.create({
   filterChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1a1a1a',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#2e2e2e',
   },
   filterChipActive: {
-    backgroundColor: '#111827',
-    borderColor: '#111827',
+    backgroundColor: '#6366f1',
+    borderColor: '#6366f1',
   },
   filterLabel: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#6b7280',
+    color: '#a0a0a0',
   },
   filterLabelActive: {
     color: '#ffffff',
   },
   resultCount: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#6b7280',
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
   sectionHeader: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#1a1a1a',
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#a0a0a0',
   },
   assetRow: {
     flexDirection: 'row',
@@ -435,13 +435,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#2e2e2e',
   },
   iconContainer: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#252525',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 2,
   },
   subInfo: {
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
   },
   priceInline: {
     fontSize: 13,
-    color: '#111827',
+    color: '#a0a0a0',
     fontWeight: '500',
   },
   priceContainer: {
@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
   price: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 4,
   },
   changeBadge: {

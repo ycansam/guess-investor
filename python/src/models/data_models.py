@@ -1,7 +1,7 @@
 """
 Modelos de datos del sistema
 """
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Dict, List, Optional
 
 
@@ -22,18 +22,24 @@ class VerifiedPrediction:
     price_at_prediction: float
     
     # Scores de cada factor (los que tenían datos)
-    factor_scores: Dict[str, float]
-    factor_weights_used: Dict[str, float]
+    factor_scores: Dict[str, float] = field(default_factory=dict)
+    factor_weights: Dict[str, float] = field(default_factory=dict)
+    factor_weights_used: Dict[str, float] = field(default_factory=dict)
     
     # Resultados reales
-    actual_price: float
-    actual_change: float
-    actual_direction: str
-    
+    actual_price: float = 0.0
+    actual_change: float = 0.0
+    actual_direction: str = 'neutral'
+
     # Métricas de error
-    direction_correct: bool
-    price_error: float
-    within_range: bool
+    direction_correct: bool = False
+    price_error: float = 0.0
+    within_range: bool = False
+
+    # Metadatos
+    timeframe: str = 'intraday'
+    prediction_date: Optional[str] = ''
+    verified_at: Optional[str] = ''
     
     def to_dict(self) -> dict:
         return asdict(self)
@@ -43,22 +49,26 @@ class VerifiedPrediction:
         return cls(
             id=data['id'],
             symbol=data['symbol'],
-            asset_type=data.get('assetType', 'stock'),
-            timeframe_days=data.get('timeframeDays', 1),
-            predicted_direction=data['predictedDirection'],
-            predicted_change=data['predictedChange'],
-            predicted_price_min=data['predictedPriceMin'],
-            predicted_price_max=data['predictedPriceMax'],
-            confidence=data['confidence'],
-            price_at_prediction=data['priceAtPrediction'],
-            factor_scores=data.get('factorScores', {}),
-            factor_weights_used=data.get('factorWeightsUsed', {}),
-            actual_price=data['actualPrice'],
-            actual_change=data['actualChange'],
-            actual_direction=data['actualDirection'],
-            direction_correct=data['directionCorrect'],
-            price_error=data['priceError'],
-            within_range=data['withinRange']
+            asset_type=data.get('assetType', data.get('asset_type', 'stock')),
+            timeframe_days=data.get('timeframeDays', data.get('timeframe_days', 1)),
+            timeframe=data.get('timeframe', 'intraday'),
+            predicted_direction=data['predictedDirection'] if 'predictedDirection' in data else data.get('predicted_direction', 'neutral'),
+            predicted_change=data['predictedChange'] if 'predictedChange' in data else data.get('predicted_change', 0.0),
+            predicted_price_min=data['predictedPriceMin'] if 'predictedPriceMin' in data else data.get('predicted_price_min', 0.0),
+            predicted_price_max=data['predictedPriceMax'] if 'predictedPriceMax' in data else data.get('predicted_price_max', 0.0),
+            confidence=data.get('confidence', 50.0),
+            price_at_prediction=data['priceAtPrediction'] if 'priceAtPrediction' in data else data.get('price_at_prediction', 0.0),
+            factor_scores=data.get('factorScores', data.get('factor_scores', {})),
+            factor_weights=data.get('factorWeights', data.get('factor_weights', {})),
+            factor_weights_used=data.get('factorWeightsUsed', data.get('factor_weights_used', {})),
+            actual_price=data['actualPrice'] if 'actualPrice' in data else data.get('actual_price', 0.0),
+            actual_change=data['actualChange'] if 'actualChange' in data else data.get('actual_change', 0.0),
+            actual_direction=data['actualDirection'] if 'actualDirection' in data else data.get('actual_direction', 'neutral'),
+            direction_correct=data['directionCorrect'] if 'directionCorrect' in data else data.get('direction_correct', False),
+            price_error=data['priceError'] if 'priceError' in data else data.get('price_error', 0.0),
+            within_range=data['withinRange'] if 'withinRange' in data else data.get('within_range', False),
+            prediction_date=data.get('prediction_date', ''),
+            verified_at=data.get('verified_at', '')
         )
 
 

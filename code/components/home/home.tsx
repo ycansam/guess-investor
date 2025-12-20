@@ -23,7 +23,7 @@ export function Home() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
 
       <Header 
         title="Guess Investor" 
@@ -75,11 +75,11 @@ export function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#0f0f0f',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxHeight: '90%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1a1a1a',
     borderRadius: 16,
     overflow: 'hidden',
   },

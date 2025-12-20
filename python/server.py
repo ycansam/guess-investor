@@ -24,7 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import (
     DATA_DIR, WEIGHTS_FILE,
-    DEFAULT_LEARNING_RATE, DEFAULT_MOMENTUM, DEFAULT_EPOCHS
+    DEFAULT_LEARNING_RATE, DEFAULT_MOMENTUM, DEFAULT_EPOCHS,
+    EARLY_STOPPING_PATIENCE
 )
 from src.models import WeightOptimizer, LossFunction, VerifiedPrediction
 from src.utils import save_weights, append_training_result
@@ -154,7 +155,6 @@ class TrainingHandler(BaseHTTPRequestHandler):
                     symbol=p.get('symbol', ''),
                     asset_type=p.get('asset_type', 'stock'),
                     timeframe_days=p.get('timeframe_days', 1),
-                    timeframe=p.get('timeframe', 'intraday'),
                     predicted_direction=p.get('predicted_direction', 'neutral'),
                     predicted_change=p.get('predicted_change', 0),
                     predicted_price_min=p.get('predicted_price_min', 0),
@@ -187,8 +187,9 @@ class TrainingHandler(BaseHTTPRequestHandler):
         optimizer = WeightOptimizer(
             learning_rate=DEFAULT_LEARNING_RATE,
             momentum=DEFAULT_MOMENTUM,
-            loss_function=loss_fn
+            weights=None
         )
+        optimizer.loss_fn = loss_fn
         
         print(f"\n[Server] 🧠 Entrenando con {len(predictions)} predicciones...")
         
@@ -197,20 +198,32 @@ class TrainingHandler(BaseHTTPRequestHandler):
         for timeframe in ['intraday', 'swing', 'long']:
             tf_preds = [p for p in predictions if p.timeframe == timeframe]
             if len(tf_preds) >= 3:
-                initial_loss, final_loss = optimizer.train(
-                    tf_preds, timeframe, epochs=DEFAULT_EPOCHS, verbose=False
+                result = optimizer.train(
+                    predictions=tf_preds,
+                    epochs=DEFAULT_EPOCHS,
+                    patience=EARLY_STOPPING_PATIENCE,
+                    verbose=False
                 )
-                improvement = (initial_loss - final_loss) / initial_loss * 100 if initial_loss > 0 else 0
-                results[timeframe] = {
-                    'samples': len(tf_preds),
-                    'initial_loss': round(initial_loss, 4),
-                    'final_loss': round(final_loss, 4),
-                    'improvement': round(improvement, 1),
-                }
-                print(f"   ✓ {timeframe}: {initial_loss:.4f} → {final_loss:.4f} ({improvement:+.1f}%)")
+                if result:
+                    initial_loss = result.initial_loss
+                    final_loss = result.final_loss
+                    improvement = (initial_loss - final_loss) / initial_loss * 100 if initial_loss > 0 else 0
+                    results[timeframe] = {
+                        'samples': len(tf_preds),
+                        'initial_loss': round(initial_loss, 4),
+                        'final_loss': round(final_loss, 4),
+                        'improvement': round(improvement, 1),
+                    }
+                    print(f"   ✓ {timeframe}: {initial_loss:.4f} → {final_loss:.4f} ({improvement:+.1f}%)")
         
         # Guardar pesos
-        save_weights(WEIGHTS_FILE, optimizer.weights, len(predictions))
+        save_weights(
+            weights=optimizer.weights,
+            training_samples=len(predictions),
+            learning_rate=DEFAULT_LEARNING_RATE,
+            momentum=DEFAULT_MOMENTUM,
+            filepath=WEIGHTS_FILE
+        )
         print(f"[Server] 💾 Pesos guardados en {WEIGHTS_FILE}")
         
         return {

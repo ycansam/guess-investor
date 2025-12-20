@@ -20,7 +20,7 @@ export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps
         <Ionicons
           name="trending-up-outline"
           size={20}
-          color={activeTab === 'market' ? '#007AFF' : '#666'}
+          color={activeTab === 'market' ? '#6366f1' : '#6b7280'}
         />
         <Text style={[styles.tabText, activeTab === 'market' && styles.activeTabText]}>
           Mercado
@@ -34,7 +34,7 @@ export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps
         <Ionicons
           name="bulb-outline"
           size={20}
-          color={activeTab === 'training' ? '#007AFF' : '#666'}
+          color={activeTab === 'training' ? '#6366f1' : '#6b7280'}
         />
         <Text style={[styles.tabText, activeTab === 'training' && styles.activeTabText]}>
           Predic.
@@ -48,7 +48,7 @@ export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps
         <Ionicons
           name="chatbubbles-outline"
           size={20}
-          color={activeTab === 'chat' ? '#007AFF' : '#666'}
+          color={activeTab === 'chat' ? '#6366f1' : '#6b7280'}
         />
         <Text style={[styles.tabText, activeTab === 'chat' && styles.activeTabText]}>
           Chat
@@ -62,7 +62,7 @@ export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps
         <Ionicons
           name="analytics-outline"
           size={20}
-          color={activeTab === 'predictions' ? '#007AFF' : '#666'}
+          color={activeTab === 'predictions' ? '#6366f1' : '#6b7280'}
         />
         <Text style={[styles.tabText, activeTab === 'predictions' && styles.activeTabText]}>
           {predictionsCount > 0 ? `(${predictionsCount})` : 'Pred.'}
@@ -75,7 +75,7 @@ export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#1a1a1a',
     paddingVertical: 4,
     paddingHorizontal: 4,
     marginHorizontal: 16,
@@ -91,21 +91,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   activeTab: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#252525',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 2,
     elevation: 2,
   },
   tabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666',
+    color: '#6b7280',
     marginLeft: 6,
   },
   activeTabText: {
-    color: '#007AFF',
+    color: '#6366f1',
     fontWeight: '600',
   },
 });
