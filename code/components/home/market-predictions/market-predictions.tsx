@@ -5,25 +5,25 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
 import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { useChatStore } from '../../../store/chat-store';
 
@@ -323,8 +323,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         if (calculatedPrediction) {
           direction = calculatedPrediction.direction;
           confidence = calculatedPrediction.confidence;
-          predictedChange = calculatedPrediction.predictedChangePercent;
-          reasoning = calculatedPrediction.reasoning;
+          predictedChange = calculatedPrediction.predictedChange;
+          reasoning = `Score: ${calculatedPrediction.factorBreakdown?.confidenceExplanation || 'Basado en análisis de 11 factores'}`;
         } else {
           // Fallback a momentum si el calculador falla
           const momentum = asset.changePercent ?? 0;
@@ -468,11 +468,11 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
         {/* Info */}
         <View style={styles.infoContainer}>
-          <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.name} numberOfLines={1} selectable={true}>{item.name}</Text>
           <View style={styles.subInfo}>
-            <Text style={styles.symbol}>{item.symbol}</Text>
+            <Text style={styles.symbol} selectable={true}>{item.symbol}</Text>
             {!item.loading && item.price !== undefined && (
-              <Text style={styles.priceInline}>
+              <Text style={styles.priceInline} selectable={true}>
                 {formatPrice(item.price, item.currency)}
               </Text>
             )}
@@ -486,24 +486,24 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           ) : cached ? (
             <View style={styles.predictionInfo}>
               <View style={[styles.predictionBadge, { backgroundColor: cached.direction === 'up' ? '#10b981' : cached.direction === 'down' ? '#ef4444' : '#6b7280' }]}>
-                <Text style={styles.predictionIcon}>
+                <Text style={styles.predictionIcon} selectable={true}>
                   {cached.direction === 'up' ? '📈' : cached.direction === 'down' ? '📉' : '➡️'}
                 </Text>
-                <Text style={styles.predictionText}>
+                <Text style={styles.predictionText} selectable={true}>
                   {(cached.predictedChange ?? 0) >= 0 ? '+' : ''}{(cached.predictedChange ?? 0).toFixed(2)}%
                 </Text>
-                <Text style={styles.confidenceText}>
+                <Text style={styles.confidenceText} selectable={true}>
                   ({cached.confidence ?? 0}%)
                 </Text>
               </View>
-              <Text style={styles.targetPrice}>
+              <Text style={styles.targetPrice} selectable={true}>
                 → {formatPrice(cached.targetPrice ?? 0, item.currency)}
               </Text>
             </View>
           ) : isPredicting ? (
-            <Text style={styles.predictingText}>Analizando...</Text>
+            <Text style={styles.predictingText} selectable={true}>Analizando...</Text>
           ) : (
-            <Text style={[styles.changeText, { color: getChangeColor(item.changePercent) }]}>
+            <Text style={[styles.changeText, { color: getChangeColor(item.changePercent) }]} selectable={true}>
               {item.changePercent !== undefined ? `${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%` : '-'}
             </Text>
           )}

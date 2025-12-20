@@ -18,6 +18,7 @@ const CORS_PROXIES = [
   'https://api.allorigins.win/raw?url=',
   'https://corsproxy.io/?',
   'https://api.codetabs.com/v1/proxy?quest=',
+  'https://cors.bridged.cc/', // Proxy alternativo más estable
 ];
 
 /**
@@ -98,12 +99,18 @@ function getUrlWithProxy(symbol: string, range: string, interval: string, proxyI
  */
 async function fetchWithRetry(symbol: string, range: string, interval: string): Promise<Response | null> {
   if (Platform.OS !== 'web') {
-    const url = getUrlWithProxy(symbol, range, interval, 0);
-    const response = await fetch(url, {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000),
-    });
-    return response.ok ? response : null;
+    // En móvil/nativo, no necesitamos CORS, llamar directamente
+    try {
+      const url = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      return response.ok ? response : null;
+    } catch (error) {
+      console.error(`[YahooV8] Direct fetch failed for ${symbol}:`, error);
+      return null;
+    }
   }
 
   // En web, intentar con cada proxy
@@ -174,6 +181,12 @@ async function fetchSymbol(symbol: string, range: string = '1d', interval: strin
     // Precio actual
     const regularMarketPrice = meta.regularMarketPrice || 0;
     const previousClose = meta.previousClose || meta.chartPreviousClose || regularMarketPrice;
+    
+    // Validar que tenemos un precio válido
+    if (!regularMarketPrice || regularMarketPrice <= 0) {
+      console.error(`[YahooV8] Invalid price for ${symbol}: ${regularMarketPrice}`);
+      return null;
+    }
     
     // Calcular cambio
     const priceChange = regularMarketPrice - previousClose;
