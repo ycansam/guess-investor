@@ -3,7 +3,6 @@
  * Muestra precisión histórica, predicciones pendientes y verificadas
  */
 
-import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { predictionTrackingService, TrackedPrediction, TrackingStats } from '../services/prediction-tracking-service';
@@ -17,7 +16,6 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const [predictions, setPredictions] = useState<TrackedPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
 
   useEffect(() => {
@@ -130,60 +128,6 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     }
   };
 
-  const handleExportForML = async () => {
-    setExporting(true);
-    try {
-      const jsonData = await predictionTrackingService.exportForML();
-      let copied = false;
-
-      // Copiar al portapapeles
-      if (Platform.OS === 'web') {
-        try {
-          await navigator.clipboard.writeText(jsonData);
-          copied = true;
-        } catch (err) {
-          console.warn('[Export] Clipboard no disponible, se usará descarga de archivo', err);
-          // Fallback: descargar archivo
-          const blob = new Blob([jsonData], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = 'predictions_export.json';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-        }
-      } else {
-        try {
-          await Clipboard.setStringAsync(jsonData);
-          copied = true;
-        } catch (err) {
-          console.warn('[Export] Clipboard nativo falló', err);
-        }
-      }
-
-      if (copied) {
-        Alert.alert(
-          '✅ Datos exportados',
-          `Se han copiado ${stats?.verified || 0} predicciones verificadas al portapapeles.\n\nPega el contenido en python/data/predictions_data.json y ejecuta el script de entrenamiento.`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert(
-          '✅ Datos exportados',
-          `Se descargó el archivo predictions_export.json con ${stats?.verified || 0} predicciones verificadas.\n\nGuárdalo en python/data/predictions_data.json y ejecuta el script de entrenamiento.`,
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      console.error('Error exporting for ML:', error);
-      Alert.alert('Error', 'No se pudieron exportar los datos');
-    } finally {
-      setExporting(false);
-    }
-  };
-
   if (loading) {
     return (
       <View style={styles.container}>
@@ -231,8 +175,6 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
             stats={stats} 
             onVerify={handleVerify} 
             verifying={verifying}
-            onExport={handleExportForML}
-            exporting={exporting}
           />
         ) : (
           <HistoryView predictions={predictions} />
@@ -247,9 +189,7 @@ const StatsView: React.FC<{
   stats: TrackingStats | null; 
   onVerify: () => void;
   verifying: boolean;
-  onExport: () => void;
-  exporting: boolean;
-}> = ({ stats, onVerify, verifying, onExport, exporting }) => {
+}> = ({ stats, onVerify, verifying }) => {
   if (!stats || stats.totalPredictions === 0) {
     return (
       <View style={styles.emptyState}>
@@ -371,22 +311,7 @@ const StatsView: React.FC<{
         </TouchableOpacity>
       )}
 
-      {/* Botón exportar para ML */}
-      {stats.verified > 0 && (
-        <TouchableOpacity 
-          style={[styles.exportButton, exporting && styles.verifyButtonDisabled]}
-          onPress={onExport}
-          disabled={exporting}
-        >
-          {exporting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.verifyButtonText}>
-              🧠 Exportar para entrenamiento ML ({stats.verified})
-            </Text>
-          )}
-        </TouchableOpacity>
-      )}
+      {/* Botón exportar para ML removido - no es necesario */}
     </View>
   );
 };
