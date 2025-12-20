@@ -3,7 +3,6 @@ import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { Header } from '../_shared/header';
 import { PredictionsList } from '../predictions-list';
 import { TrackingStatsCard } from '../TrackingStatsCard';
-import { ChatView } from './chat-view';
 import { MarketList } from './market-list';
 import { MarketPredictions } from './market-predictions';
 import { TabBar, TabType } from './tab-bar';
@@ -55,12 +54,6 @@ export function Home() {
         <MarketList />
       ) : activeTab === 'training' ? (
         <MarketPredictions />
-      ) : activeTab === 'chat' ? (
-        <ChatView
-          messages={messages}
-          isLoading={isLoading}
-          onSendMessage={handleSendMessage}
-        />
       ) : (
         <PredictionsList
           predictions={predictions}
