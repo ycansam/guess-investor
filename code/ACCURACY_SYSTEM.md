@@ -121,7 +121,55 @@ Este sistema permite:
 
 ## Próximos Pasos
 
-- [ ] Usar `accuracyScore` para ajustar pesos de factores
-- [ ] Penalizar más las predicciones "poor" en el entrenamiento
+- [x] ~~Usar `accuracyScore` para ajustar pesos de factores~~ ✅ Implementado en `weight-optimizer-service.ts`
+- [x] ~~Penalizar más las predicciones "poor" en el entrenamiento~~ ✅ Poor +25%, Failed +50% penalización extra
+- [x] ~~Ajustar pesos según volatilidad del activo~~ ✅ Implementado en `prediction-calculator.ts`
 - [ ] Crear modelo ML que prediga el accuracy esperado
 - [ ] Ajustar timeframes según la precisión histórica
+
+## Implementación de Accuracy Score en ML (v2.1)
+
+### Función de Pérdida Mejorada
+
+La función de pérdida ahora incluye 4 componentes:
+
+```typescript
+// En weight-optimizer-service.ts
+LOSS_ALPHA = 0.35  // Dirección correcta
+LOSS_BETA = 0.25   // Precisión de magnitud
+LOSS_GAMMA = 0.10  // Rango min-max
+LOSS_DELTA = 0.30  // Accuracy Score (NUEVO)
+```
+
+### Penalización por Calidad
+
+```typescript
+// Predicciones failed (<25 accuracy): +50% penalización
+if (pred.predictionQuality === 'failed') {
+  accuracyLoss = accuracyLoss * 1.5;
+}
+// Predicciones poor (25-50 accuracy): +25% penalización
+else if (pred.predictionQuality === 'poor') {
+  accuracyLoss = accuracyLoss * 1.25;
+}
+```
+
+### Ajuste por Volatilidad
+
+Los pesos se ajustan dinámicamente según la volatilidad del activo:
+
+| Volatilidad | Técnico/Sentiment | Fundamentales |
+|-------------|-------------------|---------------|
+| Baja (<20%) | ↓ Reducido | ↑ Aumentado |
+| Media (20-50%) | Normal | Normal |
+| Alta (>50%) | ↑ Aumentado | ↓ Reducido |
+
+Ejemplo para Bitcoin (volatilidad 70%):
+- `technical`: peso x1.5
+- `sentiment`: peso x1.4
+- `financials`: peso x0.5
+
+Ejemplo para Coca-Cola (volatilidad 15%):
+- `technical`: peso x0.7
+- `institutional`: peso x1.4
+- `financials`: peso x1.5

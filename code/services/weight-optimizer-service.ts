@@ -22,10 +22,13 @@ const FACTORS = [
 
 type Factor = typeof FACTORS[number];
 type Timeframe = 'intraday' | 'swing' | 'long';
+type VolatilityCategory = 'low' | 'medium' | 'high';
 type WeightsMap = Record<Factor, number>;
 type AllWeights = Record<Timeframe, WeightsMap>;
+// Pesos extendidos: por timeframe Y por volatilidad
+type VolatilityWeights = Record<VolatilityCategory, AllWeights>;
 
-// Pesos por defecto
+// Pesos por defecto (base, sin considerar volatilidad)
 const DEFAULT_WEIGHTS: AllWeights = {
   intraday: {
     trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
@@ -44,6 +47,68 @@ const DEFAULT_WEIGHTS: AllWeights = {
   }
 };
 
+// Pesos por defecto ajustados por VOLATILIDAD
+// Estos son los multiplicadores iniciales que el ML puede ajustar
+const DEFAULT_VOLATILITY_WEIGHTS: VolatilityWeights = {
+  // Activos de baja volatilidad (<20%): utilities, bonds, large caps estables
+  // Priorizan fundamentales sobre técnico
+  low: {
+    intraday: {
+      trend: 0.16, technical: 0.18, sentiment: 0.09, news: 0.14,
+      macro: 0.05, competitors: 0.05, forex: 0.05, institutional: 0.07,
+      seasonality: 0.03, financials: 0.08, expectations: 0.10
+    },
+    swing: {
+      trend: 0.10, technical: 0.13, sentiment: 0.06, news: 0.12,
+      macro: 0.10, competitors: 0.09, forex: 0.07, institutional: 0.14,
+      seasonality: 0.05, financials: 0.07, expectations: 0.07
+    },
+    long: {
+      trend: 0.04, technical: 0.06, sentiment: 0.03, news: 0.06,
+      macro: 0.15, competitors: 0.12, forex: 0.09, institutional: 0.15,
+      seasonality: 0.08, financials: 0.11, expectations: 0.11
+    }
+  },
+  // Activos de volatilidad media (20-50%): mayoría de acciones
+  // Pesos balanceados (similar a defaults)
+  medium: {
+    intraday: {
+      trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
+      macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
+      seasonality: 0.02, financials: 0.02, expectations: 0.01
+    },
+    swing: {
+      trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
+      macro: 0.08, competitors: 0.07, forex: 0.06, institutional: 0.10,
+      seasonality: 0.04, financials: 0.05, expectations: 0.05
+    },
+    long: {
+      trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08,
+      macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
+      seasonality: 0.08, financials: 0.13, expectations: 0.12
+    }
+  },
+  // Activos de alta volatilidad (>50%): crypto, growth stocks, small caps
+  // Priorizan técnico/sentiment/momentum sobre fundamentales
+  high: {
+    intraday: {
+      trend: 0.28, technical: 0.32, sentiment: 0.18, news: 0.12,
+      macro: 0.02, competitors: 0.02, forex: 0.02, institutional: 0.02,
+      seasonality: 0.01, financials: 0.01, expectations: 0.00
+    },
+    swing: {
+      trend: 0.17, technical: 0.25, sentiment: 0.14, news: 0.18,
+      macro: 0.05, competitors: 0.05, forex: 0.04, institutional: 0.06,
+      seasonality: 0.02, financials: 0.02, expectations: 0.02
+    },
+    long: {
+      trend: 0.07, technical: 0.12, sentiment: 0.06, news: 0.12,
+      macro: 0.08, competitors: 0.08, forex: 0.06, institutional: 0.10,
+      seasonality: 0.06, financials: 0.10, expectations: 0.15
+    }
+  }
+};
+
 // Hiperparámetros
 const LEARNING_RATE = 0.01;
 const MOMENTUM = 0.9;
@@ -53,18 +118,25 @@ const MIN_SAMPLES = 10;
 const WEIGHT_MIN = 0.01;
 const WEIGHT_MAX = 0.40;
 
-// Pesos de función de pérdida
-const LOSS_ALPHA = 0.5;  // Dirección
-const LOSS_BETA = 0.35;  // Magnitud
-const LOSS_GAMMA = 0.15; // Rango
+// Pesos de función de pérdida (actualizado para usar accuracyScore)
+const LOSS_ALPHA = 0.35;  // Dirección (reducido, ya que accuracyScore lo considera)
+const LOSS_BETA = 0.25;   // Magnitud (reducido, accuracyScore también lo mide)
+const LOSS_GAMMA = 0.10;  // Rango
+const LOSS_DELTA = 0.30;  // Accuracy Score (NUEVO: penaliza predicciones poor/failed)
+
+// Categorías de calidad de predicción
+type PredictionQuality = 'excellent' | 'good' | 'poor' | 'failed';
 
 interface TrainingPrediction {
   timeframe: Timeframe;
+  volatilityCategory?: 'low' | 'medium' | 'high'; // NUEVO: para segmentar por volatilidad
   factorScores: Record<string, number>;
   predictedChange: number;
   actualChange: number;
   directionCorrect: boolean;
   withinRange: boolean;
+  accuracyScore?: number; // NUEVO: 0-100, considera dirección + precisión del %
+  predictionQuality?: PredictionQuality; // NUEVO: clasificación de calidad
 }
 
 interface TrainingResult {
@@ -120,14 +192,36 @@ function clipAndNormalize(weights: WeightsMap): WeightsMap {
 
 /**
  * Calcula pérdida para una predicción
+ * MEJORADO: Usa accuracyScore para penalizar más las predicciones poor/failed
  */
 function computeLoss(pred: TrainingPrediction): number {
+  // 1. Pérdida por dirección incorrecta
   const dirLoss = pred.directionCorrect ? 0 : 1;
+  
+  // 2. Pérdida por magnitud (qué tan lejos estuvo el % predicho)
   const expectedMag = Math.max(Math.abs(pred.predictedChange), 1);
   const magLoss = Math.pow((pred.actualChange - pred.predictedChange) / expectedMag, 2);
+  
+  // 3. Pérdida por rango (¿cayó dentro del min-max?)
   const rangeLoss = pred.withinRange ? 0 : 1;
   
-  return LOSS_ALPHA * dirLoss + LOSS_BETA * magLoss + LOSS_GAMMA * rangeLoss;
+  // 4. NUEVO: Pérdida basada en accuracyScore (0-100)
+  // Invirtimos el score: accuracyScore alto = pérdida baja
+  // accuracyScore 100 = pérdida 0, accuracyScore 0 = pérdida 1
+  let accuracyLoss = 0.5; // Default si no hay score
+  if (pred.accuracyScore !== undefined) {
+    accuracyLoss = 1 - (pred.accuracyScore / 100);
+    
+    // Penalización extra para predicciones muy malas
+    // poor (<50) y failed (<25) reciben penalización adicional
+    if (pred.predictionQuality === 'failed') {
+      accuracyLoss = Math.min(1, accuracyLoss * 1.5); // +50% penalización
+    } else if (pred.predictionQuality === 'poor') {
+      accuracyLoss = Math.min(1, accuracyLoss * 1.25); // +25% penalización
+    }
+  }
+  
+  return LOSS_ALPHA * dirLoss + LOSS_BETA * magLoss + LOSS_GAMMA * rangeLoss + LOSS_DELTA * accuracyLoss;
 }
 
 /**
@@ -140,13 +234,17 @@ function computeBatchLoss(predictions: TrainingPrediction[]): number {
 
 class WeightOptimizerService {
   private weights: AllWeights;
+  private volatilityWeights: VolatilityWeights; // NUEVO: pesos por volatilidad
   private velocity: AllWeights;
+  private volatilityVelocity: VolatilityWeights; // NUEVO: velocity por volatilidad
   private isTraining = false;
   
   constructor() {
     // Inicializar con pesos por defecto
     this.weights = JSON.parse(JSON.stringify(DEFAULT_WEIGHTS));
+    this.volatilityWeights = JSON.parse(JSON.stringify(DEFAULT_VOLATILITY_WEIGHTS));
     this.velocity = this.initVelocity();
+    this.volatilityVelocity = this.initVolatilityVelocity();
   }
   
   private initVelocity(): AllWeights {
@@ -160,19 +258,31 @@ class WeightOptimizerService {
     return v as AllWeights;
   }
   
+  private initVolatilityVelocity(): VolatilityWeights {
+    const v: Partial<VolatilityWeights> = {};
+    for (const vol of ['low', 'medium', 'high'] as VolatilityCategory[]) {
+      v[vol] = this.initVelocity();
+    }
+    return v as VolatilityWeights;
+  }
+  
   /**
    * Convierte TrackedPrediction a formato de entrenamiento
+   * MEJORADO: Incluye accuracyScore, predictionQuality y volatilityCategory
    */
   private convertPrediction(p: TrackedPrediction): TrainingPrediction | null {
     if (p.status !== 'verified' || !p.factorScores) return null;
     
     return {
       timeframe: getTimeframe(p.timeframeDays),
+      volatilityCategory: p.volatilityCategory,
       factorScores: p.factorScores,
       predictedChange: p.predictedChange,
       actualChange: p.actualChange || 0,
       directionCorrect: p.directionCorrect || false,
       withinRange: p.withinRange || false,
+      accuracyScore: p.accuracyScore,
+      predictionQuality: p.predictionQuality,
     };
   }
   
@@ -194,7 +304,25 @@ class WeightOptimizerService {
   }
   
   /**
-   * Calcula gradientes numéricos
+   * NUEVO: Agrupa predicciones por volatilidad
+   */
+  private groupByVolatility(predictions: TrainingPrediction[]): Record<VolatilityCategory, TrainingPrediction[]> {
+    const groups: Record<VolatilityCategory, TrainingPrediction[]> = {
+      low: [],
+      medium: [],
+      high: [],
+    };
+    
+    for (const p of predictions) {
+      const vol = p.volatilityCategory || 'medium'; // Default a medium si no hay dato
+      groups[vol].push(p);
+    }
+    
+    return groups;
+  }
+  
+  /**
+   * Calcula gradientes numéricos (para pesos por timeframe)
    */
   private computeGradients(predictions: TrainingPrediction[], epsilon = 0.001): AllWeights {
     const gradients = this.initVelocity();
@@ -252,6 +380,7 @@ class WeightOptimizerService {
   
   /**
    * Entrena el modelo con las predicciones verificadas
+   * MEJORADO: También entrena pesos segmentados por volatilidad
    */
   async train(trackedPredictions: TrackedPrediction[]): Promise<TrainingResult | null> {
     if (this.isTraining) {
@@ -273,6 +402,10 @@ class WeightOptimizerService {
     
     this.isTraining = true;
     console.log(`[WeightOptimizer] 🧠 Iniciando entrenamiento con ${predictions.length} predicciones...`);
+    
+    // Log de distribución por volatilidad
+    const byVolatility = this.groupByVolatility(predictions);
+    console.log(`[WeightOptimizer] Distribución por volatilidad: low=${byVolatility.low.length}, medium=${byVolatility.medium.length}, high=${byVolatility.high.length}`);
     
     try {
       // Cargar pesos actuales si existen

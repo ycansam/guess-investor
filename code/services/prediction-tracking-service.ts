@@ -6,6 +6,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssetType } from '../types';
+import { assetClassifierService } from './asset-classifier-service';
 import type { TrainingTimeframe } from './training-cache-service';
 import { yahooV8Service } from './yahoo-v8-service';
 
@@ -30,6 +31,10 @@ export interface TrackedPrediction {
   confidence: number; // 0-100
   
   priceAtPrediction: number; // Precio cuando se hizo la predicción
+  
+  // Volatilidad del activo (para segmentación ML)
+  volatility?: number; // Volatilidad anualizada del activo (%)
+  volatilityCategory?: 'low' | 'medium' | 'high'; // <20% = low, 20-50% = medium, >50% = high
   
   // Scores de cada factor (para ML)
   factorScores?: Record<string, number>; // { trend: 25.5, sentiment: -10.2, ... }
@@ -135,6 +140,7 @@ class PredictionTrackingService {
     timeframe: string; // "1 día", "1 semana", "1 mes", etc.
     factorScores?: Record<string, number>; // Scores de cada factor
     factorWeightsUsed?: Record<string, number>; // Pesos usados
+    volatility?: number; // Volatilidad anualizada del activo (%)
   }): Promise<void> {
     await this.load();
     
@@ -161,6 +167,18 @@ class PredictionTrackingService {
       this.adjustToBusinessDay(targetDate);
     }
     
+    // Categorizar volatilidad para segmentación ML
+    let volatilityCategory: 'low' | 'medium' | 'high' | undefined;
+    if (prediction.volatility !== undefined) {
+      if (prediction.volatility < 20) {
+        volatilityCategory = 'low';
+      } else if (prediction.volatility < 50) {
+        volatilityCategory = 'medium';
+      } else {
+        volatilityCategory = 'high';
+      }
+    }
+    
     const tracked: TrackedPrediction = {
       id: prediction.id,
       symbol: prediction.symbol,
@@ -176,6 +194,8 @@ class PredictionTrackingService {
       predictedPriceMax: prediction.predictedPriceMax,
       confidence: prediction.confidence,
       priceAtPrediction: prediction.currentPrice,
+      volatility: prediction.volatility,
+      volatilityCategory,
       factorScores: prediction.factorScores,
       factorWeightsUsed: prediction.factorWeightsUsed,
       status: 'pending',
@@ -265,21 +285,12 @@ class PredictionTrackingService {
         }
         
         // Usar precio de cierre si está disponible, sino precio actual
-        // regularMarketPreviousClose es el cierre del día anterior
-        // regularMarketPrice es el precio actual/último
+        // regularMarketPrice es el precio actual/último (único disponible en V8)
         let actualPrice: number;
         
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-        
-        if (target < today && currentData.regularMarketPreviousClose) {
-          // Si la fecha objetivo fue ayer o antes, usar el cierre anterior como referencia
-          // Nota: para histórico más preciso necesitaríamos datos históricos
-          actualPrice = currentData.regularMarketPrice || currentData.regularMarketPreviousClose;
-        } else {
-          // Es hoy y el mercado cerró, usar precio actual (que es el de cierre)
-          actualPrice = currentData.regularMarketPrice || 0;
-        }
+        // Simplificado: usar precio de mercado actual
+        // Para predicciones pasadas, esto es el último precio conocido
+        actualPrice = currentData.regularMarketPrice || 0;
         
         if (!actualPrice) {
           console.error(`[Tracking] Precio no disponible para ${prediction.symbol}`);

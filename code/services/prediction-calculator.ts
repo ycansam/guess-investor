@@ -887,6 +887,64 @@ class PredictionCalculatorService {
       }
     };
     
+    // --- AJUSTE DE PESOS POR VOLATILIDAD DEL ACTIVO ---
+    // Activos muy volátiles (crypto, growth stocks): más peso a técnico/sentiment
+    // Activos estables (utilities, bonds): más peso a fundamentales
+    const adjustWeightsForVolatility = (
+      baseWeights: Record<string, number>, 
+      assetVolatility: number
+    ): Record<string, number> => {
+      // Categorizar volatilidad
+      // <20% = baja (utilities, bonds, large caps estables)
+      // 20-50% = media (mayoría de acciones)
+      // >50% = alta (crypto, growth stocks, small caps)
+      
+      let volatilityMultiplier: Record<string, number>;
+      
+      if (assetVolatility < 20) {
+        // Baja volatilidad: priorizar fundamentales
+        volatilityMultiplier = {
+          trend: 0.8, technical: 0.7, sentiment: 0.6, news: 0.8,
+          macro: 1.3, competitors: 1.2, forex: 1.1, institutional: 1.4,
+          seasonality: 1.2, financials: 1.5, expectations: 1.5
+        };
+        console.log(`[PredictionCalc] 📉 Volatilidad BAJA (${assetVolatility.toFixed(1)}%): priorizando fundamentales`);
+      } else if (assetVolatility < 50) {
+        // Volatilidad media: pesos balanceados (sin ajuste)
+        volatilityMultiplier = {
+          trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
+          macro: 1.0, competitors: 1.0, forex: 1.0, institutional: 1.0,
+          seasonality: 1.0, financials: 1.0, expectations: 1.0
+        };
+        console.log(`[PredictionCalc] 📊 Volatilidad MEDIA (${assetVolatility.toFixed(1)}%): pesos balanceados`);
+      } else {
+        // Alta volatilidad: priorizar técnico/momentum/sentiment
+        volatilityMultiplier = {
+          trend: 1.4, technical: 1.5, sentiment: 1.4, news: 1.3,
+          macro: 0.7, competitors: 0.8, forex: 0.9, institutional: 0.8,
+          seasonality: 0.6, financials: 0.5, expectations: 0.5
+        };
+        console.log(`[PredictionCalc] 📈 Volatilidad ALTA (${assetVolatility.toFixed(1)}%): priorizando técnico/sentiment`);
+      }
+      
+      // Aplicar multiplicadores y renormalizar
+      const adjustedWeights: Record<string, number> = {};
+      let totalAdjusted = 0;
+      
+      for (const [factor, weight] of Object.entries(baseWeights)) {
+        const multiplier = volatilityMultiplier[factor] || 1.0;
+        adjustedWeights[factor] = weight * multiplier;
+        totalAdjusted += adjustedWeights[factor];
+      }
+      
+      // Normalizar para que sumen 1
+      for (const factor of Object.keys(adjustedWeights)) {
+        adjustedWeights[factor] = adjustedWeights[factor] / totalAdjusted;
+      }
+      
+      return adjustedWeights;
+    };
+    
     // Intentar cargar pesos aprendidos de AsyncStorage
     let learnedWeights: LearnedWeights | null = null;
     try {
@@ -913,11 +971,16 @@ class PredictionCalculatorService {
       return DEFAULT_WEIGHTS[timeframeKey];
     };
     
-    const timeframeWeights = getWeightsForTimeframe(timeframeDays);
-    const usingLearned = learnedWeights?.weights !== null;
-    console.log(`[PredictionCalc] Timeframe: ${timeframeDays} días, pesos ${usingLearned ? '🧠 aprendidos' : 'defaults'} para ${timeframeDays <= 1 ? 'intradía' : timeframeDays <= 7 ? 'swing' : 'largo plazo'}`);
+    // 1. Obtener pesos base (aprendidos o por defecto) según timeframe
+    const baseTimeframeWeights = getWeightsForTimeframe(timeframeDays);
     
-    // NOTA: 11 factores con pesos dinámicos según timeframe
+    // 2. Ajustar pesos según volatilidad del activo
+    const timeframeWeights = adjustWeightsForVolatility(baseTimeframeWeights, volatility);
+    
+    const usingLearned = learnedWeights?.weights !== null;
+    console.log(`[PredictionCalc] Timeframe: ${timeframeDays} días, pesos ${usingLearned ? '🧠 aprendidos' : 'defaults'} para ${timeframeDays <= 1 ? 'intradía' : timeframeDays <= 7 ? 'swing' : 'largo plazo'} (ajustados por volatilidad)`);
+    
+    // NOTA: 11 factores con pesos dinámicos según timeframe Y volatilidad
     const factors: { name: string; score: number; hasData: boolean; baseWeight: number }[] = [
       { name: 'trend', score: trendScore, hasData: hasHistoricalData, baseWeight: timeframeWeights.trend },
       { name: 'technical', score: technicalScore, hasData: hasTechnicalData, baseWeight: timeframeWeights.technical },

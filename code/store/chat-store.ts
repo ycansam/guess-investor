@@ -125,6 +125,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             timeframe: prediction.timeframe,
             factorScores,
             factorWeightsUsed,
+            volatility: prediction.analysisData?.historical?.volatility,
           }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
         }
       }
@@ -289,6 +290,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             timeframe: prediction.timeframe,
             factorScores,
             factorWeightsUsed,
+            volatility: prediction.analysisData?.historical?.volatility,
           }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
         }
       }
