@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 0.95,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#0a0a0a',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#6366f1',
+    color: '#818cf8',
     marginBottom: 12,
   },
   infoGrid: {
@@ -572,16 +572,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(99, 102, 241, 0.05)',
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
   },
   infoLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
     fontWeight: '500',
   },
   infoValue: {
     fontSize: 13,
-    color: '#6366f1',
+    color: '#818cf8',
     fontWeight: '600',
   },
   predictionBox: {
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
   },
   confidenceLabel: {
     fontSize: 14,
-    color: '#6366f1',
+    color: '#818cf8',
     marginTop: 4,
     fontWeight: '600',
   },
@@ -627,7 +627,7 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
   },
   metricValue: {
     fontSize: 14,
@@ -655,7 +655,7 @@ const styles = StyleSheet.create({
   },
   priceLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
     fontWeight: '500',
   },
   priceValue: {
@@ -675,7 +675,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(99, 102, 241, 0.05)',
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
   },
   factorEmoji: {
     fontSize: 20,
@@ -725,7 +725,7 @@ const styles = StyleSheet.create({
   },
   historicalLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
     fontWeight: '500',
   },
   historicalValue: {
@@ -745,19 +745,19 @@ const styles = StyleSheet.create({
   },
   sentimentSource: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#9ca3af',
     marginBottom: 12,
   },
   sentimentDetail: {
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(99, 102, 241, 0.05)',
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
     marginTop: 8,
   },
   sentimentDetailLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
     marginBottom: 4,
   },
   sentimentDetailValue: {
@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
   },
   technicalLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
     fontWeight: '500',
   },
   technicalValue: {
@@ -802,7 +802,7 @@ const styles = StyleSheet.create({
   },
   newsCount: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#9ca3af',
     marginBottom: 8,
   },
   newsSummary: {
@@ -817,7 +817,7 @@ const styles = StyleSheet.create({
   },
   macroRegion: {
     fontSize: 14,
-    color: '#6366f1',
+    color: '#818cf8',
     fontWeight: '600',
     marginBottom: 4,
   },
@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
   },
   competitorsSector: {
     fontSize: 14,
-    color: '#6366f1',
+    color: '#818cf8',
     fontWeight: '600',
     marginBottom: 4,
   },
@@ -861,7 +861,7 @@ const styles = StyleSheet.create({
   },
   forexBase: {
     fontSize: 14,
-    color: '#6366f1',
+    color: '#818cf8',
     fontWeight: '600',
     marginBottom: 4,
   },
@@ -873,7 +873,7 @@ const styles = StyleSheet.create({
   },
   forexPairs: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#9ca3af',
     marginBottom: 8,
   },
   forexSummary: {
@@ -888,7 +888,7 @@ const styles = StyleSheet.create({
   },
   seasonalitySector: {
     fontSize: 14,
-    color: '#6366f1',
+    color: '#818cf8',
     fontWeight: '600',
     marginBottom: 4,
   },
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
   },
   seasonalityCountry: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
     marginBottom: 8,
   },
   seasonalityEvents: {
@@ -932,7 +932,7 @@ const styles = StyleSheet.create({
   },
   financialLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#9ca3af',
     fontWeight: '500',
   },
   financialValue: {
@@ -976,16 +976,16 @@ const styles = StyleSheet.create({
   },
   auditItemTitle: {
     fontSize: 13,
-    color: '#6366f1',
+    color: '#818cf8',
     fontWeight: '600',
   },
   auditItemLink: {
     fontSize: 12,
-    color: '#6366f1',
+    color: '#818cf8',
   },
   auditItemData: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#9ca3af',
   },
   calculationBox: {
     backgroundColor: '#1a1a1a',
@@ -1000,13 +1000,13 @@ const styles = StyleSheet.create({
   },
   calculationStep: {
     fontSize: 13,
-    color: '#6366f1',
+    color: '#818cf8',
     fontWeight: '600',
     marginBottom: 4,
   },
   calculationFormula: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#9ca3af',
     fontFamily: 'monospace',
     marginBottom: 4,
   },

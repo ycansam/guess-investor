@@ -44,6 +44,11 @@ export interface TrackedPrediction {
   priceError?: number; // Error absoluto en % (predicho vs real)
   withinRange?: boolean; // ¿El precio real cayó dentro del rango min-max?
   
+  // Scoring de precisión del porcentaje (NUEVO)
+  changeAccuracyPercent?: number; // Qué tan cerca estuvo del cambio predicho (0-100%)
+  accuracyScore?: number; // Puntuación final 0-100 considerando dirección + precisión
+  predictionQuality?: 'excellent' | 'good' | 'poor' | 'failed'; // Clasificación de calidad
+  
   verifiedAt?: string; // Fecha de verificación (ISO)
 }
 
@@ -56,6 +61,13 @@ export interface TrackingStats {
   directionAccuracy: number; // % de veces que acertó dirección
   avgPriceError: number; // Error promedio en %
   withinRangeRate: number; // % de veces que el precio cayó en el rango
+  
+  // Nuevas métricas de calidad
+  avgAccuracyScore: number; // Puntuación promedio 0-100
+  excellentPredictions: number; // Predicciones con >75% accuracy
+  goodPredictions: number; // Predicciones con 50-75% accuracy
+  poorPredictions: number; // Predicciones con 25-50% accuracy
+  failedPredictions: number; // Predicciones con <25% accuracy
   
   // Por dirección
   upPredictions: number;
@@ -270,7 +282,7 @@ class PredictionTrackingService {
           actualChange > 0.5 ? 'up' : 
           actualChange < -0.5 ? 'down' : 'neutral';
         
-        // Verificar precisión
+        // Verificar precisión de dirección
         const directionCorrect = prediction.predictedDirection === actualDirection ||
           (prediction.predictedDirection !== 'neutral' && actualDirection === 'neutral') ||
           (prediction.predictedDirection === actualDirection);
@@ -278,6 +290,57 @@ class PredictionTrackingService {
         const priceError = Math.abs(prediction.predictedChange - actualChange);
         const withinRange = actualPrice >= prediction.predictedPriceMin && 
                            actualPrice <= prediction.predictedPriceMax;
+        
+        // NUEVO: Calcular precisión del cambio porcentual
+        // Si predijo +3% y hubo +0.2%, eso es solo 6.67% de precisión (muy malo)
+        // Si predijo +3% y hubo +2.8%, eso es 93.33% de precisión (excelente)
+        let changeAccuracyPercent = 0;
+        
+        // Para evitar divisiones por cero o infinitos
+        if (Math.abs(prediction.predictedChange) > 0.1) {
+          // Calcular qué % del cambio predicho se cumplió
+          const fulfillmentRatio = Math.abs(actualChange) / Math.abs(prediction.predictedChange);
+          
+          // Si la dirección es correcta, el ratio indica precisión
+          // Si predijo +3% y hubo +2.5%, ratio = 83.33%
+          // Si predijo +3% y hubo +5%, ratio = 166%, pero lo capamos a 100%
+          if (directionCorrect && prediction.predictedDirection !== 'neutral') {
+            changeAccuracyPercent = Math.min(100, fulfillmentRatio * 100);
+            
+            // Penalización por exceso: si predijo +3% y hubo +6%, es impreciso
+            if (fulfillmentRatio > 1.5) {
+              changeAccuracyPercent = Math.max(0, 100 - (fulfillmentRatio - 1) * 50);
+            }
+          } else {
+            // Dirección incorrecta = 0% accuracy en cambio
+            changeAccuracyPercent = 0;
+          }
+        } else {
+          // Predicción de cambio muy pequeño (<0.1%)
+          if (Math.abs(actualChange) < 0.5) {
+            changeAccuracyPercent = 100; // Acertó que sería neutral
+          } else {
+            changeAccuracyPercent = 0; // Falló
+          }
+        }
+        
+        // NUEVO: Calcular accuracy score final (0-100)
+        // 50% peso a dirección correcta, 50% peso a precisión del cambio
+        const directionScore = directionCorrect ? 50 : 0;
+        const changeScore = (changeAccuracyPercent / 100) * 50;
+        const accuracyScore = Math.round(directionScore + changeScore);
+        
+        // NUEVO: Clasificar calidad de la predicción
+        let predictionQuality: 'excellent' | 'good' | 'poor' | 'failed';
+        if (accuracyScore >= 75) {
+          predictionQuality = 'excellent'; // >75%: dirección correcta + cambio preciso
+        } else if (accuracyScore >= 50) {
+          predictionQuality = 'good'; // 50-75%: dirección correcta pero cambio impreciso
+        } else if (accuracyScore >= 25) {
+          predictionQuality = 'poor'; // 25-50%: cambio muy impreciso
+        } else {
+          predictionQuality = 'failed'; // <25%: dirección incorrecta o totalmente errado
+        }
         
         // Actualizar predicción
         prediction.status = 'verified';
@@ -287,6 +350,9 @@ class PredictionTrackingService {
         prediction.directionCorrect = directionCorrect;
         prediction.priceError = Math.round(priceError * 100) / 100;
         prediction.withinRange = withinRange;
+        prediction.changeAccuracyPercent = Math.round(changeAccuracyPercent);
+        prediction.accuracyScore = accuracyScore;
+        prediction.predictionQuality = predictionQuality;
         prediction.verifiedAt = now.toISOString();
         
         verified.push(prediction);
@@ -294,7 +360,10 @@ class PredictionTrackingService {
         console.log(`[Tracking] Verificado ${prediction.symbol}:`, {
           predicted: `${prediction.predictedDirection} (${prediction.predictedChange}%)`,
           actual: `${actualDirection} (${actualChange.toFixed(2)}%)`,
-          correct: directionCorrect,
+          directionCorrect,
+          changeAccuracy: `${changeAccuracyPercent.toFixed(1)}%`,
+          accuracyScore,
+          quality: predictionQuality,
           priceUsed: actualPrice,
         });
         
@@ -327,6 +396,16 @@ class PredictionTrackingService {
       ? verified.reduce((sum, p) => sum + (p.priceError || 0), 0) / verified.length
       : 0;
     
+    // NUEVO: Calcular métricas de calidad
+    const avgAccuracyScore = verified.length > 0
+      ? Math.round(verified.reduce((sum, p) => sum + (p.accuracyScore || 0), 0) / verified.length)
+      : 0;
+    
+    const excellentPredictions = verified.filter(p => p.predictionQuality === 'excellent').length;
+    const goodPredictions = verified.filter(p => p.predictionQuality === 'good').length;
+    const poorPredictions = verified.filter(p => p.predictionQuality === 'poor').length;
+    const failedPredictions = verified.filter(p => p.predictionQuality === 'failed').length;
+    
     // Por dirección
     const upPredictions = verified.filter(p => p.predictedDirection === 'up');
     const downPredictions = verified.filter(p => p.predictedDirection === 'down');
@@ -349,6 +428,13 @@ class PredictionTrackingService {
       withinRangeRate: verified.length > 0 
         ? Math.round((withinRange / verified.length) * 100) 
         : 0,
+      
+      // Nuevas métricas de calidad
+      avgAccuracyScore,
+      excellentPredictions,
+      goodPredictions,
+      poorPredictions,
+      failedPredictions,
       
       upPredictions: upPredictions.length,
       upCorrect: upPredictions.filter(p => p.directionCorrect).length,
@@ -459,6 +545,87 @@ class PredictionTrackingService {
     const day = date.getDay();
     if (day === 0) date.setDate(date.getDate() + 1); // Domingo → Lunes
     if (day === 6) date.setDate(date.getDate() + 2); // Sábado → Lunes
+  }
+  
+  /**
+   * Recalcula los accuracy scores de todas las predicciones verificadas
+   * Útil para migrar datos antiguos cuando se actualiza el sistema de scoring
+   */
+  async recalculateAccuracyScores(): Promise<number> {
+    await this.load();
+    
+    let updated = 0;
+    
+    for (const prediction of this.predictions) {
+      // Solo recalcular verificadas que no tengan accuracy score
+      if (prediction.status !== 'verified' || prediction.accuracyScore !== undefined) {
+        continue;
+      }
+      
+      // Verificar que tengamos los datos necesarios
+      if (
+        prediction.actualChange === undefined ||
+        prediction.predictedChange === undefined ||
+        prediction.directionCorrect === undefined
+      ) {
+        continue;
+      }
+      
+      // Calcular precisión del cambio porcentual
+      let changeAccuracyPercent = 0;
+      
+      if (Math.abs(prediction.predictedChange) > 0.1) {
+        const fulfillmentRatio = Math.abs(prediction.actualChange) / Math.abs(prediction.predictedChange);
+        
+        if (prediction.directionCorrect && prediction.predictedDirection !== 'neutral') {
+          changeAccuracyPercent = Math.min(100, fulfillmentRatio * 100);
+          
+          // Penalización por exceso
+          if (fulfillmentRatio > 1.5) {
+            changeAccuracyPercent = Math.max(0, 100 - (fulfillmentRatio - 1) * 50);
+          }
+        } else {
+          changeAccuracyPercent = 0;
+        }
+      } else {
+        if (Math.abs(prediction.actualChange) < 0.5) {
+          changeAccuracyPercent = 100;
+        } else {
+          changeAccuracyPercent = 0;
+        }
+      }
+      
+      // Calcular accuracy score final
+      const directionScore = prediction.directionCorrect ? 50 : 0;
+      const changeScore = (changeAccuracyPercent / 100) * 50;
+      const accuracyScore = Math.round(directionScore + changeScore);
+      
+      // Clasificar calidad
+      let predictionQuality: 'excellent' | 'good' | 'poor' | 'failed';
+      if (accuracyScore >= 75) {
+        predictionQuality = 'excellent';
+      } else if (accuracyScore >= 50) {
+        predictionQuality = 'good';
+      } else if (accuracyScore >= 25) {
+        predictionQuality = 'poor';
+      } else {
+        predictionQuality = 'failed';
+      }
+      
+      // Actualizar predicción
+      prediction.changeAccuracyPercent = Math.round(changeAccuracyPercent);
+      prediction.accuracyScore = accuracyScore;
+      prediction.predictionQuality = predictionQuality;
+      
+      updated++;
+    }
+    
+    if (updated > 0) {
+      await this.save();
+      console.log(`[Tracking] Recalculados ${updated} accuracy scores`);
+    }
+    
+    return updated;
   }
   
   /**

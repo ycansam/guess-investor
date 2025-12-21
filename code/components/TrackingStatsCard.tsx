@@ -16,6 +16,7 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const [predictions, setPredictions] = useState<TrackedPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
   const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
         const pending = await predictionTrackingService.getPendingPredictions();
         console.log('[TrackingStatsCard] Pendientes:', pending.length);
         if (pending.length === 0) {
-          showAlert('ℹ️ Sin pendientes', 'No hay predicciones pendientes de verificar.');
+          console.log('Sin pendientes: No hay predicciones pendientes de verificar');
         } else {
           const now = new Date();
           const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -116,6 +117,22 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     }
   };
 
+  const handleRecalculate = async () => {
+    console.log('[TrackingStatsCard] handleRecalculate llamado');
+    setRecalculating(true);
+    try {
+      const updated = await predictionTrackingService.recalculateAccuracyScores();
+      console.log(`[TrackingStatsCard] ${updated} predicciones actualizadas`);
+      if (updated > 0) {
+        await loadData(); // Recargar datos
+      }
+    } catch (error) {
+      console.error('Error recalculating scores:', error);
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -163,6 +180,8 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
             stats={stats} 
             onVerify={handleVerify} 
             verifying={verifying}
+            onRecalculate={handleRecalculate}
+            recalculating={recalculating}
           />
         ) : (
           <HistoryView predictions={predictions} />
@@ -177,7 +196,9 @@ const StatsView: React.FC<{
   stats: TrackingStats | null; 
   onVerify: () => void;
   verifying: boolean;
-}> = ({ stats, onVerify, verifying }) => {
+  onRecalculate: () => void;
+  recalculating: boolean;
+}> = ({ stats, onVerify, verifying, onRecalculate, recalculating }) => {
   if (!stats || stats.totalPredictions === 0) {
     return (
       <View style={styles.emptyState}>
@@ -213,15 +234,59 @@ const StatsView: React.FC<{
               color={stats.directionAccuracy >= 60 ? '#10b981' : stats.directionAccuracy >= 50 ? '#f59e0b' : '#ef4444'}
             />
             <StatBox 
-              label="En rango" 
-              value={`${stats.withinRangeRate}%`} 
-              color={stats.withinRangeRate >= 50 ? '#10b981' : '#f59e0b'}
+              label="Score medio" 
+              value={`${stats.avgAccuracyScore}%`} 
+              color={stats.avgAccuracyScore >= 70 ? '#10b981' : stats.avgAccuracyScore >= 50 ? '#f59e0b' : '#ef4444'}
             />
             <StatBox 
               label="Error prom." 
               value={`${stats.avgPriceError}%`} 
               color={stats.avgPriceError <= 2 ? '#10b981' : stats.avgPriceError <= 5 ? '#f59e0b' : '#ef4444'}
             />
+          </View>
+        </View>
+      )}
+      
+      {/* Calidad de Predicciones - NUEVO */}
+      {stats.verified > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>⭐ Calidad de Predicciones</Text>
+          <Text style={styles.cardSubtitle}>
+            Considera dirección + precisión del cambio porcentual
+          </Text>
+          <View style={styles.qualityGrid}>
+            <View style={[styles.qualityBox, { backgroundColor: '#10b98120' }]}>
+              <Text style={styles.qualityIcon}>🎯</Text>
+              <Text style={[styles.qualityValue, { color: '#10b981' }]}>
+                {stats.excellentPredictions}
+              </Text>
+              <Text style={styles.qualityLabel}>Excelentes</Text>
+              <Text style={styles.qualitySubLabel}>{'>75% score'}</Text>
+            </View>
+            <View style={[styles.qualityBox, { backgroundColor: '#3b82f620' }]}>
+              <Text style={styles.qualityIcon}>👍</Text>
+              <Text style={[styles.qualityValue, { color: '#3b82f6' }]}>
+                {stats.goodPredictions}
+              </Text>
+              <Text style={styles.qualityLabel}>Buenas</Text>
+              <Text style={styles.qualitySubLabel}>{'50-75%'}</Text>
+            </View>
+            <View style={[styles.qualityBox, { backgroundColor: '#f59e0b20' }]}>
+              <Text style={styles.qualityIcon}>⚠️</Text>
+              <Text style={[styles.qualityValue, { color: '#f59e0b' }]}>
+                {stats.poorPredictions}
+              </Text>
+              <Text style={styles.qualityLabel}>Pobres</Text>
+              <Text style={styles.qualitySubLabel}>{'25-50%'}</Text>
+            </View>
+            <View style={[styles.qualityBox, { backgroundColor: '#ef444420' }]}>
+              <Text style={styles.qualityIcon}>❌</Text>
+              <Text style={[styles.qualityValue, { color: '#ef4444' }]}>
+                {stats.failedPredictions}
+              </Text>
+              <Text style={styles.qualityLabel}>Fallidas</Text>
+              <Text style={styles.qualitySubLabel}>{'<25%'}</Text>
+            </View>
           </View>
         </View>
       )}
@@ -298,6 +363,28 @@ const StatsView: React.FC<{
           )}
         </TouchableOpacity>
       )}
+      
+      {/* Botón recalcular scores - NUEVO */}
+      {stats.verified > 0 && (stats.excellentPredictions + stats.goodPredictions + stats.poorPredictions + stats.failedPredictions) === 0 && (
+        <View style={styles.migrationNotice}>
+          <Text style={styles.migrationText}>
+            ⚠️ Tienes {stats.verified} predicciones verificadas sin el nuevo sistema de scoring
+          </Text>
+          <TouchableOpacity 
+            style={[styles.recalculateButton, recalculating && styles.verifyButtonDisabled]}
+            onPress={onRecalculate}
+            disabled={recalculating}
+          >
+            {recalculating ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.verifyButtonText}>
+                🎯 Recalcular Scores
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Botón exportar para ML removido - no es necesario */}
     </View>
@@ -365,6 +452,30 @@ const PredictionHistoryItem: React.FC<{ prediction: TrackedPrediction }> = ({ pr
                 ? `${prediction.actualChange >= 0 ? '+' : ''}${prediction.actualChange}%`
                 : 'N/A'}
             </Text>
+          </View>
+        )}
+        
+        {/* NUEVO: Mostrar accuracy score */}
+        {prediction.status === 'verified' && prediction.accuracyScore !== undefined && (
+          <View style={styles.historyColumn}>
+            <Text style={styles.historyLabel}>Score</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={[
+                styles.historyValue,
+                { 
+                  color: prediction.accuracyScore >= 75 ? '#10b981' :
+                         prediction.accuracyScore >= 50 ? '#3b82f6' :
+                         prediction.accuracyScore >= 25 ? '#f59e0b' : '#ef4444'
+                }
+              ]}>
+                {prediction.accuracyScore}
+              </Text>
+              <Text style={{ fontSize: 16 }}>
+                {prediction.predictionQuality === 'excellent' ? '🎯' :
+                 prediction.predictionQuality === 'good' ? '👍' :
+                 prediction.predictionQuality === 'poor' ? '⚠️' : '❌'}
+              </Text>
+            </View>
           </View>
         )}
         
@@ -496,11 +607,9 @@ const PendingPredictionsSection: React.FC<{ stats: TrackingStats }> = ({ stats }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     backgroundColor: '#1f2937',
-    borderRadius: 12,
     padding: 16,
-    margin: 8,
-    maxHeight: 500,
   },
   header: {
     flexDirection: 'row',
@@ -545,7 +654,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   content: {
-    maxHeight: 350,
+    flex: 1,
   },
   loadingText: {
     color: '#9ca3af',
@@ -620,6 +729,46 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 2,
   },
+  // Estilos para calidad de predicciones - NUEVO
+  qualityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 12,
+  },
+  qualityBox: {
+    flex: 1,
+    minWidth: '45%',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qualityIcon: {
+    fontSize: 28,
+    marginBottom: 4,
+  },
+  qualityValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  qualityLabel: {
+    color: '#e5e7eb',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  qualitySubLabel: {
+    color: '#9ca3af',
+    fontSize: 11,
+  },
+  cardSubtitle: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
   confidenceList: {
     gap: 8,
   },
@@ -656,6 +805,27 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: 'center',
     marginTop: 8,
+  },
+  recalculateButton: {
+    backgroundColor: '#8b5cf6',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  migrationNotice: {
+    backgroundColor: '#f59e0b20',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  migrationText: {
+    color: '#fbbf24',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   exportButton: {
     backgroundColor: '#8b5cf6',
