@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { predictionTrackingService, TrackedPrediction, TrackingStats } from '../services/prediction-tracking-service';
 
 interface TrackingStatsCardProps {
@@ -38,14 +38,7 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     }
   };
 
-  // Helper para mostrar alertas en web y móvil
-  const showAlert = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      Alert.alert(title, message, [{ text: 'OK' }]);
-    }
-  };
+
 
   const handleVerify = async () => {
     console.log('[TrackingStatsCard] handleVerify llamado');
@@ -55,7 +48,6 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       const verified = await predictionTrackingService.verifyPendingPredictions();
       console.log('[TrackingStatsCard] Resultado:', verified.length, 'verificadas');
       if (verified.length > 0) {
-        showAlert('✅ Verificación completada', `Se verificaron ${verified.length} predicción(es).`);
         await loadData(); // Recargar datos
       } else {
         // Mostrar por qué no se verificó nada
@@ -111,18 +103,14 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
           });
           
           if (!readyToVerify) {
-            showAlert(
-              'ℹ️ Esperando cierre de mercado', 
-              `Las predicciones se verificarán cuando el mercado cierre:\n\n${fechasInfo}\n\n📊 NYSE/NASDAQ: 22:00\n₿ Crypto: 23:00`
-            );
+            console.log('Esperando cierre de mercado:', fechasInfo);
           } else {
-            showAlert('⚠️ Error', `Algunas predicciones están listas pero hubo error al obtener precios:\n\n${fechasInfo}`);
+            console.log('Error al obtener precios:', fechasInfo);
           }
         }
       }
     } catch (error) {
       console.error('Error verifying predictions:', error);
-      showAlert('❌ Error', `No se pudieron verificar: ${error}`);
     } finally {
       setVerifying(false);
     }

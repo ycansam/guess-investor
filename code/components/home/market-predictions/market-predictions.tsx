@@ -6,7 +6,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Platform,
     RefreshControl,
@@ -118,12 +117,12 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     // Verificar si ya hay predicción cacheada
     const cached = getCachedPrediction(asset.symbol, timeframe);
     if (cached) {
-      showAlert('Predicción existente', `Ya tienes una predicción para ${asset.symbol} (${TIMEFRAME_INFO[timeframe].label}) válida hasta ${cached.expiresAt.toLocaleTimeString('es-ES')}`);
+      console.log(`Predicción existente para ${asset.symbol}`);
       return;
     }
 
     if (!asset.price) {
-      showAlert('Error', 'No hay precio disponible para este activo');
+      console.log('No hay precio disponible para este activo');
       return;
     }
 
@@ -197,14 +196,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
   }, [getCachedPrediction, sendMessage, onPredictionMade]);
 
-  // Helper para mostrar alertas compatibles con web
-  const showAlert = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      Alert.alert(title, message);
-    }
-  };
+
 
   // Toggle selección de un símbolo
   const toggleSelection = useCallback((symbol: string) => {
@@ -291,7 +283,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     const selectedAssets = assets.filter(a => selectedSymbols.has(a.symbol) && a.price !== undefined);
     
     if (selectedAssets.length === 0) {
-      showAlert('Sin selección', 'Selecciona al menos un activo para predecir');
+      console.log('Sin selección: Selecciona al menos un activo');
       return;
     }
 
@@ -374,10 +366,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     setCachedPredictions(trainingCacheService.getAllActive());
     setSelectedSymbols(new Set());
 
-    showAlert(
-      '✅ Predicciones completadas',
-      `${successCount} predicciones creadas${errorCount > 0 ? `\n${errorCount} errores` : ''}`
-    );
+    console.log(`Predicciones completadas: ${successCount} creadas${errorCount > 0 ? `, ${errorCount} errores` : ''}`);
   }, [assets, selectedSymbols, selectedTimeframe, getCachedPrediction, sendMessage, onPredictionMade]);
 
   // Eliminar predicciones seleccionadas
@@ -385,7 +374,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     const toDelete = cachedPredictions.filter(p => selectedSymbols.has(p.symbol) && p.timeframe === selectedTimeframe);
     
     if (toDelete.length === 0) {
-      showAlert('Sin selección', 'Selecciona predicciones para eliminar');
+      console.log('Sin selección: Selecciona predicciones para eliminar');
       return;
     }
 
@@ -395,7 +384,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     setCachedPredictions(trainingCacheService.getAllActive());
     setSelectedSymbols(new Set());
     
-    showAlert('🗑️ Eliminadas', `${removed} predicciones eliminadas`);
+    console.log(`${removed} predicciones eliminadas`);
   }, [cachedPredictions, selectedSymbols, selectedTimeframe]);
 
   // Formatear precio a EUR
