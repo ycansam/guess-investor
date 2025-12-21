@@ -16,6 +16,7 @@ import {
     useWindowDimensions,
     View
 } from 'react-native';
+import { assetClassifierService } from '../../../services/asset-classifier-service';
 import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
 import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
@@ -67,6 +68,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [selectionMode, setSelectionMode] = useState<'predict' | 'delete'>('predict');
   const [sortBy, setSortBy] = useState<'default' | 'price_desc' | 'price_asc' | 'change_desc' | 'change_asc'>('default');
   const [selectedPrediction, setSelectedPrediction] = useState<TrainingPrediction | null>(null);
+  const [recommendedTimeframes, setRecommendedTimeframes] = useState<Map<string, TrainingTimeframe>>(new Map());
 
   const { sendMessage } = useChatStore();
   const { 
@@ -99,6 +101,30 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     const interval = setInterval(loadData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [loadData]);
+
+  // Cargar recomendaciones de timeframe para los activos visibles
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      const recommendations = new Map<string, TrainingTimeframe>();
+      
+      for (const asset of assets.slice(0, 20)) { // Solo los primeros 20 para no saturar
+        try {
+          const recs = await assetClassifierService.getRecommendedTimeframe(asset.symbol);
+          if (recs.length > 0) {
+            recommendations.set(asset.symbol, recs[0].timeframe);
+          }
+        } catch (error) {
+          console.error(`Error getting recommendation for ${asset.symbol}:`, error);
+        }
+      }
+      
+      setRecommendedTimeframes(recommendations);
+    };
+    
+    if (assets.length > 0) {
+      loadRecommendations();
+    }
+  }, [assets]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -467,7 +493,15 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
         {/* Info */}
         <View style={styles.infoContainer}>
-          <Text style={styles.name} numberOfLines={1} selectable={true}>{item.name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.name} numberOfLines={1} selectable={true}>{item.name}</Text>
+            {/* Badge de timeframe recomendado */}
+            {recommendedTimeframes.has(item.symbol) && recommendedTimeframes.get(item.symbol) === selectedTimeframe && (
+              <View style={styles.recommendedBadge}>
+                <Text style={styles.recommendedBadgeText}>⭐</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.subInfo}>
             <Text style={styles.symbol} selectable={true}>{item.symbol}</Text>
             {!item.loading && item.price !== undefined && (
@@ -1269,5 +1303,16 @@ const styles = StyleSheet.create({
   },
   predictionAnalysisButtonText: {
     fontSize: 14,
+  },
+  recommendedBadge: {
+    backgroundColor: '#fbbf2420',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+  },
+  recommendedBadgeText: {
+    fontSize: 10,
   },
 });

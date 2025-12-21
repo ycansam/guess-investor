@@ -6,6 +6,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssetType } from '../types';
+import type { TrainingTimeframe } from './training-cache-service';
 import { yahooV8Service } from './yahoo-v8-service';
 
 const TRACKING_STORAGE_KEY = 'prediction-tracking';
@@ -20,6 +21,7 @@ export interface TrackedPrediction {
   predictionDate: string; // Fecha cuando se hizo la predicción (ISO)
   targetDate: string; // Fecha objetivo de la predicción (ISO)
   timeframeDays: number; // Días de timeframe
+  timeframe?: TrainingTimeframe; // intraday, swing, longterm - NUEVO para clasificación
   
   predictedDirection: 'up' | 'down' | 'neutral';
   predictedChange: number; // % cambio predicho
@@ -139,6 +141,16 @@ class PredictionTrackingService {
     // Parsear timeframe a días
     const timeframeDays = this.parseTimeframeToDays(prediction.timeframe);
     
+    // NUEVO: Mapear timeframe string a tipo para clasificación
+    let timeframeType: TrainingTimeframe | undefined;
+    if (timeframeDays <= 1) {
+      timeframeType = 'intraday';
+    } else if (timeframeDays <= 7) {
+      timeframeType = 'swing';
+    } else {
+      timeframeType = 'longterm';
+    }
+    
     // Calcular fecha objetivo
     const now = new Date();
     const targetDate = new Date(now);
@@ -157,6 +169,7 @@ class PredictionTrackingService {
       predictionDate: now.toISOString(),
       targetDate: targetDate.toISOString(),
       timeframeDays,
+      timeframe: timeframeType,
       predictedDirection: prediction.direction,
       predictedChange: prediction.predictedChange,
       predictedPriceMin: prediction.predictedPriceMin,
@@ -356,6 +369,15 @@ class PredictionTrackingService {
         prediction.verifiedAt = now.toISOString();
         
         verified.push(prediction);
+        
+        // NUEVO: Actualizar clasificador con accuracy por timeframe
+        if (prediction.timeframe && prediction.accuracyScore !== undefined) {
+          await assetClassifierService.updateLearnedTimeframe(
+            prediction.symbol,
+            prediction.timeframe,
+            prediction.accuracyScore
+          );
+        }
         
         console.log(`[Tracking] Verificado ${prediction.symbol}:`, {
           predicted: `${prediction.predictedDirection} (${prediction.predictedChange}%)`,
