@@ -17,6 +17,8 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
 
   useEffect(() => {
@@ -133,6 +135,30 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     }
   };
 
+  const handleReset = async () => {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      return;
+    }
+    
+    console.log('[TrackingStatsCard] handleReset confirmado');
+    setResetting(true);
+    try {
+      await predictionTrackingService.resetAll();
+      console.log('[TrackingStatsCard] Reset completado');
+      setConfirmReset(false);
+      await loadData(); // Recargar datos (ahora vacíos)
+    } catch (error) {
+      console.error('Error resetting data:', error);
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const cancelReset = () => {
+    setConfirmReset(false);
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -182,6 +208,10 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
             verifying={verifying}
             onRecalculate={handleRecalculate}
             recalculating={recalculating}
+            onReset={handleReset}
+            resetting={resetting}
+            confirmReset={confirmReset}
+            onCancelReset={cancelReset}
           />
         ) : (
           <HistoryView predictions={predictions} />
@@ -198,7 +228,11 @@ const StatsView: React.FC<{
   verifying: boolean;
   onRecalculate: () => void;
   recalculating: boolean;
-}> = ({ stats, onVerify, verifying, onRecalculate, recalculating }) => {
+  onReset: () => void;
+  resetting: boolean;
+  confirmReset: boolean;
+  onCancelReset: () => void;
+}> = ({ stats, onVerify, verifying, onRecalculate, recalculating, onReset, resetting, confirmReset, onCancelReset }) => {
   if (!stats || stats.totalPredictions === 0) {
     return (
       <View style={styles.emptyState}>
@@ -207,12 +241,30 @@ const StatsView: React.FC<{
         <Text style={styles.emptySubtext}>
           Las predicciones se registrarán automáticamente cuando hagas consultas
         </Text>
+        
+        {/* Botón reset en estado vacío por si hay datos residuales */}
+        <TouchableOpacity 
+          style={[styles.resetButton, { marginTop: 20 }]}
+          onPress={onReset}
+          disabled={resetting}
+        >
+          {resetting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.resetButtonText}>
+              🗑️ Limpiar datos ML
+            </Text>
+          )}
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View>
+      {/* Estabilidad del Sistema ML */}
+      <SystemStabilityCard stats={stats} />
+      
       {/* Resumen general */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>📈 Resumen General</Text>
@@ -386,6 +438,50 @@ const StatsView: React.FC<{
         </View>
       )}
 
+      {/* Botón resetear todo - ZONA DE PELIGRO */}
+      <View style={styles.dangerZone}>
+        <Text style={styles.dangerZoneTitle}>⚠️ Zona de Peligro</Text>
+        <Text style={styles.dangerZoneText}>
+          Elimina todas las predicciones, verificaciones y datos de aprendizaje ML
+        </Text>
+        
+        {confirmReset ? (
+          <View style={styles.confirmResetContainer}>
+            <Text style={styles.confirmResetText}>
+              ¿Estás seguro? Esta acción no se puede deshacer.
+            </Text>
+            <View style={styles.confirmResetButtons}>
+              <TouchableOpacity 
+                style={styles.cancelResetButton}
+                onPress={onCancelReset}
+              >
+                <Text style={styles.cancelResetText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.confirmResetButton, resetting && styles.verifyButtonDisabled]}
+                onPress={onReset}
+                disabled={resetting}
+              >
+                {resetting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.confirmResetButtonText}>Sí, eliminar todo</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity 
+            style={styles.resetButton}
+            onPress={onReset}
+          >
+            <Text style={styles.resetButtonText}>
+              🗑️ Resetear Todo
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Botón exportar para ML removido - no es necesario */}
     </View>
   );
@@ -489,6 +585,126 @@ const PredictionHistoryItem: React.FC<{ prediction: TrackedPrediction }> = ({ pr
 };
 
 // Componentes auxiliares
+
+// Componente de Estabilidad del Sistema ML
+const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
+  // Calcular nivel de estabilidad basado en datos disponibles
+  const getStabilityInfo = () => {
+    const verified = stats.verified;
+    const qualityPredictions = stats.excellentPredictions + stats.goodPredictions;
+    const totalQuality = stats.excellentPredictions + stats.goodPredictions + stats.poorPredictions + stats.failedPredictions;
+    const qualityRate = totalQuality > 0 ? (qualityPredictions / totalQuality) * 100 : 0;
+    
+    // Nivel basado en cantidad de predicciones verificadas
+    let level: 'inicial' | 'aprendiendo' | 'desarrollando' | 'estable' | 'maduro';
+    let color: string;
+    let icon: string;
+    let description: string;
+    let progressPercent: number;
+    let resetImpact: string;
+    
+    if (verified < 5) {
+      level = 'inicial';
+      color = '#9ca3af';
+      icon = '🌱';
+      description = 'Sistema nuevo, recopilando datos iniciales';
+      progressPercent = Math.min((verified / 5) * 100, 100);
+      resetImpact = 'Sin impacto - pocos datos';
+    } else if (verified < 15) {
+      level = 'aprendiendo';
+      color = '#f59e0b';
+      icon = '📚';
+      description = 'Aprendiendo patrones básicos';
+      progressPercent = Math.min(((verified - 5) / 10) * 100, 100);
+      resetImpact = 'Impacto bajo - datos recuperables';
+    } else if (verified < 30) {
+      level = 'desarrollando';
+      color = '#3b82f6';
+      icon = '🔧';
+      description = 'Desarrollando precisión en predicciones';
+      progressPercent = Math.min(((verified - 15) / 15) * 100, 100);
+      resetImpact = 'Impacto moderado - perderás semanas de aprendizaje';
+    } else if (verified < 50) {
+      level = 'estable';
+      color = '#10b981';
+      icon = '✅';
+      description = 'Sistema estable con buena base de datos';
+      progressPercent = Math.min(((verified - 30) / 20) * 100, 100);
+      resetImpact = 'Impacto alto - datos valiosos';
+    } else {
+      level = 'maduro';
+      color = '#8b5cf6';
+      icon = '🏆';
+      description = 'Sistema maduro con amplio historial';
+      progressPercent = 100;
+      resetImpact = 'Impacto muy alto - meses de aprendizaje';
+    }
+    
+    // Ajustar por calidad de predicciones
+    const qualityBonus = qualityRate >= 60 ? ' (alta calidad)' : qualityRate >= 40 ? '' : ' (calidad mejorable)';
+    
+    return { level, color, icon, description: description + qualityBonus, progressPercent, resetImpact, qualityRate };
+  };
+  
+  const stability = getStabilityInfo();
+  
+  // Calcular siguiente hito
+  const getNextMilestone = () => {
+    const verified = stats.verified;
+    if (verified < 5) return { target: 5, label: 'Fase Aprendizaje', remaining: 5 - verified };
+    if (verified < 15) return { target: 15, label: 'Fase Desarrollo', remaining: 15 - verified };
+    if (verified < 30) return { target: 30, label: 'Fase Estable', remaining: 30 - verified };
+    if (verified < 50) return { target: 50, label: 'Fase Madura', remaining: 50 - verified };
+    return { target: 100, label: 'Máximo rendimiento', remaining: Math.max(0, 100 - verified) };
+  };
+  
+  const milestone = getNextMilestone();
+  
+  return (
+    <View style={[styles.card, { borderLeftWidth: 3, borderLeftColor: stability.color }]}>
+      <View style={styles.stabilityHeader}>
+        <Text style={styles.cardTitle}>{stability.icon} Estabilidad del Sistema ML</Text>
+        <View style={[styles.stabilityBadge, { backgroundColor: stability.color + '30' }]}>
+          <Text style={[styles.stabilityBadgeText, { color: stability.color }]}>
+            {stability.level.toUpperCase()}
+          </Text>
+        </View>
+      </View>
+      
+      <Text style={styles.stabilityDescription}>{stability.description}</Text>
+      
+      {/* Barra de progreso hacia siguiente nivel */}
+      <View style={styles.stabilityProgressContainer}>
+        <View style={styles.stabilityProgressBar}>
+          <View style={[styles.stabilityProgressFill, { width: `${stability.progressPercent}%`, backgroundColor: stability.color }]} />
+        </View>
+        <Text style={styles.stabilityProgressText}>
+          {milestone.remaining > 0 
+            ? `${milestone.remaining} verificaciones más → ${milestone.label}`
+            : '¡Máximo nivel alcanzado!'
+          }
+        </Text>
+      </View>
+      
+      {/* Estadísticas clave */}
+      <View style={styles.stabilityStats}>
+        <View style={styles.stabilityStat}>
+          <Text style={styles.stabilityStatValue}>{stats.verified}</Text>
+          <Text style={styles.stabilityStatLabel}>Verificadas</Text>
+        </View>
+        <View style={styles.stabilityStat}>
+          <Text style={styles.stabilityStatValue}>{stability.qualityRate.toFixed(0)}%</Text>
+          <Text style={styles.stabilityStatLabel}>Calidad</Text>
+        </View>
+        <View style={styles.stabilityStat}>
+          <Text style={[styles.stabilityStatValue, { fontSize: 12 }]}>{stability.resetImpact.split(' - ')[0]}</Text>
+          <Text style={styles.stabilityStatLabel}>Si reseteas</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
 const StatBox: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
   <View style={styles.statBox}>
     <Text style={[styles.statValue, { color }]}>{value}</Text>
@@ -937,5 +1153,134 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 4,
+  },
+  // Estilos para zona de peligro / reset
+  dangerZone: {
+    backgroundColor: '#7f1d1d20',
+    borderWidth: 1,
+    borderColor: '#dc262680',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  dangerZoneTitle: {
+    color: '#fca5a5',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  dangerZoneText: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  resetButton: {
+    backgroundColor: '#dc2626',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  confirmResetContainer: {
+    gap: 12,
+  },
+  confirmResetText: {
+    color: '#fca5a5',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  confirmResetButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  cancelResetButton: {
+    backgroundColor: '#374151',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  cancelResetText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  confirmResetButton: {
+    backgroundColor: '#dc2626',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  confirmResetButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  // Estilos para Sistema de Estabilidad ML
+  stabilityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  stabilityBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  stabilityBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  stabilityDescription: {
+    color: '#9ca3af',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  stabilityProgressContainer: {
+    marginBottom: 12,
+  },
+  stabilityProgressBar: {
+    height: 6,
+    backgroundColor: '#374151',
+    borderRadius: 3,
+    marginBottom: 6,
+    overflow: 'hidden',
+  },
+  stabilityProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  stabilityProgressText: {
+    color: '#6b7280',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  stabilityStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+  },
+  stabilityStat: {
+    alignItems: 'center',
+  },
+  stabilityStatValue: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  stabilityStatLabel: {
+    color: '#6b7280',
+    fontSize: 10,
+    marginTop: 2,
   },
 });

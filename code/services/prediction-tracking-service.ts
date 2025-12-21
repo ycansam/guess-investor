@@ -732,6 +732,39 @@ class PredictionTrackingService {
     
     return removed;
   }
+  
+  /**
+   * RESET COMPLETO: Borra todas las predicciones y datos de ML
+   */
+  async resetAll(): Promise<void> {
+    console.log('[Tracking] 🗑️ Reseteando todas las predicciones y datos de ML...');
+    
+    const keysToRemove = [
+      'prediction-tracking',
+      'accuracy-predictor-model',
+      'learned-weights',
+      'ml-training-history',
+      'ml-sync-status',
+      'ml-export-data',
+      'asset-classifications',
+      'training-predictions-cache',
+    ];
+    
+    for (const key of keysToRemove) {
+      try {
+        await AsyncStorage.removeItem(key);
+        console.log(`[Tracking] ✅ Borrado: ${key}`);
+      } catch (error) {
+        console.log(`[Tracking] ⚠️ Error borrando ${key}:`, error);
+      }
+    }
+    
+    // Resetear estado interno
+    this.predictions = [];
+    this.loaded = false;
+    
+    console.log('[Tracking] ✅ Reset completo!');
+  }
 }
 
 export const predictionTrackingService = new PredictionTrackingService();
