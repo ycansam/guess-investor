@@ -7,16 +7,18 @@ interface PredictionsListProps {
   predictions: InvestmentPrediction[];
   onClear?: () => void;
   onRemove?: (id: string) => void;
+  onClose?: () => void;
 }
 
 export const PredictionsList: React.FC<PredictionsListProps> = ({
   predictions,
   onClear,
   onRemove,
+  onClose,
 }) => {
   if (predictions.length === 0) {
-    return <PredictionsListEmpty />;
+    return <PredictionsListEmpty onClose={onClose} />;
   }
 
-  return <PredictionsListContent predictions={predictions} onClear={onClear} onRemove={onRemove} />;
+  return <PredictionsListContent predictions={predictions} onClear={onClear} onRemove={onRemove} onClose={onClose} />;
 };

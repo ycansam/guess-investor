@@ -1,12 +1,13 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { styles } from './prediction-card-footer.styles';
 
 interface PredictionCardFooterProps {
   createdAt: Date;
+  onAnalysis?: () => void;
 }
 
-export const PredictionCardFooter: React.FC<PredictionCardFooterProps> = ({ createdAt }) => {
+export const PredictionCardFooter: React.FC<PredictionCardFooterProps> = ({ createdAt, onAnalysis }) => {
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('es-ES', {
       day: '2-digit',
@@ -23,7 +24,14 @@ export const PredictionCardFooter: React.FC<PredictionCardFooterProps> = ({ crea
         <Text style={styles.dateIcon}>📅</Text>
         <Text style={styles.timestamp}>{formatDate(createdAt)}</Text>
       </View>
-      <Text style={styles.disclaimer}>⚠️ No es consejo financiero</Text>
+      <View style={styles.actions}>
+        {onAnalysis && (
+          <TouchableOpacity style={styles.analysisButton} onPress={onAnalysis}>
+            <Text style={styles.analysisButtonText}>🔍 Análisis</Text>
+          </TouchableOpacity>
+        )}
+        <Text style={styles.disclaimer}>⚠️ No es consejo financiero</Text>
+      </View>
     </View>
   );
 };

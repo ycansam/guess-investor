@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export type TabType = 'market' | 'training' | 'predictions';
+export type TabType = 'market' | 'training';
 
 interface TabBarProps {
   activeTab: TabType;
@@ -38,20 +38,6 @@ export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps
         />
         <Text style={[styles.tabText, activeTab === 'training' && styles.activeTabText]}>
           Predic.
-        </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        style={[styles.tab, activeTab === 'predictions' && styles.activeTab]}
-        onPress={() => onTabChange('predictions')}
-      >
-        <Ionicons
-          name="analytics-outline"
-          size={20}
-          color={activeTab === 'predictions' ? '#6366f1' : '#6b7280'}
-        />
-        <Text style={[styles.tabText, activeTab === 'predictions' && styles.activeTabText]}>
-          {predictionsCount > 0 ? `(${predictionsCount})` : 'Pred.'}
         </Text>
       </TouchableOpacity>
     </View>

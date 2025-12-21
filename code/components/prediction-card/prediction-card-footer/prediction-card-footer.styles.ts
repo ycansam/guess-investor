@@ -8,7 +8,7 @@ export const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: '#2e2e2e',
   },
   dateContainer: {
     flexDirection: 'row',
@@ -20,11 +20,27 @@ export const styles = StyleSheet.create({
   },
   timestamp: {
     fontSize: 12,
-    color: '#666',
+    color: '#a0a0a0',
     fontWeight: '500',
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  analysisButton: {
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  analysisButtonText: {
+    fontSize: 11,
+    color: '#ffffff',
+    fontWeight: '600',
   },
   disclaimer: {
     fontSize: 10,
-    color: '#F44336',
+    color: '#ef4444',
   },
 });

@@ -4,6 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { CalculatedPrediction } from './prediction-calculator';
 
 export type TrainingTimeframe = 'intraday' | 'swing' | 'longterm';
 
@@ -18,6 +19,7 @@ export interface TrainingPrediction {
   currentPrice: number;
   targetPrice: number;
   reasoning: string;
+  analysisData?: CalculatedPrediction; // Datos completos del análisis
   createdAt: Date;
   expiresAt: Date;
 }
@@ -34,6 +36,7 @@ interface SerializedPrediction {
   currentPrice: number;
   targetPrice: number;
   reasoning: string;
+  analysisData?: any; // CalculatedPrediction serializado
   createdAt: string;
   expiresAt: string;
 }

@@ -12,9 +12,10 @@ import { styles } from './prediction-card.styles';
 interface PredictionCardProps {
   prediction: InvestmentPrediction;
   onRemove?: (id: string) => void;
+  onAnalysis?: (prediction: InvestmentPrediction) => void;
 }
 
-export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onRemove }) => {
+export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onRemove, onAnalysis }) => {
   const changePercent = calculateChangePercent(
     prediction.currentPrice,
     prediction.predictedPriceMin,
@@ -46,7 +47,7 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onRe
       <PredictionCardPrices prediction={prediction} />
       <PredictionCardStats prediction={prediction} changePercent={changePercent} />
       <PredictionCardAnalysis prediction={prediction} />
-      <PredictionCardFooter createdAt={prediction.createdAt} />
+      <PredictionCardFooter createdAt={prediction.createdAt} onAnalysis={onAnalysis ? () => onAnalysis(prediction) : undefined} />
     </View>
   );
 };

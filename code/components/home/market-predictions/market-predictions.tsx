@@ -5,27 +5,29 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
 import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
 import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
-  TIMEFRAME_INFO,
-  trainingCacheService,
-  TrainingPrediction,
-  TrainingTimeframe,
+    TIMEFRAME_INFO,
+    trainingCacheService,
+    TrainingPrediction,
+    TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { useChatStore } from '../../../store/chat-store';
+import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
+import { useHome } from '../use-home';
 
 // Breakpoints para responsive
 const BREAKPOINTS = {
@@ -65,8 +67,14 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [isPredictingBatch, setIsPredictingBatch] = useState(false);
   const [selectionMode, setSelectionMode] = useState<'predict' | 'delete'>('predict');
   const [sortBy, setSortBy] = useState<'default' | 'price_desc' | 'price_asc' | 'change_desc' | 'change_asc'>('default');
+  const [selectedPrediction, setSelectedPrediction] = useState<TrainingPrediction | null>(null);
 
   const { sendMessage } = useChatStore();
+  const { 
+    predictions,
+    handleClearPredictions,
+    handleRemovePrediction,
+  } = useHome();
 
   // Inicializar cache y cargar datos
   const loadData = useCallback(async () => {
@@ -169,6 +177,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         currentPrice: asset.price,
         targetPrice: asset.price * (1 + predictedChange / 100),
         reasoning,
+        analysisData: calculatedPrediction || undefined, // Guardar análisis completo
         createdAt: new Date(),
       });
 
@@ -345,6 +354,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           currentPrice: asset.price!,
           targetPrice: asset.price! * (1 + predictedChange / 100),
           reasoning,
+          analysisData: calculatedPrediction || undefined, // Guardar análisis completo
           createdAt: new Date(),
         });
 
@@ -499,6 +509,12 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
               <Text style={styles.targetPrice} selectable={true}>
                 → {formatPrice(cached.targetPrice ?? 0, item.currency)}
               </Text>
+              <TouchableOpacity
+                style={styles.predictionAnalysisButton}
+                onPress={() => setSelectedPrediction(cached)}
+              >
+                <Text style={styles.predictionAnalysisButtonText}>🔍</Text>
+              </TouchableOpacity>
             </View>
           ) : isPredicting ? (
             <Text style={styles.predictingText} selectable={true}>Analizando...</Text>
@@ -515,14 +531,16 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   // Header con selector de timeframe
   const renderHeader = () => (
     <View>
-      {/* Título y hora */}
+      {/* Título y hora con botón de análisis */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🧠 Predicciones IA</Text>
-        {lastUpdate && (
-          <Text style={styles.lastUpdate}>
-            {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        )}
+        <View style={styles.headerActions}>
+          {lastUpdate && (
+            <Text style={styles.lastUpdate}>
+              {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          )}
+        </View>
       </View>
 
       {/* Descripción */}
@@ -702,6 +720,12 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
   return (
     <View style={[styles.container, isDesktop && { paddingHorizontal: horizontalPadding }]}>
+      {/* Modal de Análisis de Predicción */}
+      <TrainingPredictionAnalysisModal
+        prediction={selectedPrediction}
+        onClose={() => setSelectedPrediction(null)}
+      />
+
       <FlatList
         data={sortedAssets}
         renderItem={renderAsset}
@@ -1111,5 +1135,150 @@ const styles = StyleSheet.create({
   checkboxDeleteSelected: {
     backgroundColor: '#ef4444',
     borderColor: '#ef4444',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: '90%',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  // Header actions
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  // Analysis modal
+  analysisModalContent: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+    marginTop: 50,
+  },
+  analysisModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#0f0f0f',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2e2e2e',
+  },
+  analysisModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    flex: 1,
+  },
+  analysisModalClose: {
+    padding: 8,
+  },
+  analysisModalCloseText: {
+    fontSize: 20,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  analysisModalBody: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  analysisSection: {
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2e2e2e',
+  },
+  analysisSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6366f1',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  analysisRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2e2e2e',
+  },
+  analysisLabel: {
+    fontSize: 14,
+    color: '#a0a0a0',
+    fontWeight: '500',
+  },
+  analysisValue: {
+    fontSize: 14,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  analysisDisclaimer: {
+    fontSize: 12,
+    color: '#ef4444',
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+  analysisModalFooter: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#0f0f0f',
+    borderTopWidth: 1,
+    borderTopColor: '#2e2e2e',
+  },
+  analysisModalCloseButton: {
+    backgroundColor: '#6366f1',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  analysisModalCloseButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  // Reasoning box
+  reasoningBox: {
+    backgroundColor: '#0f0f0f',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#6366f1',
+  },
+  reasoningText: {
+    fontSize: 13,
+    color: '#e5e7eb',
+    lineHeight: 20,
+    fontWeight: '400',
+  },
+  analysisDisclaimer: {
+    fontSize: 12,
+    color: '#ef4444',
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+  // Prediction analysis button
+  predictionAnalysisButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 8,
+  },
+  predictionAnalysisButtonText: {
+    fontSize: 14,
   },
 });

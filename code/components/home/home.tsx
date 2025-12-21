@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { Header } from '../_shared/header';
-import { PredictionsList } from '../predictions-list';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { MarketList } from './market-list';
 import { MarketPredictions } from './market-predictions';
@@ -47,19 +46,13 @@ export function Home() {
       <TabBar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        predictionsCount={predictions.length}
+        predictionsCount={0}
       />
 
       {activeTab === 'market' ? (
         <MarketList />
-      ) : activeTab === 'training' ? (
-        <MarketPredictions />
       ) : (
-        <PredictionsList
-          predictions={predictions}
-          onClear={predictions.length > 0 ? handleClearPredictions : undefined}
-          onRemove={handleRemovePrediction}
-        />
+        <MarketPredictions />
       )}
     </SafeAreaView>
   );
