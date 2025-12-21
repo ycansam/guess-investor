@@ -17,9 +17,11 @@ Guess Investor analiza **11 factores** diferentes para cada activo financiero y 
 - 📊 **11 Factores de análisis**: Tendencia, Técnico, Sentimiento, Noticias, Macro, Competidores, Forex, Institucional, Estacionalidad, Financieros, Expectativas
 - 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo
 - 📈 **Datos en tiempo real**: Yahoo Finance V8 API (gratis e ilimitado)
-- 🎯 **Tracking de predicciones**: Verificación automática al cierre del mercado
+- 🎯 **Tracking de predicciones**: Verificación automática al cierre del mercado con **sistema de accuracy scoring**
+- ⭐ **Accuracy Scoring**: Puntuación 0-100 que considera dirección + precisión del cambio porcentual
 - 🧠 **Auto-aprendizaje**: El sistema mejora basándose en sus errores
 - 🌍 **Mercados globales**: NYSE, NASDAQ, Europa (.MC, .DE, .PA), Crypto
+- 📱 **UI moderna**: Modal full screen, análisis detallado por predicción, sin popups molestos
 
 ---
 
@@ -124,6 +126,35 @@ Donde:
 
 ---
 
+## ⭐ Sistema de Accuracy Scoring
+
+El sistema evalúa la calidad de las predicciones con un **score de 0-100** que combina:
+
+### Fórmula
+```
+AccuracyScore = DirectionScore (50pts) + ChangeScore (50pts)
+```
+
+### Clasificación
+
+| Score | Calidad | Descripción |
+|-------|---------|-------------|
+| 75-100 | 🎯 Excellent | Dirección correcta + cambio muy preciso |
+| 50-74 | 👍 Good | Dirección correcta pero cambio impreciso |
+| 25-49 | ⚠️ Poor | Cambio muy impreciso |
+| 0-24 | ❌ Failed | Dirección incorrecta |
+
+### Ejemplo
+```
+Predicción: AAPL +3% en 1 día
+Real: AAPL +2.8% en 1 día
+→ Dirección: ✅ (50 pts)
+→ Precisión: 93% (46 pts)
+→ Score Final: 96/100 🎯 EXCELLENT
+```
+
+---
+
 ## 📊 APIs y Fuentes de Datos
 
 | Fuente | Uso | Costo |
@@ -164,3 +195,11 @@ MIT © 2025
 ## 📝 Changelog
 
 Ver [CHANGELOG.md](./CHANGELOG.md) para el historial completo de cambios.
+
+### Últimas actualizaciones (21/12/2025)
+- ⭐ **Sistema de Accuracy Scoring**: Puntuación 0-100 considerando precisión del cambio
+- 🎨 **Mejoras de contraste**: Modal de análisis con mejor legibilidad
+- 📱 **Modal full screen**: Tracking ocupa toda la pantalla
+- 🔕 **Sin popups**: Eliminados todos los Alert.alert para mejor UX
+- 🔍 **Análisis individual**: Botón para ver análisis completo de cada predicción
+

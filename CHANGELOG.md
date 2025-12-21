@@ -1,7 +1,7 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 18 de diciembre de 2025  
-**Commit actual:** `pendiente`
+**Última actualización:** 21 de diciembre de 2025  
+**Commit actual:** `1cffc8e`
 
 ---
 
@@ -9,17 +9,24 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
-| `pendiente` | 18/12/2025 | **Ordenación en Predicciones** - Ordenar por precio (€↑/↓) o cambio (%↑/↓), conversión EUR consistente |
-| `pendiente` | 18/12/2025 | **Confianza consistente** - Predicciones usan predictionCalculatorService real en vez de fórmula simplificada |
-| `pendiente` | 18/12/2025 | **Modo Eliminar** - Selector Predict/Delete, eliminar predicciones seleccionadas de la cache |
-| `pendiente` | 18/12/2025 | **Cache persistente** - Predicciones guardadas en AsyncStorage, persisten entre recargas |
-| `pendiente` | 18/12/2025 | **Pestaña Predicciones** - Nueva pestaña "Predic." para entrenar IA con predicciones por timeframe |
-| `pendiente` | 18/12/2025 | **Sistema ML Python** - Servidor HTTP para entrenamiento, arquitectura modular (config/, models/, utils/), gradiente descendente con momentum |
-| `pendiente` | 18/12/2025 | **Auto-aprendizaje** - weight-optimizer-service.ts, integración automática con servidor Python, pesos aprendidos en AsyncStorage |
-| `pendiente` | 18/12/2025 | **Verificación por cierre de mercado** - Predicciones se verifican al cierre (22:00 acciones, 23:00 crypto), uso de precio de cierre |
-| `pendiente` | 18/12/2025 | **UI Predicciones Pendientes** - Nueva sección mostrando tiempo hasta cierre, estado por activo, badges de color |
-| `pendiente` | 18/12/2025 | **Scripts de inicio** - start-all.bat para ejecutar Python + Expo juntos, comandos npm para servidor |
-| `pendiente` | 18/12/2025 | **Documentación** - README.md en root con descripción completa, CHANGELOG movido a root |
+| `1cffc8e` | 21/12/2025 | **Sistema de Accuracy Scoring** - Nuevo sistema de puntuación que considera precisión del cambio porcentual, no solo dirección. Score 0-100 con clasificación: Excellent (75-100), Good (50-75), Poor (25-50), Failed (0-25) |
+| `1cffc8e` | 21/12/2025 | **Mejoras de contraste** - Modal de análisis individual con mejor contraste: fondos más oscuros, textos más brillantes (#818cf8), labels #9ca3af |
+| `1cffc8e` | 21/12/2025 | **Modal full screen** - Tracking de predicciones ahora ocupa toda la pantalla para mejor visualización |
+| `1cffc8e` | 21/12/2025 | **Botón Recalcular Scores** - Migración automática de predicciones antiguas al nuevo sistema de scoring |
+| `bf57c55` | 21/12/2025 | **Eliminados Alerts** - Removidos todos los Alert.alert() de la app (19 instancias), UX más fluida sin popups |
+| `9b693ba` | 20/12/2025 | **Modal análisis individual** - Botón 🔍 en cada predicción cached muestra análisis completo con 11+ factores, precios, métricas, audit trail |
+| `5d7c5e3` | 19/12/2025 | **Eliminado ChatView** - Consolidada UI removiendo pestaña de chat, focus en predicciones |
+| `d43dcd2` | 18/12/2025 | **Ordenación en Predicciones** - Ordenar por precio (€↑/↓) o cambio (%↑/↓), conversión EUR consistente |
+| `fbded15` | 18/12/2025 | **Confianza consistente** - Predicciones usan predictionCalculatorService real en vez de fórmula simplificada |
+| `2d00b35` | 18/12/2025 | **Modo Eliminar** - Selector Predict/Delete, eliminar predicciones seleccionadas de la cache |
+| `e90ee9a` | 18/12/2025 | **Cache persistente** - Predicciones guardadas en AsyncStorage, persisten entre recargas |
+| `e90ee9a` | 18/12/2025 | **Pestaña Predicciones** - Nueva pestaña "Predic." para entrenar IA con predicciones por timeframe |
+| `98d8ac5` | 18/12/2025 | **Sistema ML Python** - Servidor HTTP para entrenamiento, arquitectura modular (config/, models/, utils/), gradiente descendente con momentum |
+| `aaf764f` | 18/12/2025 | **Auto-aprendizaje** - weight-optimizer-service.ts, integración automática con servidor Python, pesos aprendidos en AsyncStorage |
+| `a84de4e` | 18/12/2025 | **Verificación por cierre de mercado** - Predicciones se verifican al cierre (22:00 acciones, 23:00 crypto), uso de precio de cierre |
+| `a84de4e` | 18/12/2025 | **UI Predicciones Pendientes** - Nueva sección mostrando tiempo hasta cierre, estado por activo, badges de color |
+| `5c61882` | 18/12/2025 | **Scripts de inicio** - start-all.bat para ejecutar Python + Expo juntos, comandos npm para servidor |
+| `5c61882` | 18/12/2025 | **Documentación** - README.md en root con descripción completa, CHANGELOG movido a root |
 | `f35ac1b` | 16/12/2025 | **Versión destacada** - Todos los 11 factores funcionando, Yahoo V8 API (gratis/ilimitado), soporte símbolos europeos |
 | `a9e2905` | 16/12/2025 | Añadido resultados financieros, expectativas y async storage, web scraping |
 | `1f0a1d0` | 16/12/2025 | Fix: Ticker GPS → GAP (Gap Inc delistado) |
@@ -73,7 +80,45 @@
 
 ---
 
-## Sistema de Machine Learning (Nuevo 18/12/2025)
+## Sistema de Accuracy Scoring (Nuevo 21/12/2025)
+
+### Problema Resuelto
+El sistema antiguo solo verificaba si la predicción acertó la **dirección** (subir/bajar), pero ignoraba la precisión del cambio porcentual. Por ejemplo:
+- ❌ **ANTES**: Predice +3%, sube +0.2% → ✅ CORRECTO (100%)
+- ✅ **AHORA**: Predice +3%, sube +0.2% → 53/100 POOR ⚠️
+
+### Nuevo Sistema de Puntuación (0-100)
+
+```
+AccuracyScore = DirectionScore (50pts) + ChangeScore (50pts)
+```
+
+**ChangeScore**: Basado en qué % del cambio predicho se cumplió
+```typescript
+fulfillmentRatio = |actualChange| / |predictedChange|
+changeScore = min(100, fulfillmentRatio * 100) * 0.5
+// Penalización si el exceso es >150%
+```
+
+### Clasificación de Calidad
+
+| Score | Calidad | Emoji | Significado |
+|-------|---------|-------|-------------|
+| 75-100 | Excellent | 🎯 | Dirección correcta + cambio muy preciso |
+| 50-74 | Good | 👍 | Dirección correcta pero cambio impreciso |
+| 25-49 | Poor | ⚠️ | Cambio muy impreciso |
+| 0-24 | Failed | ❌ | Dirección incorrecta o totalmente errado |
+
+### Nuevas Métricas UI
+
+- **Score Medio**: Promedio de accuracy scores (0-100)
+- **Panel de Calidad**: Distribución en 4 categorías (Excelentes/Buenas/Pobres/Fallidas)
+- **Historial Individual**: Cada predicción muestra score + emoji de calidad
+- **Botón Recalcular**: Migración automática de predicciones antiguas
+
+---
+
+## Sistema de Machine Learning (18/12/2025)
 
 ### Arquitectura
 
