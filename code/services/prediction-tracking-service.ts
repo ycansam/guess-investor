@@ -6,6 +6,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssetType } from '../types';
+import { accuracyPredictorService } from './accuracy-predictor-service';
 import { assetClassifierService } from './asset-classifier-service';
 import type { TrainingTimeframe } from './training-cache-service';
 import { yahooV8Service } from './yahoo-v8-service';
@@ -408,6 +409,13 @@ class PredictionTrackingService {
     
     if (verified.length > 0) {
       await this.save();
+      
+      // Reconstruir modelo de predicción de accuracy
+      try {
+        await accuracyPredictorService.rebuildModel();
+      } catch (error) {
+        console.log('[Tracking] No se pudo actualizar modelo de accuracy');
+      }
     }
     
     return verified;

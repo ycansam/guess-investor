@@ -7,6 +7,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { accuracyPredictorService, ExpectedAccuracy } from './accuracy-predictor-service';
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { CorporateEvents, corporateEventsService } from './corporate-events-service';
@@ -195,6 +196,17 @@ export interface CalculatedPrediction {
   
   timeframe: string;
   calculatedAt: Date;
+  
+  // NUEVO: Predicción de accuracy basada en historial
+  expectedAccuracy?: {
+    score: number; // 0-100, accuracy esperado basado en historial
+    quality: 'excellent' | 'good' | 'poor' | 'failed';
+    directionProbability: number; // 0-100, probabilidad de acertar dirección
+    confidence: 'high' | 'medium' | 'low'; // Confianza en esta estimación
+    basedOnSamples: number; // En cuántas predicciones similares se basa
+    explanation: string;
+    suggestedTimeframe?: string; // Si hay un timeframe mejor
+  };
   
   // AUDITORÍA: Para verificar que los datos son reales
   audit: {
@@ -1261,6 +1273,30 @@ class PredictionCalculatorService {
     console.log(`[PredictionCalc] Precio objetivo: ${predictedPrice} (cambio: ${expectedChange.toFixed(2)}%)`);
     console.log(`[PredictionCalc] Dirección: ${direction.toUpperCase()}, Confianza: ${confidence.toFixed(0)}%`);
 
+    // --- PREDECIR ACCURACY ESPERADO ---
+    // Basado en historial de predicciones similares
+    let expectedAccuracyData: ExpectedAccuracy | undefined;
+    try {
+      expectedAccuracyData = await accuracyPredictorService.predictAccuracy({
+        symbol,
+        confidence,
+        volatility,
+        timeframeDays,
+        assetType: type,
+        factorsAvailable: availableFactors.length,
+        signalSummary,
+      });
+      
+      if (expectedAccuracyData.basedOnSamples > 0) {
+        console.log(`[PredictionCalc] 📊 Accuracy esperado: ${expectedAccuracyData.expectedScore}% (${expectedAccuracyData.expectedQuality}), basado en ${expectedAccuracyData.basedOnSamples} predicciones`);
+        if (expectedAccuracyData.suggestedTimeframe) {
+          console.log(`[PredictionCalc] 💡 Sugerencia: mejor usar timeframe "${expectedAccuracyData.suggestedTimeframe}" para ${symbol}`);
+        }
+      }
+    } catch (error) {
+      console.log('[PredictionCalc] No se pudo predecir accuracy esperado');
+    }
+
     return {
       asset: this.getAssetName(symbol),
       symbol: symbol, // Símbolo exacto para detectar bolsa
@@ -1428,6 +1464,16 @@ class PredictionCalculatorService {
           .join('\n'),
         expectedChangeBreakdown: `Precio actual (${currentPrice}) × (1 + ${expectedChange.toFixed(2)}%) = ${predictedPrice}`,
       },
+      // NUEVO: Accuracy esperado basado en historial
+      expectedAccuracy: expectedAccuracyData ? {
+        score: expectedAccuracyData.expectedScore,
+        quality: expectedAccuracyData.expectedQuality,
+        directionProbability: expectedAccuracyData.directionProbability,
+        confidence: expectedAccuracyData.confidence,
+        basedOnSamples: expectedAccuracyData.basedOnSamples,
+        explanation: expectedAccuracyData.explanation,
+        suggestedTimeframe: expectedAccuracyData.suggestedTimeframe,
+      } : undefined,
     };
   }
 

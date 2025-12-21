@@ -124,8 +124,8 @@ Este sistema permite:
 - [x] ~~Usar `accuracyScore` para ajustar pesos de factores~~ ✅ Implementado en `weight-optimizer-service.ts`
 - [x] ~~Penalizar más las predicciones "poor" en el entrenamiento~~ ✅ Poor +25%, Failed +50% penalización extra
 - [x] ~~Ajustar pesos según volatilidad del activo~~ ✅ Implementado en `prediction-calculator.ts`
-- [ ] Crear modelo ML que prediga el accuracy esperado
-- [ ] Ajustar timeframes según la precisión histórica
+- [x] ~~Crear modelo ML que prediga el accuracy esperado~~ ✅ Implementado en `accuracy-predictor-service.ts`
+- [x] ~~Ajustar timeframes según la precisión histórica~~ ✅ Sugerencia de mejor timeframe por símbolo
 
 ## Implementación de Accuracy Score en ML (v2.1)
 
@@ -173,3 +173,57 @@ Ejemplo para Coca-Cola (volatilidad 15%):
 - `technical`: peso x0.7
 - `institutional`: peso x1.4
 - `financials`: peso x1.5
+
+## Predicción de Accuracy Esperado (v2.2)
+
+### ¿Qué hace?
+
+Cuando haces una predicción, ahora el sistema te dice:
+- **"Accuracy esperado: 65%"** - Basado en predicciones similares del pasado
+- **"Probabilidad de acertar dirección: 72%"** - Historial de acierto en dirección
+- **"Sugerencia: usar timeframe swing"** - Si otro timeframe funciona mejor
+
+### Cómo funciona
+
+El servicio `accuracy-predictor-service.ts` construye un modelo basado en:
+
+1. **Por símbolo** (peso más alto):
+   - ¿Cómo ha funcionado el sistema con AAPL en el pasado?
+   
+2. **Por combinación timeframe + volatilidad**:
+   - ¿Cómo funcionan predicciones de swing + alta volatilidad?
+   
+3. **Por confianza**:
+   - ¿Las predicciones con 70-79% de confianza aciertan más?
+   
+4. **Por tipo de activo**:
+   - ¿Las predicciones de crypto son menos precisas que stocks?
+
+### Ejemplo de uso
+
+```typescript
+// El resultado ahora incluye:
+{
+  expectedAccuracy: {
+    score: 62,           // Esperamos 62% de accuracy
+    quality: 'good',     // Clasificación esperada
+    directionProbability: 68,  // 68% probabilidad de acertar dirección
+    confidence: 'medium',      // Confianza en esta estimación
+    basedOnSamples: 45,        // Basado en 45 predicciones históricas
+    explanation: "Basado en historial de AAPL (45 predicciones)",
+    suggestedTimeframe: "swing"  // ¡Mejor usar swing para este símbolo!
+  }
+}
+```
+
+### Mejor Timeframe por Símbolo
+
+El sistema aprende qué timeframe funciona mejor para cada activo:
+
+| Símbolo | Mejor Timeframe | Accuracy Histórico |
+|---------|-----------------|-------------------|
+| AAPL | swing | 71% |
+| BTC-USD | intraday | 58% |
+| MSFT | longterm | 74% |
+
+Cuando pides predicción de 1 día para AAPL pero el sistema sabe que swing funciona mejor, te lo sugiere.
