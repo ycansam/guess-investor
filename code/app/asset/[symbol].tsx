@@ -1,20 +1,20 @@
 /**
  * Página de detalle del activo con gráficos
- * Muestra precio histórico + predicción
+ * Muestra precio histórico + predicción usando react-native-gifted-charts
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { predictionCalculatorService } from '../../services/prediction-calculator';
@@ -23,14 +23,11 @@ import { yahooV8Service } from '../../services/yahoo-v8-service';
 // Tipos de timeframe para el gráfico
 type ChartTimeframe = 'intraday' | 'swing' | 'longterm';
 
+// Tipo de dato para gifted-charts
 interface ChartDataPoint {
   value: number;
   label?: string;
-  dataPointColor?: string;
-  dataPointRadius?: number;
-  showDataPoint?: boolean;
-  labelTextStyle?: object;
-  customDataPoint?: () => React.ReactNode;
+  dataPointText?: string;
 }
 
 interface AssetData {
@@ -78,6 +75,7 @@ export default function AssetDetailScreen() {
 
   const [loading, setLoading] = useState(true);
   const [predicting, setPredicting] = useState(false);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
   const [assetData, setAssetData] = useState<AssetData | null>(null);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [predictionData, setPredictionData] = useState<ChartDataPoint[]>([]);
@@ -86,6 +84,7 @@ export default function AssetDetailScreen() {
   const [longtermPredictionDays, setLongtermPredictionDays] = useState<15 | 30 | 90>(15);
   const [prediction, setPrediction] = useState<{ change: number; confidence: number } | null>(null);
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
+  const [lastTimestamp, setLastTimestamp] = useState<number>(0);
 
   // Cargar datos del activo
   const loadAssetData = useCallback(async () => {
@@ -118,7 +117,6 @@ export default function AssetDetailScreen() {
     try {
       const config = TIMEFRAME_CONFIG[selectedTimeframe];
       let range = config.historyRange;
-      let predictionDays = config.predictionDays;
 
       // Ajustar para largo plazo
       if (selectedTimeframe === 'longterm') {
@@ -138,37 +136,30 @@ export default function AssetDetailScreen() {
 
         // Limitar puntos según timeframe
         if (selectedTimeframe === 'intraday') {
-          // Últimos 4 días (aprox 4*26 puntos de 15min)
           prices = prices.slice(-104);
         } else if (selectedTimeframe === 'swing') {
-          // 1.5 semanas (aprox 10 días * 7 puntos de 1h)
           prices = prices.slice(-70);
         }
 
-        // Guardar último precio para predicción
-        setLastPriceForPrediction(prices[prices.length - 1].close);
+        // Guardar último precio y timestamp para predicción
+        const lastPrice = prices[prices.length - 1];
+        setLastPriceForPrediction(lastPrice.close);
+        setLastTimestamp(lastPrice.timestamp);
 
-        // Crear datos del gráfico
-        const chartPoints: ChartDataPoint[] = prices.map((p, index) => {
+        // Crear datos para gifted-charts - mostrar etiquetas cada N puntos
+        const labelInterval = Math.max(1, Math.floor(prices.length / 6));
+        const giftedData: ChartDataPoint[] = prices.map((p, idx) => {
           const date = new Date(p.timestamp);
-          const isLastOfDay = index === prices.length - 1 ||
-            new Date(prices[index + 1]?.timestamp).getDate() !== date.getDate();
-
-          // Mostrar etiqueta cada ciertos puntos
-          const showLabel = selectedTimeframe === 'intraday'
-            ? isLastOfDay
-            : selectedTimeframe === 'swing'
-              ? index % 7 === 0
-              : index % 5 === 0;
-
+          const label = idx % labelInterval === 0 
+            ? `${date.getDate()}/${date.getMonth() + 1}` 
+            : '';
           return {
             value: p.close,
-            label: showLabel ? formatLabel(date, selectedTimeframe) : '',
-            labelTextStyle: { color: '#6b7280', fontSize: 10 },
+            label,
           };
         });
 
-        setChartData(chartPoints);
+        setChartData(giftedData);
       }
     } catch (error) {
       console.error('[AssetDetail] Error loading chart:', error);
@@ -176,7 +167,7 @@ export default function AssetDetailScreen() {
     setLoading(false);
   }, [symbol, assetData, selectedTimeframe, longtermHistoryRange]);
 
-  // Calcular predicción (separado de la carga de datos)
+  // Calcular predicción
   const handlePredict = useCallback(async () => {
     if (!symbol || lastPriceForPrediction === 0) return;
 
@@ -210,19 +201,20 @@ export default function AssetDetailScreen() {
 
         // Generar puntos intermedios para la predicción
         const predPoints: ChartDataPoint[] = [];
-        const steps = Math.min(predictionDays, 10); // Máximo 10 puntos
+        const steps = 10;
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const totalMs = predictionDays * msPerDay;
 
         for (let i = 0; i <= steps; i++) {
           const progress = i / steps;
           const interpolatedValue = lastPriceForPrediction + (targetPrice - lastPriceForPrediction) * progress;
+          const timestamp = lastTimestamp + (totalMs * progress);
+          const date = new Date(timestamp);
+          const label = i === steps ? `${date.getDate()}/${date.getMonth() + 1}` : '';
 
           predPoints.push({
             value: interpolatedValue,
-            label: i === steps ? `+${predictionDays}d` : '',
-            labelTextStyle: { color: '#818cf8', fontSize: 10 },
-            dataPointColor: '#818cf8',
-            showDataPoint: i === steps,
-            dataPointRadius: 6,
+            label,
           });
         }
 
@@ -232,54 +224,7 @@ export default function AssetDetailScreen() {
       console.error('[AssetDetail] Error calculating prediction:', error);
     }
     setPredicting(false);
-  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction]);
-
-  // Formatear etiqueta según timeframe
-  const formatLabel = (date: Date, timeframe: ChartTimeframe): string => {
-    if (timeframe === 'intraday') {
-      return `${date.getDate()}/${date.getMonth() + 1}`;
-    } else if (timeframe === 'swing') {
-      return `${date.getDate()}/${date.getMonth() + 1}`;
-    } else {
-      return `${date.getDate()}/${date.getMonth() + 1}`;
-    }
-  };
-
-  // Combinar datos históricos + predicción
-  const combinedData = useMemo(() => {
-    if (predictionData.length === 0) return chartData;
-
-    // Conectar el último punto histórico con el primero de predicción
-    const connection: ChartDataPoint = {
-      value: chartData[chartData.length - 1]?.value || 0,
-      dataPointColor: '#818cf8',
-    };
-
-    return [...chartData, ...predictionData];
-  }, [chartData, predictionData]);
-
-  // Calcular min/max para el gráfico con zoom apropiado
-  const { minValue, maxValue, yAxisOffset } = useMemo(() => {
-    const allValues = combinedData.map(d => d.value).filter(v => v > 0);
-    if (allValues.length === 0) return { minValue: 0, maxValue: 100, yAxisOffset: 0 };
-
-    const min = Math.min(...allValues);
-    const max = Math.max(...allValues);
-    const range = max - min;
-    
-    // Añadir padding del 10% arriba y abajo
-    const padding = range * 0.1;
-    const adjustedMin = min - padding;
-    const adjustedMax = max + padding;
-    
-    // El yAxisOffset desplaza el origen del gráfico
-    // maxValue es relativo al offset
-    return {
-      minValue: adjustedMin,
-      maxValue: adjustedMax - adjustedMin, // Rango total desde el offset
-      yAxisOffset: adjustedMin,
-    };
-  }, [combinedData]);
+  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction, lastTimestamp]);
 
   useEffect(() => {
     loadAssetData();
@@ -291,7 +236,27 @@ export default function AssetDetailScreen() {
     }
   }, [assetData, loadChartData]);
 
-  const chartWidth = width - 60;
+  const chartWidth = width - 64;
+
+  // Calcular el yAxisOffset para que el gráfico no empiece desde 0
+  const yAxisOffset = useMemo(() => {
+    const allData = [...chartData, ...predictionData];
+    if (allData.length === 0) return 0;
+    const minValue = Math.min(...allData.map(d => d.value));
+    // Restar un 5% del mínimo para dar espacio
+    return Math.max(0, minValue * 0.95);
+  }, [chartData, predictionData]);
+
+  // Formatear precio para tooltip
+  const formatPrice = (value: number): string => {
+    if (value >= 1000) {
+      return value.toFixed(0);
+    } else if (value >= 1) {
+      return value.toFixed(2);
+    } else {
+      return value.toFixed(4);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -318,7 +283,11 @@ export default function AssetDetailScreen() {
         )}
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
+      >
         {/* Selector de Timeframe */}
         <View style={styles.timeframeSelector}>
           {(Object.keys(TIMEFRAME_CONFIG) as ChartTimeframe[]).map((tf) => (
@@ -413,87 +382,77 @@ export default function AssetDetailScreen() {
               <ActivityIndicator size="large" color="#6366f1" />
               <Text style={styles.loadingText}>Cargando gráfico...</Text>
             </View>
-          ) : combinedData.length > 0 ? (
+          ) : chartData.length > 0 ? (
             <>
-              <LineChart
-                data={chartData}
-                data2={predictionData.length > 0 ? [chartData[chartData.length - 1], ...predictionData] : undefined}
-                width={chartWidth}
-                height={250}
-                spacing={chartWidth / Math.max(combinedData.length, 20)}
-                initialSpacing={0}
-                endSpacing={0}
-                thickness={2}
-                thickness2={2}
-                color="#22c55e"
-                color2="#818cf8"
-                hideDataPoints
-                showDataPointOnFocus
-                dataPointsColor="#22c55e"
-                dataPointsColor2="#818cf8"
-                dataPointsRadius={4}
-                startFillColor="rgba(34, 197, 94, 0.3)"
-                endFillColor="rgba(34, 197, 94, 0.05)"
-                startFillColor2="rgba(129, 140, 248, 0.3)"
-                endFillColor2="rgba(129, 140, 248, 0.05)"
-                areaChart
-                curved
-                yAxisColor="#3f3f46"
-                xAxisColor="#3f3f46"
-                yAxisTextStyle={{ color: '#9ca3af', fontSize: 10 }}
-                xAxisLabelTextStyle={{ color: '#9ca3af', fontSize: 9 }}
-                rulesColor="#27272a"
-                rulesType="dashed"
-                yAxisThickness={1}
-                xAxisThickness={1}
-                hideRules={false}
-                noOfSections={5}
-                maxValue={maxValue}
-                yAxisOffset={yAxisOffset}
-                yAxisLabelWidth={60}
-                yAxisLabelSuffix=""
-                formatYLabel={(value) => {
-                  const actualValue = Number(value) + yAxisOffset;
-                  if (actualValue >= 10000) {
-                    return actualValue.toFixed(0);
-                  } else if (actualValue >= 100) {
-                    return actualValue.toFixed(1);
-                  } else if (actualValue >= 1) {
-                    return actualValue.toFixed(2);
-                  } else {
-                    return actualValue.toFixed(4);
+              {/* Gráfico con Victory Native */}
+              <View
+                onTouchStart={() => setScrollEnabled(false)}
+                onTouchEnd={() => setScrollEnabled(true)}
+                onTouchCancel={() => setScrollEnabled(true)}
+              >
+                <LineChart
+                  data={predictionData.length > 0 
+                    ? [...chartData, ...predictionData]
+                    : chartData
                   }
-                }}
-                pointerConfig={{
-                  pointerStripColor: '#6366f1',
-                  pointerStripWidth: 1,
-                  pointerStripHeight: 250,
-                  pointerColor: '#6366f1',
-                  radius: 5,
-                  pointerLabelWidth: 120,
-                  pointerLabelHeight: 50,
-                  activatePointersOnLongPress: false,
-                  autoAdjustPointerLabelPosition: true,
-                  shiftPointerLabelX: 0,
-                  shiftPointerLabelY: -30,
-                  pointerLabelComponent: (items: any) => {
-                    // El valor viene relativo al yAxisOffset, sumar para obtener precio real
-                    const realValue = (items[0]?.value || 0) + yAxisOffset;
-                    return (
-                      <View style={styles.pointerLabel}>
-                        <Text style={styles.pointerLabelText}>
-                          {realValue >= 1000 
-                            ? realValue.toFixed(0) 
-                            : realValue >= 1 
-                              ? realValue.toFixed(2) 
-                              : realValue.toFixed(4)
-                          } {assetData?.currency}
-                        </Text>
-                      </View>
-                    );
-                  },
-                }}
-              />
+                  width={chartWidth}
+                  height={250}
+                  spacing={(chartWidth - 40) / Math.max(chartData.length + predictionData.length - 1, 1)}
+                  initialSpacing={0}
+                  endSpacing={0}
+                  thickness={2}
+                  color="#22c55e"
+                  hideDataPoints
+                  areaChart
+                  startFillColor="rgba(34, 197, 94, 0.3)"
+                  endFillColor="rgba(34, 197, 94, 0.05)"
+                  startOpacity={0.8}
+                  endOpacity={0.1}
+                  yAxisOffset={yAxisOffset}
+                  yAxisColor="#4b5563"
+                  xAxisColor="#4b5563"
+                  yAxisTextStyle={{ color: '#9ca3af', fontSize: 10 }}
+                  xAxisLabelTextStyle={{ color: '#9ca3af', fontSize: 9 }}
+                  rulesColor="#374151"
+                  rulesType="dashed"
+                  noOfSections={5}
+                  showVerticalLines
+                  verticalLinesColor="#37415180"
+                  pointerConfig={{
+                    pointerStripHeight: 250,
+                    pointerStripColor: '#6366f1',
+                    pointerStripWidth: 2,
+                    pointerColor: '#6366f1',
+                    radius: 5,
+                    pointerLabelWidth: 120,
+                    pointerLabelHeight: 50,
+                    activatePointersOnLongPress: false,
+                    autoAdjustPointerLabelPosition: true,
+                    shiftPointerLabelY: -40,
+                    pointerVanishDelay: 500,
+                    pointerLabelComponent: (items: any[]) => {
+                      const item = items[0];
+                      return (
+                        <View style={{
+                          backgroundColor: '#1e1e2e',
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#6366f1',
+                        }}>
+                          <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
+                            {formatPrice(item.value)} {assetData?.currency || ''}
+                          </Text>
+                        </View>
+                      );
+                    },
+                  }}
+                  data2={predictionData.length > 0 ? predictionData : undefined}
+                  color2="#818cf8"
+                  strokeDashArray2={[8, 4]}
+                />
+              </View>
 
               {/* Leyenda */}
               <View style={styles.legend}>
@@ -690,8 +649,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111111',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
-    minHeight: 320,
+    marginBottom: 20,
+    minHeight: 350,
   },
   loadingContainer: {
     height: 280,
@@ -747,19 +706,6 @@ const styles = StyleSheet.create({
   predictButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
-  },
-  pointerLabel: {
-    backgroundColor: '#1f1f1f',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#6366f1',
-  },
-  pointerLabelText: {
-    fontSize: 12,
-    fontWeight: '600',
     color: '#fff',
   },
   predictionInfo: {
