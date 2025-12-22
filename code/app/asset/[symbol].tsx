@@ -237,6 +237,7 @@ export default function AssetDetailScreen() {
   }, [assetData, loadChartData]);
 
   const chartWidth = width - 64;
+  const chartAreaWidth = chartWidth - 60; // Ancho útil del gráfico (menos ejes y padding)
 
   // Calcular el yAxisOffset para que el gráfico no empiece desde 0
   const yAxisOffset = useMemo(() => {
@@ -246,6 +247,38 @@ export default function AssetDetailScreen() {
     // Restar un 5% del mínimo para dar espacio
     return Math.max(0, minValue * 0.95);
   }, [chartData, predictionData]);
+
+  // Calcular spacing uniforme
+  const chartSpacing = useMemo(() => {
+    if (chartData.length === 0) return 3;
+    const totalPoints = chartData.length + (predictionData.length > 0 ? predictionData.length : 0);
+    return chartAreaWidth / Math.max(totalPoints - 1, 1);
+  }, [chartData.length, predictionData.length, chartAreaWidth]);
+
+  // Combinar datos históricos y predicción en uno solo
+  const combinedChartData = useMemo(() => {
+    if (predictionData.length === 0) return chartData;
+    return [...chartData, ...predictionData];
+  }, [chartData, predictionData]);
+
+  // Segmentos de línea para colorear histórico (verde) y predicción (morado)
+  const lineSegments = useMemo(() => {
+    if (predictionData.length === 0 || chartData.length === 0) return undefined;
+    
+    return [
+      {
+        startIndex: 0,
+        endIndex: chartData.length - 1,
+        color: '#22c55e',
+      },
+      {
+        startIndex: chartData.length - 1,
+        endIndex: chartData.length + predictionData.length - 1,
+        color: '#818cf8',
+        strokeDashArray: [6, 4],
+      },
+    ];
+  }, [chartData.length, predictionData.length]);
 
   // Formatear precio para tooltip
   const formatPrice = (value: number): string => {
@@ -384,25 +417,25 @@ export default function AssetDetailScreen() {
             </View>
           ) : chartData.length > 0 ? (
             <>
-              {/* Gráfico con Victory Native */}
+              {/* Gráfico con gifted-charts */}
               <View
+                style={styles.chartWrapper}
                 onTouchStart={() => setScrollEnabled(false)}
                 onTouchEnd={() => setScrollEnabled(true)}
                 onTouchCancel={() => setScrollEnabled(true)}
               >
                 <LineChart
-                  data={predictionData.length > 0 
-                    ? [...chartData, ...predictionData]
-                    : chartData
-                  }
+                  data={combinedChartData}
                   width={chartWidth}
                   height={250}
-                  spacing={(chartWidth - 40) / Math.max(chartData.length + predictionData.length - 1, 1)}
+                  spacing={chartSpacing}
                   initialSpacing={0}
                   endSpacing={0}
                   thickness={2}
                   color="#22c55e"
+                  lineSegments={lineSegments}
                   hideDataPoints
+                  curved
                   areaChart
                   startFillColor="rgba(34, 197, 94, 0.3)"
                   endFillColor="rgba(34, 197, 94, 0.05)"
@@ -448,9 +481,6 @@ export default function AssetDetailScreen() {
                       );
                     },
                   }}
-                  data2={predictionData.length > 0 ? predictionData : undefined}
-                  color2="#818cf8"
-                  strokeDashArray2={[8, 4]}
                 />
               </View>
 
@@ -651,6 +681,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
     minHeight: 350,
+  },
+  chartWrapper: {
+    marginRight: 16,
   },
   loadingContainer: {
     height: 280,
