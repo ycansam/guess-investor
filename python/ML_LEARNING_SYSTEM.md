@@ -543,10 +543,16 @@ if (technical > 70 && sentiment < 30) {
 ## 📋 Checklist de Implementación
 
 ### Fase 1: Fundamentos (Hacer primero)
-- [ ] **Meta-learning para uncertainty**
-  - [ ] Añadir `uncertaintyScore` a predicciones
-  - [ ] Trackear condiciones que causan fallos
-  - [ ] Implementar "no predict" cuando uncertainty > threshold
+- [x] **Meta-learning para uncertainty** ✅ (Diciembre 2024)
+  - [x] Añadir `uncertaintyScore` a predicciones
+  - [x] Trackear condiciones que causan fallos
+  - [x] Implementar "no predict" cuando uncertainty > threshold
+  
+  **Implementación:**
+  - `uncertainty-analysis-service.ts`: Detecta condiciones de alta incertidumbre
+  - Factores analizados: earnings inminentes, volatilidad extrema, datos incompletos, señales contradictorias, régimen de mercado
+  - Threshold: >70% incertidumbre = "No recomendado predecir"
+  - UI: Banner de advertencia en PredictionCard cuando uncertainty ≥50%
   
 - [ ] **Calibración de confianza**
   - [ ] Añadir tracking de calibración por bucket de confianza

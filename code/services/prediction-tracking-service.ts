@@ -57,6 +57,21 @@ export interface TrackedPrediction {
   accuracyScore?: number; // Puntuación final 0-100 considerando dirección + precisión
   predictionQuality?: 'excellent' | 'good' | 'poor' | 'failed'; // Clasificación de calidad
   
+  // Meta-learning: Uncertainty analysis (para aprender cuándo NO predecir)
+  uncertaintyScore?: number; // 0-100, donde 100 = máxima incertidumbre
+  uncertaintyFactors?: {
+    earningsInDays?: number;
+    hasUpcomingEarnings?: boolean;
+    currentVolatility?: number;
+    isVolatilityExtreme?: boolean;
+    dataCompleteness?: number;
+    signalCoherence?: number;
+    conflictingFactors?: number;
+    marketRegime?: 'panic' | 'euphoria' | 'normal';
+    vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency';
+  };
+  uncertaintyRecommendation?: string; // Texto explicando la incertidumbre
+  
   verifiedAt?: string; // Fecha de verificación (ISO)
 }
 
@@ -142,6 +157,20 @@ class PredictionTrackingService {
     factorScores?: Record<string, number>; // Scores de cada factor
     factorWeightsUsed?: Record<string, number>; // Pesos usados
     volatility?: number; // Volatilidad anualizada del activo (%)
+    // Meta-learning: Uncertainty data
+    uncertaintyScore?: number;
+    uncertaintyFactors?: {
+      earningsInDays?: number;
+      hasUpcomingEarnings?: boolean;
+      currentVolatility?: number;
+      isVolatilityExtreme?: boolean;
+      dataCompleteness?: number;
+      signalCoherence?: number;
+      conflictingFactors?: number;
+      marketRegime?: 'panic' | 'euphoria' | 'normal';
+      vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency';
+    };
+    uncertaintyRecommendation?: string;
   }): Promise<void> {
     await this.load();
     
@@ -199,6 +228,10 @@ class PredictionTrackingService {
       volatilityCategory,
       factorScores: prediction.factorScores,
       factorWeightsUsed: prediction.factorWeightsUsed,
+      // Meta-learning: Uncertainty tracking
+      uncertaintyScore: prediction.uncertaintyScore,
+      uncertaintyFactors: prediction.uncertaintyFactors,
+      uncertaintyRecommendation: prediction.uncertaintyRecommendation,
       status: 'pending',
     };
     
@@ -512,6 +545,14 @@ class PredictionTrackingService {
   async getPendingPredictions(): Promise<TrackedPrediction[]> {
     await this.load();
     return this.predictions.filter(p => p.status === 'pending');
+  }
+  
+  /**
+   * Obtiene predicciones verificadas (para ML training y análisis de incertidumbre)
+   */
+  async getVerifiedPredictions(): Promise<TrackedPrediction[]> {
+    await this.load();
+    return this.predictions.filter(p => p.status === 'verified');
   }
   
   /**

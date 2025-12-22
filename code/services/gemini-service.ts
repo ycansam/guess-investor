@@ -135,6 +135,13 @@ ${directionEmoji} Predicción: ${directionText} (${calculatedPrediction.predicte
               seasonality: calculatedPrediction.seasonality,
               factorBreakdown: calculatedPrediction.factorBreakdown,
               audit: calculatedPrediction.audit,
+              // Meta-learning: Uncertainty analysis
+              uncertainty: calculatedPrediction.uncertaintyScore !== undefined ? {
+                score: calculatedPrediction.uncertaintyScore,
+                shouldPredict: calculatedPrediction.shouldPredict ?? true,
+                warning: calculatedPrediction.uncertaintyWarning,
+                reasons: calculatedPrediction.uncertaintyReasons,
+              } : undefined,
             },
           },
         };

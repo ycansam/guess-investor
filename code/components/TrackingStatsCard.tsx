@@ -5,8 +5,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { MLMetrics, mlMetricsService } from '../services/ml-metrics-service';
 import { predictionTrackingService, TrackedPrediction, TrackingStats } from '../services/prediction-tracking-service';
-import { mlMetricsService, MLMetrics } from '../services/ml-metrics-service';
 
 interface TrackingStatsCardProps {
   onClose?: () => void;

@@ -159,6 +159,21 @@ export interface InvestmentPrediction {
       combinedScoreBreakdown: string;
       expectedChangeBreakdown: string;
     };
+    // Meta-learning: Uncertainty analysis
+    uncertainty?: {
+      score: number; // 0-100, donde 100 = máxima incertidumbre
+      shouldPredict: boolean; // false si la incertidumbre es muy alta
+      warning?: string; // Mensaje de advertencia
+      reasons?: string[]; // Razones principales de la incertidumbre
+      factors?: {
+        earningsInDays?: number;
+        hasUpcomingEarnings?: boolean;
+        isVolatilityExtreme?: boolean;
+        dataCompleteness?: number;
+        signalCoherence?: number;
+        marketRegime?: 'panic' | 'euphoria' | 'normal';
+      };
+    };
   };
 }
 

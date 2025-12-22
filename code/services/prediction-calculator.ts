@@ -21,6 +21,7 @@ import { optionsService } from './options-service';
 import { SeasonalityAnalysis, seasonalityService } from './seasonality-service';
 import { sentimentService } from './sentiment-service';
 import { TechnicalAnalysis, technicalIndicatorsService } from './technical-indicators-service';
+import { uncertaintyAnalysisService } from './uncertainty-analysis-service';
 import { vixService } from './vix-service';
 import { HistoricalData, yahooFinanceService } from './yahoo-finance-service';
 
@@ -52,6 +53,12 @@ export interface CalculatedPrediction {
   predictedChange: number;
   direction: 'up' | 'down' | 'neutral';
   confidence: number;
+  
+  // Meta-learning: Uncertainty analysis
+  uncertaintyScore?: number; // 0-100, donde 100 = máxima incertidumbre
+  shouldPredict?: boolean; // false si la incertidumbre es muy alta
+  uncertaintyWarning?: string; // Mensaje de advertencia si hay alta incertidumbre
+  uncertaintyReasons?: string[]; // Razones principales de la incertidumbre
   
   // NUEVO: Desglose de factores usados
   factorBreakdown: {
@@ -661,6 +668,34 @@ class PredictionCalculatorService {
           overallImpact: corporateEventsData.overallImpact,
           summary: corporateEventsData.summary,
         };
+      }
+
+      // 16. Analizar incertidumbre (Meta-Learning: aprender cuándo NO predecir)
+      try {
+        const uncertaintyAnalysis = await uncertaintyAnalysisService.analyzeUncertainty({
+          symbol,
+          assetType: type,
+          timeframeDays,
+          volatility: historical?.volatility,
+          avgHistoricalVolatility: historical?.volatility ? historical.volatility * 0.8 : undefined, // Aproximación
+          upcomingEvents: corporateEventsData || undefined,
+          factorScores: prediction.factorBreakdown?.weightsUsed,
+          dataCompleteness: this.calculateDataCompleteness(prediction),
+          vixLevel: vixData?.sentiment,
+        });
+
+        prediction.uncertaintyScore = uncertaintyAnalysis.uncertaintyScore;
+        prediction.shouldPredict = uncertaintyAnalysis.shouldPredict;
+        prediction.uncertaintyWarning = uncertaintyAnalysis.recommendation;
+        prediction.uncertaintyReasons = uncertaintyAnalysis.primaryReasons;
+
+        if (!uncertaintyAnalysis.shouldPredict) {
+          console.log(`[PredictionCalc] ⚠️ ALTA INCERTIDUMBRE (${uncertaintyAnalysis.uncertaintyScore}%): ${uncertaintyAnalysis.primaryReasons[0]}`);
+        } else if (uncertaintyAnalysis.uncertaintyScore >= 50) {
+          console.log(`[PredictionCalc] ⚡ Incertidumbre moderada (${uncertaintyAnalysis.uncertaintyScore}%): proceder con precaución`);
+        }
+      } catch (error) {
+        console.log('[PredictionCalc] No se pudo analizar incertidumbre');
       }
 
       return prediction;
@@ -1504,6 +1539,53 @@ class PredictionCalculatorService {
       const conflict = Math.abs(trendScore - sentimentScore) / 2;
       return Math.max(30, 55 - conflict * 0.25);
     }
+  }
+
+  /**
+   * Calcula el porcentaje de completitud de datos (0-100)
+   * Usado para análisis de incertidumbre
+   */
+  private calculateDataCompleteness(prediction: CalculatedPrediction): number {
+    let available = 0;
+    let total = 0;
+
+    // Datos críticos
+    const criticalData = [
+      prediction.sentiment?.hasData,
+      prediction.historical?.hasData,
+      prediction.technicalAnalysis !== undefined,
+    ];
+    criticalData.forEach(has => {
+      total += 2; // Peso doble para datos críticos
+      if (has) available += 2;
+    });
+
+    // Datos importantes
+    const importantData = [
+      prediction.news !== undefined,
+      prediction.financials !== undefined,
+      prediction.macro !== undefined,
+    ];
+    importantData.forEach(has => {
+      total += 1.5;
+      if (has) available += 1.5;
+    });
+
+    // Datos complementarios
+    const complementaryData = [
+      prediction.competitors !== undefined,
+      prediction.institutional !== undefined,
+      prediction.forex !== undefined,
+      prediction.seasonality !== undefined,
+      prediction.expectations !== undefined,
+      prediction.corporateEvents !== undefined,
+    ];
+    complementaryData.forEach(has => {
+      total += 1;
+      if (has) available += 1;
+    });
+
+    return total > 0 ? (available / total) * 100 : 0;
   }
 
   /**

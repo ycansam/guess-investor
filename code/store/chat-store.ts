@@ -126,6 +126,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             factorScores,
             factorWeightsUsed,
             volatility: prediction.analysisData?.historical?.volatility,
+            // Meta-learning: Uncertainty tracking
+            uncertaintyScore: prediction.analysisData?.uncertainty?.score,
+            uncertaintyFactors: prediction.analysisData?.uncertainty?.factors,
+            uncertaintyRecommendation: prediction.analysisData?.uncertainty?.warning,
           }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
         }
       }
@@ -291,6 +295,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             factorScores,
             factorWeightsUsed,
             volatility: prediction.analysisData?.historical?.volatility,
+            // Meta-learning: Uncertainty tracking
+            uncertaintyScore: prediction.analysisData?.uncertainty?.score,
+            uncertaintyFactors: prediction.analysisData?.uncertainty?.factors,
+            uncertaintyRecommendation: prediction.analysisData?.uncertainty?.warning,
           }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
         }
       }
