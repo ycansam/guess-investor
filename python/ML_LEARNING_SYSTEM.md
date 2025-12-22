@@ -492,6 +492,22 @@ ACTUAL                                    IDEAL
   - `skew`: Detecta sesgo bullish/bearish
   - Calibración automática con errores históricos por timeframe/volatilidad
 
+- [x] **Reinforcement Learning** ✅
+  - [x] Tratar cada predicción como una "acción"
+  - [x] Reward = accuracyScore de la predicción
+  - [x] Aprender política óptima de cuándo/cómo predecir
+  
+  **Implementación (`reinforcement-learning-service.ts`):**
+  - Q-Learning con ε-greedy exploration
+  - **Estados**: régimen, volatilidad, timeframe, signalStrength, coherencia, eventos, performance
+  - **Acciones**: `skip`, `predict_low`, `predict_medium`, `predict_high`
+  - **Rewards**: +100 excellent, +50 good, -25 poor, -75 failed
+  - `getPolicy()`: Recomienda acción óptima con explicación
+  - `recordExperience()`: Actualiza Q-table con nueva experiencia
+  - `trainFromReplay()`: Batch learning con experience replay
+  - Exploration decay: 30% → 5% gradualmente
+  - UCB-like exploration bonus para estados poco visitados
+
 ---
 
 ## 📊 Métricas para Tracking de Mejoras
@@ -509,7 +525,7 @@ Antes de implementar cada mejora, establecer baseline:
 
 ---
 
-## 💡 Ideas Experimentales
+## 💡 Ideas Experimentales (Futuro)
 
 ### Neural Network en Python
 Para cuando haya suficientes datos (>500 predicciones):
@@ -522,11 +538,6 @@ model = Sequential([
     Dense(1, activation='sigmoid')  # Probabilidad de subida
 ])
 ```
-
-### Reinforcement Learning
-- Tratar cada predicción como una "acción"
-- Reward = accuracyScore de la predicción
-- Aprender política óptima de cuándo/cómo predecir
 
 ### Attention Mechanism
 - "¿A qué factor debería prestar más atención para ESTE activo AHORA?"
