@@ -118,6 +118,10 @@ const MIN_SAMPLES = 10;
 const WEIGHT_MIN = 0.01;
 const WEIGHT_MAX = 0.40;
 
+// Time-decay: predicciones recientes pesan más que antiguas
+// Half-life de 180 días = predicción de hace 6 meses tiene peso 0.5
+const TIME_DECAY_HALF_LIFE_DAYS = 180;
+
 // Pesos de función de pérdida (actualizado para usar accuracyScore)
 const LOSS_ALPHA = 0.35;  // Dirección (reducido, ya que accuracyScore lo considera)
 const LOSS_BETA = 0.25;   // Magnitud (reducido, accuracyScore también lo mide)
@@ -137,6 +141,7 @@ interface TrainingPrediction {
   withinRange: boolean;
   accuracyScore?: number; // NUEVO: 0-100, considera dirección + precisión del %
   predictionQuality?: PredictionQuality; // NUEVO: clasificación de calidad
+  targetDate?: string; // NUEVO: Para time-decay (predicciones recientes pesan más)
 }
 
 interface TrainingResult {
@@ -163,6 +168,28 @@ function getTimeframe(days: number): Timeframe {
  */
 function mean(values: number[]): number {
   return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+}
+
+/**
+ * Calcula el peso temporal de una predicción usando decaimiento exponencial
+ * Predicciones más recientes tienen mayor peso en el entrenamiento
+ * @param targetDate - Fecha cuando se verificó la predicción
+ * @returns Peso entre 0 y 1 (1 = hoy, 0.5 = hace 180 días)
+ */
+function computeTimeDecayWeight(targetDate?: string): number {
+  if (!targetDate) return 1; // Si no hay fecha, peso máximo (backward compatible)
+  
+  const now = new Date();
+  const predDate = new Date(targetDate);
+  const daysOld = Math.max(0, (now.getTime() - predDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  // Decaimiento exponencial: weight = e^(-λt) donde λ = ln(2)/half_life
+  // Esto asegura que después de TIME_DECAY_HALF_LIFE_DAYS, el peso es 0.5
+  const lambda = Math.LN2 / TIME_DECAY_HALF_LIFE_DAYS;
+  const weight = Math.exp(-lambda * daysOld);
+  
+  // Mínimo 0.1 para que predicciones muy antiguas aún contribuyan algo
+  return Math.max(0.1, weight);
 }
 
 /**
@@ -225,11 +252,26 @@ function computeLoss(pred: TrainingPrediction): number {
 }
 
 /**
- * Calcula pérdida promedio para un batch
+ * Calcula pérdida promedio ponderada para un batch
+ * MEJORADO: Usa time-decay para dar más peso a predicciones recientes
  */
 function computeBatchLoss(predictions: TrainingPrediction[]): number {
   if (predictions.length === 0) return 0;
-  return mean(predictions.map(computeLoss));
+  
+  // Calcular pérdida ponderada por tiempo
+  let totalWeightedLoss = 0;
+  let totalWeight = 0;
+  
+  for (const pred of predictions) {
+    const loss = computeLoss(pred);
+    const timeWeight = computeTimeDecayWeight(pred.targetDate);
+    
+    totalWeightedLoss += loss * timeWeight;
+    totalWeight += timeWeight;
+  }
+  
+  // Retornar promedio ponderado
+  return totalWeight > 0 ? totalWeightedLoss / totalWeight : 0;
 }
 
 class WeightOptimizerService {
@@ -283,6 +325,7 @@ class WeightOptimizerService {
       withinRange: p.withinRange || false,
       accuracyScore: p.accuracyScore,
       predictionQuality: p.predictionQuality,
+      targetDate: p.targetDate, // Para time-decay en entrenamiento
     };
   }
   

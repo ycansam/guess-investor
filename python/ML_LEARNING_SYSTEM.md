@@ -559,9 +559,16 @@ if (technical > 70 && sentiment < 30) {
   - [x] Mostrar "accuracy real" junto a confianza
   - [x] Crear calibrationModel que ajuste confianza
 
-- [ ] **Time-decay en entrenamiento**
-  - [ ] Modificar `computeLoss` para incluir peso temporal
-  - [ ] Dar más peso a predicciones recientes
+- [x] **Time-decay en entrenamiento** ✅
+  - [x] Modificar `computeLoss` para incluir peso temporal
+  - [x] Dar más peso a predicciones recientes
+  
+  **Implementación:**
+  - Constante `TIME_DECAY_HALF_LIFE_DAYS = 180` (6 meses)
+  - Función `computeTimeDecayWeight()` usa decaimiento exponencial: `weight = e^(-λt)`
+  - Predicción de hoy: peso 1.0, hace 6 meses: peso 0.5, hace 1 año: peso 0.25
+  - Mínimo peso de 0.1 para que predicciones antiguas aún contribuyan
+  - `computeBatchLoss()` ahora calcula weighted average en lugar de mean simple
 
 ### Fase 2: Especialización (Después de tener datos)
 - [ ] **Pesos por símbolo**
