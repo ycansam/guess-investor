@@ -596,10 +596,50 @@ if (technical > 70 && sentiment < 30) {
   - Cada régimen tiene pesos diferentes por timeframe (intraday/swing/long)
 
 ### Fase 3: Avanzado (Optimización)
-- [ ] **Ensemble de modelos**
-- [ ] **Cross-validation temporal**
-- [ ] **Feature engineering automático**
-- [ ] **Correlaciones entre factores**
+- [x] **Ensemble de modelos** ✅
+  - [x] Combinar múltiples modelos: global, symbol, regime, momentum, mean_reversion
+  - [x] Weighted average basado en accuracy histórico
+  - [x] Detection de agreement level entre modelos
+  
+  **Implementación (`ensemble-service.ts`):**
+  - 5 modelos: global, symbol (específico), regime (mercado), momentum, mean_reversion
+  - `predict()`: Genera predicción combinada de todos los modelos
+  - `updateEnsembleWeights()`: Ajusta pesos según performance histórico
+  - `agreementLevel`: high/medium/low según concordancia de modelos
+  - Modelo dominante identificado para explicabilidad
+
+- [x] **Cross-validation temporal** ✅
+  - [x] Walk-forward validation con ventanas deslizantes
+  - [x] Out-of-sample testing (80/20 split temporal)
+  - [x] Métricas de overfitting y estabilidad
+  
+  **Implementación (`temporal-cross-validation-service.ts`):**
+  - `runWalkForwardValidation()`: Entrena con pasado, valida con futuro
+  - `runOutOfSampleTest()`: Split temporal train/test
+  - `overfitScore`: 0-100, detecta si modelo overfittea
+  - `stabilityScore`: 0-100, varianza de performance entre ventanas
+  - `degradation`: % caída in-sample vs out-of-sample
+
+- [x] **Feature engineering automático** ✅
+  - [x] Features derivados: divergencias, momentum, riesgo, coherencia
+  - [x] Cálculo automático de importancia de features
+  
+  **Implementación (`feature-engineering-service.ts`):**
+  - 17 features derivados: rsiDivergence, momentumExhaustion, earningsProximityRisk, signalCoherence, meanReversionSignal, etc.
+  - `generateDerivedFeatures()`: Crea features a partir de factores base
+  - `computeFeatureImportance()`: Calcula correlación con accuracy
+  - `getTopFeatures()`: Ranking de features más predictivos
+
+- [x] **Correlaciones entre factores** ✅
+  - [x] Detectar sinergias (factores que funcionan mejor juntos)
+  - [x] Detectar redundancias y conflictos
+  - [x] Coherence bonus / Conflict penalty en confianza
+  
+  **Implementación (`factor-correlation-service.ts`):**
+  - `analyzeSignalProfile()`: Clasifica factores por intensidad bullish/bearish
+  - `calculateConfidenceAdjustment()`: +10% coherence bonus, -15% conflict penalty
+  - `rebuildCorrelationModel()`: Matriz de correlaciones entre factores
+  - Sinergias conocidas: trend+technical, sentiment+news, institutional+financials
 
 ---
 
