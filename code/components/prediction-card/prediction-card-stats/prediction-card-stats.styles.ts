@@ -40,4 +40,14 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  confidenceTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  calibratedText: {
+    fontSize: 10,
+    color: '#6b7280',
+    fontStyle: 'italic',
+  },
 });

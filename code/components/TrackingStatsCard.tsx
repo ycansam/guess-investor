@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { CalibrationModel, confidenceCalibrationService } from '../services/confidence-calibration-service';
 import { MLMetrics, mlMetricsService } from '../services/ml-metrics-service';
 import { predictionTrackingService, TrackedPrediction, TrackingStats } from '../services/prediction-tracking-service';
 
@@ -15,6 +16,7 @@ interface TrackingStatsCardProps {
 export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose }) => {
   const [stats, setStats] = useState<TrackingStats | null>(null);
   const [metrics, setMetrics] = useState<MLMetrics | null>(null);
+  const [calibration, setCalibration] = useState<CalibrationModel | null>(null);
   const [predictions, setPredictions] = useState<TrackedPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
@@ -30,14 +32,16 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statsData, predictionsData, metricsData] = await Promise.all([
+      const [statsData, predictionsData, metricsData, calibrationData] = await Promise.all([
         predictionTrackingService.getStats(),
         predictionTrackingService.getAllPredictions(),
         mlMetricsService.calculateMetrics(),
+        confidenceCalibrationService.getModel(),
       ]);
       setStats(statsData);
       setPredictions(predictionsData);
       setMetrics(metricsData);
+      setCalibration(calibrationData);
     } catch (error) {
       console.error('Error loading tracking data:', error);
     } finally {
@@ -226,7 +230,7 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
             onCancelReset={cancelReset}
           />
         ) : activeTab === 'metrics' ? (
-          <MetricsView metrics={metrics} />
+          <MetricsView metrics={metrics} calibration={calibration} />
         ) : (
           <HistoryView predictions={predictions} />
         )}
@@ -502,7 +506,7 @@ const StatsView: React.FC<{
 };
 
 // Vista de métricas ML
-const MetricsView: React.FC<{ metrics: MLMetrics | null }> = ({ metrics }) => {
+const MetricsView: React.FC<{ metrics: MLMetrics | null; calibration: CalibrationModel | null }> = ({ metrics, calibration }) => {
   if (!metrics || metrics.totalVerified === 0) {
     return (
       <View style={styles.emptyState}>
@@ -615,13 +619,63 @@ const MetricsView: React.FC<{ metrics: MLMetrics | null }> = ({ metrics }) => {
       </View>
       
       {/* Calibración */}
-      {metrics.calibrationByBucket.length > 0 && (
+      {(metrics.calibrationByBucket.length > 0 || (calibration && calibration.totalSamples > 0)) && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📐 Calibración de Confianza</Text>
           <Text style={styles.cardSubtitle}>
             ¿Cuando digo X% confianza, qué accuracy real tengo?
           </Text>
-          {metrics.calibrationByBucket.map((b) => (
+          
+          {/* Estado de calibración */}
+          {calibration && calibration.totalSamples >= 10 && (
+            <View style={[
+              styles.calibrationStatus,
+              { backgroundColor: calibration.isCalibrated ? '#dcfce7' : '#fef3c7' }
+            ]}>
+              <Text style={[
+                styles.calibrationStatusText,
+                { color: calibration.isCalibrated ? '#166534' : '#92400e' }
+              ]}>
+                {calibration.isCalibrated 
+                  ? `✅ Bien calibrado (error: ${calibration.avgCalibrationError.toFixed(1)}%)`
+                  : `⚠️ Necesita mejora (error: ${calibration.avgCalibrationError.toFixed(1)}%)`
+                }
+              </Text>
+            </View>
+          )}
+          
+          {/* Tabla de calibración por bucket */}
+          {calibration && calibration.buckets.filter(b => b.totalPredictions > 0).map((b) => (
+            <View key={b.range} style={styles.calibrationRow}>
+              <View style={styles.calibrationBucketContainer}>
+                <Text style={styles.calibrationBucket}>{b.range}</Text>
+                <Text style={[
+                  styles.calibrationQuality,
+                  { color: b.quality === 'calibrated' ? '#10b981' : 
+                           b.quality === 'overconfident' ? '#f59e0b' : '#3b82f6' }
+                ]}>
+                  {b.quality === 'calibrated' ? '✓' : 
+                   b.quality === 'overconfident' ? '↑ sobre' : '↓ infra'}
+                </Text>
+              </View>
+              <View style={styles.calibrationValues}>
+                <Text style={styles.calibrationLabel}>
+                  Accuracy real: {b.realAccuracy.toFixed(0)}%
+                </Text>
+                <Text style={[
+                  styles.calibrationError,
+                  { color: b.calibrationError < 5 ? '#10b981' : 
+                           b.calibrationError < 10 ? '#f59e0b' : '#ef4444' }
+                ]}>
+                  Error: {b.calibrationError.toFixed(1)}%
+                </Text>
+              </View>
+              <Text style={styles.calibrationCount}>n={b.totalPredictions}</Text>
+            </View>
+          ))}
+          
+          {/* Fallback a métricas si no hay modelo de calibración */}
+          {(!calibration || calibration.totalSamples < 10) && metrics.calibrationByBucket.map((b) => (
             <View key={b.bucket} style={styles.calibrationRow}>
               <Text style={styles.calibrationBucket}>{b.bucket}</Text>
               <View style={styles.calibrationValues}>
@@ -1605,6 +1659,25 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 11,
     marginLeft: 8,
+  },
+  calibrationStatus: {
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  calibrationStatusText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  calibrationBucketContainer: {
+    width: 80,
+    flexDirection: 'column',
+  },
+  calibrationQuality: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    marginTop: 2,
   },
   performanceRow: {
     flexDirection: 'row',

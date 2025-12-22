@@ -554,10 +554,10 @@ if (technical > 70 && sentiment < 30) {
   - Threshold: >70% incertidumbre = "No recomendado predecir"
   - UI: Banner de advertencia en PredictionCard cuando uncertainty ≥50%
   
-- [ ] **Calibración de confianza**
-  - [ ] Añadir tracking de calibración por bucket de confianza
-  - [ ] Mostrar "accuracy real" junto a confianza
-  - [ ] Crear calibrationModel que ajuste confianza
+- [x] **Calibración de confianza** ✅
+  - [x] Añadir tracking de calibración por bucket de confianza
+  - [x] Mostrar "accuracy real" junto a confianza
+  - [x] Crear calibrationModel que ajuste confianza
 
 - [ ] **Time-decay en entrenamiento**
   - [ ] Modificar `computeLoss` para incluir peso temporal
