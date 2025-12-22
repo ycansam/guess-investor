@@ -571,15 +571,29 @@ if (technical > 70 && sentiment < 30) {
   - `computeBatchLoss()` ahora calcula weighted average en lugar de mean simple
 
 ### Fase 2: Especialización (Después de tener datos)
-- [ ] **Pesos por símbolo**
-  - [ ] Crear SymbolWeightsService
-  - [ ] Blend con pesos globales
-  - [ ] Transferencia entre símbolos similares
+- [x] **Pesos por símbolo** ✅
+  - [x] Crear SymbolWeightsService
+  - [x] Blend con pesos globales
+  - [x] Transferencia entre símbolos similares
+  
+  **Implementación (`symbol-weights-service.ts`):**
+  - `SymbolWeights`: Pesos específicos por símbolo cuando hay ≥10 predicciones verificadas
+  - `getBlendedWeights()`: Blend 70% símbolo + 30% global para predicciones
+  - `computeSymbolSimilarity()`: Correlación entre símbolos basada en respuesta a factores
+  - `similarSymbols`: Lista de símbolos con comportamiento similar (correlación >0.6)
+  - Transferencia: Si no hay pesos del símbolo, usa 50% similar + 50% global
 
-- [ ] **Market regime detection**
-  - [ ] Implementar MarketRegimeDetector
-  - [ ] Crear pesos separados por régimen
-  - [ ] Entrenar con datos históricos etiquetados
+- [x] **Market regime detection** ✅
+  - [x] Implementar MarketRegimeDetector
+  - [x] Crear pesos separados por régimen
+  - [x] Entrenar con datos históricos etiquetados
+  
+  **Implementación (`market-regime-service.ts`):**
+  - 6 regímenes: `bull_quiet`, `bull_euphoria`, `bear_panic`, `bear_orderly`, `sideways_choppy`, `recovery`
+  - `detectRegime()`: Usa VIX, cambio S&P500, breadth, put/call ratio
+  - `DEFAULT_REGIME_WEIGHTS`: Pesos optimizados por régimen (ej: euforia prioriza momentum)
+  - `rebuildRegimeWeights()`: Entrena pesos desde predicciones históricas
+  - Cada régimen tiene pesos diferentes por timeframe (intraday/swing/long)
 
 ### Fase 3: Avanzado (Optimización)
 - [ ] **Ensemble de modelos**
