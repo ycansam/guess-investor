@@ -358,7 +358,7 @@ ACTUAL                                    IDEAL
 ✅ Descenso de gradiente                 ✅ Ensemble de algoritmos
 ✅ Análisis de correlaciones             ✅ Detección de regímenes de mercado
 ✅ Walk-forward validation               ⬜ Auto-feature discovery
-✅ Feature engineering                   ⬜ Neural network (>500 samples)
+✅ Feature engineering                   ✅ Neural network (>100 samples)
 ```
 
 ---
@@ -508,6 +508,23 @@ ACTUAL                                    IDEAL
   - Exploration decay: 30% → 5% gradualmente
   - UCB-like exploration bonus para estados poco visitados
 
+- [x] **Neural Network en Python** ✅
+  - [x] Red neuronal para predicción de dirección
+  - [x] Modelo de regresión para magnitud (opcional)
+  - [x] Normalización y regularización
+  
+  **Implementación (`neural_network_trainer.py`):**
+  - Arquitectura: 32→16→8→1 neuronas con ReLU + Dropout
+  - **Modelo Dirección**: Binary classification (sigmoid output)
+  - **Modelo Magnitud**: Regresión lineal para % cambio
+  - Features: 11 factores + confianza + volatilidad + timeframe (16 total)
+  - Regularización: L2 + Dropout (0.3/0.2/0.1) + BatchNorm
+  - Callbacks: EarlyStopping, ReduceLROnPlateau
+  - `train_direction_model()`: Entrena clasificador up/down
+  - `predict_direction()`: Inferencia con modelo guardado
+  - Mínimo 100 samples, recomendado 500+
+  - Uso: `python neural_network_trainer.py --data predictions.json --epochs 100`
+
 ---
 
 ## 📊 Métricas para Tracking de Mejoras
@@ -527,21 +544,17 @@ Antes de implementar cada mejora, establecer baseline:
 
 ## 💡 Ideas Experimentales (Futuro)
 
-### Neural Network en Python
-Para cuando haya suficientes datos (>500 predicciones):
-```python
-# Red neuronal simple para predicción
-model = Sequential([
-    Dense(32, activation='relu', input_shape=(11,)),  # 11 factores
-    Dropout(0.3),
-    Dense(16, activation='relu'),
-    Dense(1, activation='sigmoid')  # Probabilidad de subida
-])
-```
-
 ### Attention Mechanism
 - "¿A qué factor debería prestar más atención para ESTE activo AHORA?"
 - Pesos dinámicos basados en contexto actual
+
+### Transformer para Secuencias
+- Usar historial de predicciones como secuencia temporal
+- Attention sobre predicciones pasadas del mismo símbolo
+
+### Meta-Learning (MAML)
+- Aprender a aprender rápido para nuevos símbolos
+- Few-shot learning cuando hay pocos datos de un activo
 
 ---
 
