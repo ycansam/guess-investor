@@ -3,6 +3,7 @@
  * Permite hacer predicciones rápidas en diferentes timeframes
  */
 
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -49,6 +50,7 @@ interface MarketPredictionsProps {
 
 export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) {
   const { width } = useWindowDimensions();
+  const router = useRouter();
   const isDesktop = Platform.OS === 'web' && width >= BREAKPOINTS.desktop;
 
   const horizontalPadding = useMemo(() => {
@@ -552,6 +554,12 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
                 → {formatPrice(cached.targetPrice ?? 0, item.currency)}
               </Text>
               <TouchableOpacity
+                style={styles.chartButton}
+                onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
+              >
+                <Text style={styles.chartButtonText}>📊</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={styles.predictionAnalysisButton}
                 onPress={() => setSelectedPrediction(cached)}
               >
@@ -561,9 +569,17 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           ) : isPredicting ? (
             <Text style={styles.predictingText} selectable={true}>Analizando...</Text>
           ) : (
-            <Text style={[styles.changeText, { color: getChangeColor(item.changePercent) }]} selectable={true}>
-              {item.changePercent !== undefined ? `${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%` : '-'}
-            </Text>
+            <View style={styles.noPredictonActions}>
+              <Text style={[styles.changeText, { color: getChangeColor(item.changePercent) }]} selectable={true}>
+                {item.changePercent !== undefined ? `${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%` : '-'}
+              </Text>
+              <TouchableOpacity
+                style={styles.chartButton}
+                onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
+              >
+                <Text style={styles.chartButtonText}>📊</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </TouchableOpacity>
@@ -1314,6 +1330,21 @@ const styles = StyleSheet.create({
     color: '#e5e7eb',
     lineHeight: 20,
     fontWeight: '400',
+  },
+  // Chart button
+  chartButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 8,
+    backgroundColor: '#1e3a5f20',
+    borderRadius: 6,
+  },
+  chartButtonText: {
+    fontSize: 14,
+  },
+  noPredictonActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   // Prediction analysis button
   predictionAnalysisButton: {

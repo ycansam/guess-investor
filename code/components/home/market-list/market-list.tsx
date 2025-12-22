@@ -2,6 +2,7 @@
  * Lista de activos del mercado con precios en tiempo real
  */
 
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
@@ -46,6 +47,7 @@ const MAX_CONTENT_WIDTH = 800;
 
 export function MarketList() {
   const { width } = useWindowDimensions();
+  const router = useRouter();
   const isDesktop = Platform.OS === 'web' && width >= BREAKPOINTS.desktop;
   const isWide = Platform.OS === 'web' && width >= BREAKPOINTS.wide;
   
@@ -146,7 +148,11 @@ export function MarketList() {
   }, [assets, sortBy, filterBy]);
 
   const renderAsset = ({ item }: { item: MarketAsset }) => (
-    <View style={styles.assetRow}>
+    <TouchableOpacity 
+      style={styles.assetRow}
+      onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
+      activeOpacity={0.7}
+    >
       {/* Icono */}
       <View style={styles.iconContainer}>
         <Text style={styles.icon}>{item.icon}</Text>
@@ -185,7 +191,7 @@ export function MarketList() {
           </View>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   const renderHeader = () => (
