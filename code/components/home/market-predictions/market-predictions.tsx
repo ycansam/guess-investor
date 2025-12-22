@@ -66,7 +66,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [isPredictingBatch, setIsPredictingBatch] = useState(false);
   const [selectionMode, setSelectionMode] = useState<'predict' | 'delete'>('predict');
-  const [sortBy, setSortBy] = useState<'default' | 'price_desc' | 'price_asc' | 'change_desc' | 'change_asc'>('default');
+  const [sortBy, setSortBy] = useState<'default' | 'pred_desc' | 'pred_asc'>('default');
   const [selectedPrediction, setSelectedPrediction] = useState<TrainingPrediction | null>(null);
   const [recommendedTimeframes, setRecommendedTimeframes] = useState<Map<string, TrainingTimeframe>>(new Map());
 
@@ -276,25 +276,34 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   // Ordenar activos
   const sortedAssets = useMemo(() => {
     const sorted = [...assets];
-    
-    // Convertir precio a EUR para comparación
-    const getPriceInEur = (a: MarketAsset) => {
-      if (!a.price) return 0;
-      return a.currency === 'USD' ? a.price * USD_TO_EUR : a.price;
+
+    // Obtener predicción para un símbolo
+    const getPrediction = (symbol: string) => {
+      return trainingCacheService.get(symbol, selectedTimeframe);
     };
     
     switch (sortBy) {
-      case 'price_desc':
-        sorted.sort((a, b) => getPriceInEur(b) - getPriceInEur(a));
+      case 'pred_desc':
+        // Mayor predicción primero (más alcista)
+        sorted.sort((a, b) => {
+          const predA = getPrediction(a.symbol);
+          const predB = getPrediction(b.symbol);
+          if (!predA && !predB) return 0;
+          if (!predA) return 1;
+          if (!predB) return -1;
+          return (predB.predictedChange ?? 0) - (predA.predictedChange ?? 0);
+        });
         break;
-      case 'price_asc':
-        sorted.sort((a, b) => getPriceInEur(a) - getPriceInEur(b));
-        break;
-      case 'change_desc':
-        sorted.sort((a, b) => (b.changePercent ?? -999) - (a.changePercent ?? -999));
-        break;
-      case 'change_asc':
-        sorted.sort((a, b) => (a.changePercent ?? 999) - (b.changePercent ?? 999));
+      case 'pred_asc':
+        // Menor predicción primero (más bajista)
+        sorted.sort((a, b) => {
+          const predA = getPrediction(a.symbol);
+          const predB = getPrediction(b.symbol);
+          if (!predA && !predB) return 0;
+          if (!predA) return 1;
+          if (!predB) return -1;
+          return (predA.predictedChange ?? 0) - (predB.predictedChange ?? 0);
+        });
         break;
       default:
         // Orden original
@@ -302,7 +311,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
     
     return sorted;
-  }, [assets, sortBy]);
+  }, [assets, sortBy, selectedTimeframe, cachedPredictions]);
 
   // Predecir todos los seleccionados
   const predictSelected = useCallback(async () => {
@@ -620,13 +629,11 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       {/* Ordenar por */}
       <View style={styles.sortContainer}>
         <Text style={styles.sortLabel}>Ordenar:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortContent}>
+        <View style={styles.sortOptions}>
           {[
             { key: 'default', label: 'Original' },
-            { key: 'price_desc', label: '€ ↓' },
-            { key: 'price_asc', label: '€ ↑' },
-            { key: 'change_desc', label: '% ↓' },
-            { key: 'change_asc', label: '% ↑' },
+            { key: 'pred_desc', label: '📈 Mayor' },
+            { key: 'pred_asc', label: '📉 Menor' },
           ].map((option) => (
             <TouchableOpacity
               key={option.key}
@@ -644,7 +651,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       {/* Estadísticas */}
@@ -751,8 +758,9 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
       <FlatList
         data={sortedAssets}
+        extraData={sortBy}
         renderItem={renderAsset}
-        keyExtractor={(item) => item.symbol}
+        keyExtractor={(item, index) => `${sortBy}-${index}-${item.symbol}`}
         ListHeaderComponent={renderHeader}
         refreshControl={
           <RefreshControl
@@ -868,11 +876,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 10,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   sortLabel: {
     fontSize: 12,
     color: '#6b7280',
-    marginRight: 8,
+    marginRight: 4,
+  },
+  sortOptions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   sortContent: {
     gap: 6,
