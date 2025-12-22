@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { predictionTrackingService, TrackedPrediction, TrackingStats } from '../services/prediction-tracking-service';
+import { mlMetricsService, MLMetrics } from '../services/ml-metrics-service';
 
 interface TrackingStatsCardProps {
   onClose?: () => void;
@@ -13,13 +14,14 @@ interface TrackingStatsCardProps {
 
 export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose }) => {
   const [stats, setStats] = useState<TrackingStats | null>(null);
+  const [metrics, setMetrics] = useState<MLMetrics | null>(null);
   const [predictions, setPredictions] = useState<TrackedPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'history' | 'metrics'>('stats');
 
   useEffect(() => {
     loadData();
@@ -28,12 +30,14 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statsData, predictionsData] = await Promise.all([
+      const [statsData, predictionsData, metricsData] = await Promise.all([
         predictionTrackingService.getStats(),
         predictionTrackingService.getAllPredictions(),
+        mlMetricsService.calculateMetrics(),
       ]);
       setStats(statsData);
       setPredictions(predictionsData);
+      setMetrics(metricsData);
     } catch (error) {
       console.error('Error loading tracking data:', error);
     } finally {
@@ -191,6 +195,14 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
+          style={[styles.tab, activeTab === 'metrics' && styles.activeTab]}
+          onPress={() => setActiveTab('metrics')}
+        >
+          <Text style={[styles.tabText, activeTab === 'metrics' && styles.activeTabText]}>
+            Métricas ML
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
           style={[styles.tab, activeTab === 'history' && styles.activeTab]}
           onPress={() => setActiveTab('history')}
         >
@@ -213,6 +225,8 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
             confirmReset={confirmReset}
             onCancelReset={cancelReset}
           />
+        ) : activeTab === 'metrics' ? (
+          <MetricsView metrics={metrics} />
         ) : (
           <HistoryView predictions={predictions} />
         )}
@@ -486,6 +500,205 @@ const StatsView: React.FC<{
     </View>
   );
 };
+
+// Vista de métricas ML
+const MetricsView: React.FC<{ metrics: MLMetrics | null }> = ({ metrics }) => {
+  if (!metrics || metrics.totalVerified === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyIcon}>📊</Text>
+        <Text style={styles.emptyText}>Aún no hay datos suficientes</Text>
+        <Text style={styles.emptySubtext}>
+          Las métricas se calcularán cuando haya predicciones verificadas
+        </Text>
+      </View>
+    );
+  }
+  
+  const getQualityColor = (quality: string) => {
+    switch (quality) {
+      case 'high': return '#10b981';
+      case 'medium': return '#3b82f6';
+      case 'low': return '#f59e0b';
+      default: return '#6b7280';
+    }
+  };
+  
+  const getMetricColor = (value: number, target: number, inverse = false) => {
+    const achieved = inverse ? value <= target : value >= target;
+    return achieved ? '#10b981' : value >= target * 0.8 ? '#f59e0b' : '#ef4444';
+  };
+  
+  return (
+    <View>
+      {/* Calidad de datos */}
+      <View style={[styles.card, { borderLeftWidth: 3, borderLeftColor: getQualityColor(metrics.dataQuality) }]}>
+        <Text style={styles.cardTitle}>📊 Calidad de Datos</Text>
+        <View style={[styles.qualityBadgeInline, { backgroundColor: getQualityColor(metrics.dataQuality) + '30' }]}>
+          <Text style={[styles.qualityBadgeTextInline, { color: getQualityColor(metrics.dataQuality) }]}>
+            {metrics.dataQuality.toUpperCase()}
+          </Text>
+        </View>
+        <Text style={styles.dataQualityText}>{metrics.dataQualityReason}</Text>
+      </View>
+      
+      {/* Métricas principales */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🎯 Métricas Principales vs Objetivos</Text>
+        <View style={styles.metricsList}>
+          <MetricRow 
+            label="Direction Accuracy"
+            value={`${metrics.directionAccuracy}%`}
+            target="≥65%"
+            color={getMetricColor(metrics.directionAccuracy, 65)}
+          />
+          <MetricRow 
+            label="Avg Accuracy Score"
+            value={`${metrics.avgAccuracyScore}%`}
+            target="≥60%"
+            color={getMetricColor(metrics.avgAccuracyScore, 60)}
+          />
+          <MetricRow 
+            label="Calibration Error"
+            value={`${metrics.calibrationError}%`}
+            target="<5%"
+            color={getMetricColor(metrics.calibrationError, 5, true)}
+          />
+          <MetricRow 
+            label="Excellent Rate"
+            value={`${metrics.excellentRate}%`}
+            target="≥25%"
+            color={getMetricColor(metrics.excellentRate, 25)}
+          />
+          <MetricRow 
+            label="Failed Rate"
+            value={`${metrics.failedRate}%`}
+            target="<10%"
+            color={getMetricColor(metrics.failedRate, 10, true)}
+          />
+          {metrics.sharpeRatio !== null && (
+            <MetricRow 
+              label="Sharpe Ratio"
+              value={metrics.sharpeRatio.toFixed(2)}
+              target=">1.0"
+              color={getMetricColor(metrics.sharpeRatio, 1.0)}
+            />
+          )}
+        </View>
+      </View>
+      
+      {/* Distribución de calidad */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>⭐ Distribución de Calidad</Text>
+        <View style={styles.qualityDistribution}>
+          <QualityBar 
+            label="Excellent (>75)"
+            value={metrics.excellentRate}
+            color="#10b981"
+          />
+          <QualityBar 
+            label="Good (50-75)"
+            value={metrics.goodRate}
+            color="#3b82f6"
+          />
+          <QualityBar 
+            label="Poor (25-50)"
+            value={metrics.poorRate}
+            color="#f59e0b"
+          />
+          <QualityBar 
+            label="Failed (<25)"
+            value={metrics.failedRate}
+            color="#ef4444"
+          />
+        </View>
+      </View>
+      
+      {/* Calibración */}
+      {metrics.calibrationByBucket.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>📐 Calibración de Confianza</Text>
+          <Text style={styles.cardSubtitle}>
+            ¿Cuando digo X% confianza, qué accuracy real tengo?
+          </Text>
+          {metrics.calibrationByBucket.map((b) => (
+            <View key={b.bucket} style={styles.calibrationRow}>
+              <Text style={styles.calibrationBucket}>{b.bucket}</Text>
+              <View style={styles.calibrationValues}>
+                <Text style={styles.calibrationLabel}>
+                  Conf: {b.avgConfidence.toFixed(1)}% → Real: {b.avgAccuracy.toFixed(1)}%
+                </Text>
+                <Text style={[
+                  styles.calibrationError,
+                  { color: b.error < 5 ? '#10b981' : b.error < 10 ? '#f59e0b' : '#ef4444' }
+                ]}>
+                  Error: {b.error.toFixed(1)}%
+                </Text>
+              </View>
+              <Text style={styles.calibrationCount}>n={b.count}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      
+      {/* Por timeframe */}
+      {metrics.byTimeframe.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>⏱️ Performance por Timeframe</Text>
+          {metrics.byTimeframe.map((tf) => (
+            <View key={tf.timeframe} style={styles.performanceRow}>
+              <Text style={styles.performanceLabel}>{tf.timeframe}</Text>
+              <View style={styles.performanceValues}>
+                <Text style={styles.performanceValue}>Dir: {tf.directionAccuracy}%</Text>
+                <Text style={styles.performanceValue}>Score: {tf.avgAccuracyScore}%</Text>
+                <Text style={styles.performanceCount}>(n={tf.count})</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+      
+      {/* Por volatilidad */}
+      {metrics.byVolatility.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>📊 Performance por Volatilidad</Text>
+          {metrics.byVolatility.map((v) => (
+            <View key={v.category} style={styles.performanceRow}>
+              <Text style={styles.performanceLabel}>{v.category}</Text>
+              <View style={styles.performanceValues}>
+                <Text style={styles.performanceValue}>Dir: {v.directionAccuracy}%</Text>
+                <Text style={styles.performanceValue}>Score: {v.avgAccuracyScore}%</Text>
+                <Text style={styles.performanceCount}>(n={v.count})</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
+
+// Componente auxiliar para fila de métrica
+const MetricRow: React.FC<{ label: string; value: string; target: string; color: string }> = ({ label, value, target, color }) => (
+  <View style={styles.metricRow}>
+    <View style={styles.metricInfo}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricTarget}>Objetivo: {target}</Text>
+    </View>
+    <Text style={[styles.metricValue, { color }]}>{value}</Text>
+  </View>
+);
+
+// Componente auxiliar para barra de calidad
+const QualityBar: React.FC<{ label: string; value: number; color: string }> = ({ label, value, color }) => (
+  <View style={styles.qualityBarContainer}>
+    <Text style={styles.qualityBarLabel}>{label}</Text>
+    <View style={styles.qualityBarTrack}>
+      <View style={[styles.qualityBarFill, { width: `${value}%`, backgroundColor: color }]} />
+    </View>
+    <Text style={[styles.qualityBarValue, { color }]}>{value}%</Text>
+  </View>
+);
 
 // Vista de historial
 const HistoryView: React.FC<{ predictions: TrackedPrediction[] }> = ({ predictions }) => {
@@ -826,6 +1039,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1f2937',
     padding: 16,
+    minHeight: 800,
+    maxHeight: 800,
   },
   header: {
     flexDirection: 'row',
@@ -1282,5 +1497,140 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 10,
     marginTop: 2,
+  },
+  // Estilos para vista de métricas
+  qualityBadgeInline: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginVertical: 8,
+  },
+  qualityBadgeTextInline: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  dataQualityText: {
+    color: '#9ca3af',
+    fontSize: 13,
+    marginTop: 4,
+  },
+  metricsList: {
+    gap: 12,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+  },
+  metricInfo: {
+    flex: 1,
+  },
+  metricLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  metricTarget: {
+    color: '#6b7280',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  metricValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 12,
+  },
+  qualityDistribution: {
+    gap: 12,
+    marginTop: 8,
+  },
+  qualityBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  qualityBarLabel: {
+    color: '#9ca3af',
+    fontSize: 12,
+    width: 100,
+  },
+  qualityBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#374151',
+    borderRadius: 4,
+  },
+  qualityBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  qualityBarValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    width: 35,
+    textAlign: 'right',
+  },
+  calibrationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+  },
+  calibrationBucket: {
+    color: '#fff',
+    fontSize: 12,
+    width: 70,
+    fontWeight: '500',
+  },
+  calibrationValues: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  calibrationLabel: {
+    color: '#9ca3af',
+    fontSize: 11,
+  },
+  calibrationError: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  calibrationCount: {
+    color: '#6b7280',
+    fontSize: 11,
+    marginLeft: 8,
+  },
+  performanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+  },
+  performanceLabel: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  performanceValues: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  performanceValue: {
+    color: '#9ca3af',
+    fontSize: 12,
+  },
+  performanceCount: {
+    color: '#6b7280',
+    fontSize: 11,
   },
 });
