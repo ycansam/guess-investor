@@ -5,6 +5,7 @@
 ![React Native](https://img.shields.io/badge/React_Native-Expo-blue?logo=expo)
 ![Python](https://img.shields.io/badge/Python-ML_Server-green?logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
+![Version](https://img.shields.io/badge/version-1.1.0-brightgreen)
 
 ---
 
@@ -15,11 +16,11 @@ Guess Investor analiza **11 factores** diferentes para cada activo financiero y 
 ### ✨ Características principales
 
 - 📊 **11 Factores de análisis**: Tendencia, Técnico, Sentimiento, Noticias, Macro, Competidores, Forex, Institucional, Estacionalidad, Financieros, Expectativas
-- 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo
-- 📈 **Datos en tiempo real**: Yahoo Finance V8 API (gratis e ilimitado)
+- 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo + **Red Neuronal MAML**
+- 📈 **Datos en tiempo real**: Yahoo Finance V8 API (gratis e ilimitado) + **V8 Extended** (dividendos, volatilidad)
 - 🎯 **Tracking de predicciones**: Verificación automática al cierre del mercado con **sistema de accuracy scoring**
 - ⭐ **Accuracy Scoring**: Puntuación 0-100 que considera dirección + precisión del cambio porcentual
-- 🧠 **Auto-aprendizaje**: El sistema mejora basándose en sus errores
+- 🧠 **Auto-aprendizaje**: El sistema mejora basándose en sus errores con **calibración de confianza** e **incertidumbre**
 - 🌍 **Mercados globales**: NYSE, NASDAQ, Europa (.MC, .DE, .PA), Crypto
 - 📱 **UI moderna**: Modal full screen, análisis detallado por predicción, sin popups molestos
 

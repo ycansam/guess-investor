@@ -1,7 +1,34 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 21 de diciembre de 2025  
-**Commit actual:** `1cffc8e`
+**Última actualización:** 22 de diciembre de 2025  
+**Versión:** `1.1.0`  
+**Commit actual:** `11cbc1a`
+
+---
+
+## [1.1.0] - 22 de diciembre de 2025
+
+### Nuevo Sistema de Machine Learning
+- **Red Neuronal MAML** (`cd2da08`) - Implementación de Model-Agnostic Meta-Learning para aprendizaje por activo
+- **Red Neuronal Base** (`af0303d`) - Arquitectura de red neuronal para predicciones
+- **Skip Predicciones** (`b0ae53b`) - Lógica para omitir predicciones en alta incertidumbre
+- **Calibración de Confianza** (`0d0622c`) - Sistema mejorado de calibración del nivel de confianza
+- **Factores de Incertidumbre** (`ac170e9`) - Análisis de incertidumbre antes de predecir
+- **Optimizador de Pesos** (`f4f39bb`) - Optimización automática de pesos por factor
+- **Pasos por Símbolo** (`86b3725`) - Tracking de entrenamiento por activo individual
+- **ML Learning System** (`d583949`) - Sistema completo de aprendizaje automático
+- **Indicador de Estabilidad** (`4bc0bc5`) - Métricas de estabilidad del modelo
+- **Clasificador de Activos** (`6cea18d`) - Clasificación automática de tipos de activos
+
+### Yahoo V8 Extended
+- **Dividendos** (`11cbc1a`) - Extracción de dividend yield desde Yahoo V8 (sin auth)
+- **Volatilidad Calculada** - Volatilidad anualizada de 30 días
+- **Nombre Completo** - longName/shortName del activo
+- **Métricas Derivadas** - Distancia a 52w high/low
+
+### Correcciones
+- **Fix Ordenación** (`53e9143`) - Corregida ordenación en MarketPredictions
+- **Fix Datos** (`11cbc1a`) - Arreglados factores que mostraban 0 o N/D
 
 ---
 
