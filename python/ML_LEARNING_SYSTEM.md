@@ -525,6 +525,23 @@ ACTUAL                                    IDEAL
   - Mínimo 100 samples, recomendado 500+
   - Uso: `python neural_network_trainer.py --data predictions.json --epochs 100`
 
+- [x] **Meta-Learning (MAML)** ✅
+  - [x] Aprender a aprender rápido para nuevos símbolos
+  - [x] Few-shot learning cuando hay pocos datos de un activo
+  - [x] Transferencia de conocimiento entre símbolos similares
+  
+  **Implementación (`meta-learning-service.ts`):**
+  - Inspirado en MAML (Model-Agnostic Meta-Learning)
+  - **Meta-modelo**: Pesos base optimizados para adaptación rápida
+  - **Inner loop**: 3 pasos de adaptación con learning rate 0.1
+  - **Outer loop**: Meta-training con learning rate 0.01
+  - `adaptToNewSymbol()`: Few-shot adaptation con 2-10 muestras
+  - `trainMetaModel()`: Entrena el meta-modelo con múltiples símbolos
+  - `transferFromSimilar()`: Transfiere conocimiento cuando no hay datos
+  - **SymbolProfiles**: Perfil aprendido por símbolo (tipo, sector, volatilidad)
+  - **SimilarityMatrix**: Correlación entre símbolos para transferencia
+  - Confianza adaptativa basada en cantidad de datos y transferencia
+
 ---
 
 ## 📊 Métricas para Tracking de Mejoras
@@ -552,9 +569,13 @@ Antes de implementar cada mejora, establecer baseline:
 - Usar historial de predicciones como secuencia temporal
 - Attention sobre predicciones pasadas del mismo símbolo
 
-### Meta-Learning (MAML)
-- Aprender a aprender rápido para nuevos símbolos
-- Few-shot learning cuando hay pocos datos de un activo
+### Contrastive Learning
+- Aprender embeddings de símbolos basados en comportamiento
+- Clustering automático de activos similares
+
+### Online Learning Continuo
+- Actualizar modelo con cada nueva predicción (no batches)
+- Detección de concept drift en tiempo real
 
 ---
 
