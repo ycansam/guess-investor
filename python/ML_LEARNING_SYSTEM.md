@@ -352,13 +352,13 @@ El sistema es "exitoso" cuando:
 ACTUAL                                    IDEAL
 ─────────────────────────────────────────────────────────────────
 ✅ 11 factores de análisis               ⬜ 15+ factores especializados
-✅ Pesos por timeframe                   ⬜ Pesos por activo individual
-✅ Pesos por volatilidad                 ⬜ Pesos adaptativos en tiempo real
-✅ Accuracy predictor básico             ⬜ Modelo probabilístico completo
-✅ Descenso de gradiente                 ⬜ Ensemble de algoritmos
-⬜ Sin análisis de correlaciones         ⬜ Detección de regímenes de mercado
-⬜ Sin backtesting automático            ⬜ Walk-forward validation
-⬜ Sin feature engineering               ⬜ Auto-feature discovery
+✅ Pesos por timeframe                   ✅ Pesos por activo individual
+✅ Pesos por volatilidad                 ✅ Pesos adaptativos en tiempo real
+✅ Accuracy predictor básico             ✅ Modelo probabilístico completo
+✅ Descenso de gradiente                 ✅ Ensemble de algoritmos
+✅ Análisis de correlaciones             ✅ Detección de regímenes de mercado
+✅ Walk-forward validation               ⬜ Auto-feature discovery
+✅ Feature engineering                   ⬜ Neural network (>500 samples)
 ```
 
 ---
@@ -463,6 +463,34 @@ ACTUAL                                    IDEAL
   - `calculateConfidenceAdjustment()`: +10% coherence bonus, -15% conflict penalty
   - `rebuildCorrelationModel()`: Matriz de correlaciones entre factores
   - Sinergias conocidas: trend+technical, sentiment+news, institutional+financials
+
+### Fase 4: Avanzado II (Diciembre 2024)
+- [x] **Pesos adaptativos en tiempo real** ✅
+  - [x] Ajuste on-the-fly basado en performance reciente
+  - [x] No esperar reentrenamiento batch
+  - [x] Decay automático de ajustes
+  
+  **Implementación (`adaptive-weights-service.ts`):**
+  - `RECENT_WINDOW_SIZE = 10`: Últimas 10 predicciones para adaptar
+  - `recordPrediction()`: Registra cada predicción para el sistema adaptativo
+  - `getAdaptiveWeights()`: Retorna pesos ajustados en tiempo real
+  - `performanceTrend`: Detecta si estamos 'improving', 'stable', o 'declining'
+  - `LEARNING_RATE = 0.1`, `MAX_ADJUSTMENT = ±30%`
+  - Blend automático entre pesos base y ajustes adaptativos
+
+- [x] **Modelo probabilístico completo** ✅
+  - [x] Distribución de probabilidades por escenario
+  - [x] Intervalos de confianza (50%, 80%, 95%)
+  - [x] Calibración por error histórico
+  
+  **Implementación (`probabilistic-model-service.ts`):**
+  - `ProbabilisticPrediction`: Distribución completa de escenarios
+  - 8 escenarios: Crash → Rally con probabilidades
+  - `expectedValue`, `median`, `mode`, `standardDeviation`
+  - `confidenceInterval50/80/95`: Rangos de confianza
+  - `probabilityPositive/Negative/Extreme`: Probabilidades clave
+  - `skew`: Detecta sesgo bullish/bearish
+  - Calibración automática con errores históricos por timeframe/volatilidad
 
 ---
 
