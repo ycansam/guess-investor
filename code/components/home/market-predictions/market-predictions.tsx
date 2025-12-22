@@ -5,25 +5,26 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import { assetClassifierService } from '../../../services/asset-classifier-service';
 import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
 import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { useChatStore } from '../../../store/chat-store';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
@@ -54,6 +55,15 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     if (!isDesktop) return 0;
     return Math.max(0, (width - MAX_CONTENT_WIDTH) / 2);
   }, [width, isDesktop]);
+
+  // Helper para mostrar alertas multiplataforma
+  const showAlert = useCallback((title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  }, []);
 
   const [assets, setAssets] = useState<MarketAsset[]>(
     POPULAR_ASSETS.map(a => ({ ...a, loading: true }))
@@ -180,8 +190,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       if (calculatedPrediction) {
         direction = calculatedPrediction.direction;
         confidence = calculatedPrediction.confidence;
-        predictedChange = calculatedPrediction.predictedChangePercent;
-        reasoning = calculatedPrediction.reasoning;
+        predictedChange = calculatedPrediction.predictedChange;
+        reasoning = calculatedPrediction.factorBreakdown?.confidenceExplanation || 'Análisis multi-factor';
       } else {
         // Fallback a momentum si el calculador falla
         const momentum = asset.changePercent ?? 0;
@@ -1304,12 +1314,6 @@ const styles = StyleSheet.create({
     color: '#e5e7eb',
     lineHeight: 20,
     fontWeight: '400',
-  },
-  analysisDisclaimer: {
-    fontSize: 12,
-    color: '#ef4444',
-    fontStyle: 'italic',
-    lineHeight: 18,
   },
   // Prediction analysis button
   predictionAnalysisButton: {

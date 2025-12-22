@@ -22,10 +22,22 @@ const CORS_PROXIES = [
 ];
 
 /**
+ * Información de un dividendo
+ */
+export interface DividendInfo {
+  amount: number;
+  date: Date;
+}
+
+/**
  * Datos del endpoint v8/chart
  */
 export interface YahooV8Data {
   symbol: string;
+  
+  // Nombre completo
+  longName?: string;
+  shortName?: string;
   
   // Precio actual
   regularMarketPrice: number;
@@ -53,6 +65,24 @@ export interface YahooV8Data {
   // Calculados
   priceChange: number;
   priceChangePercent: number;
+  
+  // === DATOS EXTENDIDOS (V8 con events) ===
+  
+  // Dividendos
+  dividends?: DividendInfo[];
+  annualDividend?: number; // Suma de dividendos últimos 12 meses
+  dividendYield?: number; // (annualDividend / price) * 100
+  
+  // Splits
+  splits?: { ratio: number; date: Date }[];
+  
+  // Volumen promedio
+  averageVolume10days?: number;
+  
+  // Métricas calculadas del precio
+  distanceFrom52WeekHigh?: number; // Porcentaje
+  distanceFrom52WeekLow?: number; // Porcentaje
+  volatility30d?: number; // Volatilidad últimos 30 días
   
   // Metadata
   dataGranularity: string;
@@ -82,9 +112,12 @@ let currentProxyIndex = 0;
 
 /**
  * Obtiene la URL con proxy CORS si estamos en web
+ * Incluye events=div,split para obtener dividendos y splits
  */
-function getUrlWithProxy(symbol: string, range: string, interval: string, proxyIndex: number): string {
-  const baseUrl = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+function getUrlWithProxy(symbol: string, range: string, interval: string, proxyIndex: number, includeEvents: boolean = true): string {
+  // Añadir events para obtener dividendos y splits
+  const eventsParam = includeEvents ? '&events=div,split' : '';
+  const baseUrl = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false${eventsParam}`;
   
   if (Platform.OS === 'web') {
     const proxy = CORS_PROXIES[proxyIndex];
@@ -97,11 +130,13 @@ function getUrlWithProxy(symbol: string, range: string, interval: string, proxyI
 /**
  * Intenta fetch con reintentos usando diferentes proxies
  */
-async function fetchWithRetry(symbol: string, range: string, interval: string): Promise<Response | null> {
+async function fetchWithRetry(symbol: string, range: string, interval: string, includeEvents: boolean = true): Promise<Response | null> {
+  const eventsParam = includeEvents ? '&events=div,split' : '';
+  
   if (Platform.OS !== 'web') {
     // En móvil/nativo, no necesitamos CORS, llamar directamente
     try {
-      const url = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+      const url = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false${eventsParam}`;
       const response = await fetch(url, {
         headers: { 'Accept': 'application/json' },
         signal: AbortSignal.timeout(10000),
@@ -116,7 +151,7 @@ async function fetchWithRetry(symbol: string, range: string, interval: string): 
   // En web, intentar con cada proxy
   for (let i = 0; i < CORS_PROXIES.length; i++) {
     const proxyIndex = (currentProxyIndex + i) % CORS_PROXIES.length;
-    const url = getUrlWithProxy(symbol, range, interval, proxyIndex);
+    const url = getUrlWithProxy(symbol, range, interval, proxyIndex, includeEvents);
     
     try {
       console.log(`[YahooV8] Trying proxy ${proxyIndex + 1}/${CORS_PROXIES.length} for ${symbol}...`);
@@ -138,13 +173,38 @@ async function fetchWithRetry(symbol: string, range: string, interval: string): 
 }
 
 /**
+ * Calcula la volatilidad a partir de precios históricos
+ */
+function calculateVolatility(historicalPrices: { close: number }[]): number {
+  if (historicalPrices.length < 5) return 0;
+  
+  const returns = [];
+  for (let i = 1; i < historicalPrices.length; i++) {
+    const prev = historicalPrices[i - 1].close;
+    const curr = historicalPrices[i].close;
+    if (prev > 0 && curr > 0) {
+      returns.push((curr - prev) / prev);
+    }
+  }
+  
+  if (returns.length < 2) return 0;
+  
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+  const dailyVol = Math.sqrt(variance);
+  
+  // Anualizar (aprox 252 días de trading)
+  return dailyVol * Math.sqrt(252) * 100;
+}
+
+/**
  * Obtiene datos de un símbolo via v8/chart
  */
 async function fetchSymbol(symbol: string, range: string = '1d', interval: string = '1m'): Promise<YahooV8Data | null> {
   try {
     console.log(`[YahooV8] Fetching ${symbol}...`);
     
-    const response = await fetchWithRetry(symbol, range, interval);
+    const response = await fetchWithRetry(symbol, range, interval, true);
     
     if (!response) {
       console.error(`[YahooV8] All proxies failed for ${symbol}`);
@@ -167,6 +227,7 @@ async function fetchSymbol(symbol: string, range: string = '1d', interval: strin
     const meta = result.meta;
     const quotes = result.indicators?.quote?.[0];
     const timestamps = result.timestamp || [];
+    const events = result.events || {};
     
     // Construir array de precios históricos
     const historicalPrices = timestamps.map((ts: number, i: number) => ({
@@ -192,8 +253,53 @@ async function fetchSymbol(symbol: string, range: string = '1d', interval: strin
     const priceChange = regularMarketPrice - previousClose;
     const priceChangePercent = previousClose > 0 ? (priceChange / previousClose) * 100 : 0;
     
+    // === EXTRAER DIVIDENDOS ===
+    const dividendsRaw = events.dividends || {};
+    const now = Date.now();
+    const oneYearAgo = now - (365 * 24 * 60 * 60 * 1000);
+    
+    const dividends: DividendInfo[] = Object.values(dividendsRaw)
+      .map((div: any) => ({
+        amount: div.amount || 0,
+        date: new Date(div.date * 1000),
+      }))
+      .filter((div: DividendInfo) => div.amount > 0);
+    
+    // Calcular dividendo anual (últimos 12 meses)
+    const recentDividends = dividends.filter(d => d.date.getTime() > oneYearAgo);
+    const annualDividend = recentDividends.reduce((sum, d) => sum + d.amount, 0);
+    const dividendYield = regularMarketPrice > 0 && annualDividend > 0 
+      ? (annualDividend / regularMarketPrice) * 100 
+      : undefined;
+    
+    // === EXTRAER SPLITS ===
+    const splitsRaw = events.splits || {};
+    const splits = Object.values(splitsRaw)
+      .map((split: any) => ({
+        ratio: (split.numerator || 1) / (split.denominator || 1),
+        date: new Date(split.date * 1000),
+      }))
+      .filter((s: any) => s.ratio !== 1);
+    
+    // === CALCULAR MÉTRICAS DE PRECIO ===
+    const fiftyTwoWeekHigh = meta.fiftyTwoWeekHigh || 0;
+    const fiftyTwoWeekLow = meta.fiftyTwoWeekLow || 0;
+    
+    const distanceFrom52WeekHigh = fiftyTwoWeekHigh > 0 
+      ? ((regularMarketPrice - fiftyTwoWeekHigh) / fiftyTwoWeekHigh) * 100 
+      : undefined;
+    
+    const distanceFrom52WeekLow = fiftyTwoWeekLow > 0 
+      ? ((regularMarketPrice - fiftyTwoWeekLow) / fiftyTwoWeekLow) * 100 
+      : undefined;
+    
+    // Volatilidad (usar últimos 30 puntos si hay suficientes)
+    const volatility30d = calculateVolatility(historicalPrices.slice(-30));
+    
     const parsed: YahooV8Data = {
       symbol: meta.symbol || symbol,
+      longName: meta.longName,
+      shortName: meta.shortName,
       regularMarketPrice,
       previousClose,
       currency: meta.currency || 'USD',
@@ -202,20 +308,34 @@ async function fetchSymbol(symbol: string, range: string = '1d', interval: strin
       timezone: meta.timezone || 'UTC',
       regularMarketDayHigh: meta.regularMarketDayHigh || 0,
       regularMarketDayLow: meta.regularMarketDayLow || 0,
-      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
-      fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
+      fiftyTwoWeekHigh,
+      fiftyTwoWeekLow,
       regularMarketVolume: meta.regularMarketVolume || 0,
       fiftyDayAverage: meta.fiftyDayAverage || 0,
       twoHundredDayAverage: meta.twoHundredDayAverage || 0,
       priceChange,
       priceChangePercent,
+      // Datos extendidos
+      dividends: dividends.length > 0 ? dividends : undefined,
+      annualDividend: annualDividend > 0 ? annualDividend : undefined,
+      dividendYield,
+      splits: splits.length > 0 ? splits : undefined,
+      distanceFrom52WeekHigh,
+      distanceFrom52WeekLow,
+      volatility30d: volatility30d > 0 ? volatility30d : undefined,
+      // Metadata
       dataGranularity: meta.dataGranularity || interval,
       validRanges: meta.validRanges || [],
       historicalPrices: historicalPrices.slice(-100), // Últimos 100 puntos
       fetchedAt: new Date(),
     };
     
-    console.log(`[YahooV8] ${symbol}: ${parsed.regularMarketPrice} ${parsed.currency} (${priceChangePercent >= 0 ? '+' : ''}${priceChangePercent.toFixed(2)}%)`);
+    // Log mejorado
+    let divInfo = '';
+    if (dividendYield) {
+      divInfo = `, Div: ${dividendYield.toFixed(2)}%`;
+    }
+    console.log(`[YahooV8] ${symbol}: ${parsed.regularMarketPrice} ${parsed.currency} (${priceChangePercent >= 0 ? '+' : ''}${priceChangePercent.toFixed(2)}%${divInfo})`);
     
     return parsed;
   } catch (error: any) {
@@ -229,7 +349,7 @@ async function fetchSymbol(symbol: string, range: string = '1d', interval: strin
  */
 class YahooV8Service {
   /**
-   * Obtiene datos de un símbolo
+   * Obtiene datos de un símbolo (versión rápida - solo datos del día)
    */
   async getQuote(symbol: string): Promise<YahooV8Data | null> {
     // Verificar caché
@@ -244,6 +364,30 @@ class YahooV8Service {
     
     if (data) {
       cache.set(symbol, { data, timestamp: Date.now() });
+    }
+    
+    return data;
+  }
+  
+  /**
+   * Obtiene datos extendidos de un símbolo (incluye dividendos, volatilidad, etc.)
+   * Usa rango de 1 año para capturar dividendos y calcular métricas
+   */
+  async getExtendedQuote(symbol: string): Promise<YahooV8Data | null> {
+    const cacheKey = `extended_${symbol}`;
+    const cached = cache.get(cacheKey);
+    
+    // Cache más largo para datos extendidos (5 minutos)
+    if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+      console.log(`[YahooV8] Extended cache hit: ${symbol}`);
+      return cached.data;
+    }
+    
+    // Fetch con rango de 1 año para obtener dividendos y mejor volatilidad
+    const data = await fetchSymbol(symbol, '1y', '1d');
+    
+    if (data) {
+      cache.set(cacheKey, { data, timestamp: Date.now() });
     }
     
     return data;

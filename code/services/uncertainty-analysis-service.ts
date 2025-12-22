@@ -38,7 +38,7 @@ export interface UncertaintyFactors {
   
   // Condiciones de mercado extremas
   marketRegime?: 'panic' | 'euphoria' | 'normal';
-  vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency';
+  vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency';
   
   // Historial de fallos en condiciones similares
   historicalFailRate?: number; // % de predicciones fallidas en condiciones similares (0-100)
@@ -114,7 +114,7 @@ class UncertaintyAnalysisService {
     upcomingEvents?: CorporateEvents;
     factorScores?: Record<string, number>;
     dataCompleteness?: number; // 0-100
-    vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency';
+    vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency';
   }): Promise<UncertaintyAnalysis> {
     await this.initialize();
 
@@ -146,7 +146,7 @@ class UncertaintyAnalysisService {
     upcomingEvents?: CorporateEvents;
     factorScores?: Record<string, number>;
     dataCompleteness?: number;
-    vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency';
+    vixLevel?: 'extreme_fear' | 'fear' | 'neutral' | 'complacency' | 'extreme_complacency';
   }): UncertaintyFactors {
     const factors: UncertaintyFactors = {
       hasUpcomingEarnings: false,

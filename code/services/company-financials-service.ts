@@ -9,12 +9,12 @@
  * 
  * Prioridad de fuentes:
  * 1. Yahoo V8 (gratis, sin límites)
- * 2. RapidAPI (100 req/mes)
- * 3. Yahoo directo (puede dar 401)
+ * 2. Yahoo Crumb Service (gratis, ilimitado, con autenticación)
+ * 3. RapidAPI (100 req/mes - como fallback)
  */
 
-import { fetchWithCorsProxy } from './cors-proxy';
 import { rapidApiYahooService, YahooQuoteSummary } from './rapidapi-yahoo-service';
+import { QuoteSummaryData, yahooCrumbService } from './yahoo-crumb-service';
 import { YahooV8Data, yahooV8Service } from './yahoo-v8-service';
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos de caché (datos financieros cambian poco)
@@ -115,6 +115,9 @@ export interface FinancialSummary {
   expectationsScore: number; // 0-100 - NUEVO: basado en si supera/cumple expectativas
   hasExpectationsData: boolean; // NUEVO: indica si hay datos reales de expectations
   overallScore: number; // 0-100, promedio ponderado
+  
+  // Flag de disponibilidad de datos
+  dataAvailable: boolean; // Indica si hay datos financieros reales disponibles
 }
 
 // Caché
@@ -146,12 +149,21 @@ class CompanyFinancialsService {
     try {
       console.log(`[Financials] Obteniendo datos financieros para ${symbol}`);
       
-      // PRIORIDAD 1: Yahoo V8 (gratis, sin límites, datos de precio)
-      const v8Data = await yahooV8Service.getQuote(symbol);
+      // PRIORIDAD 1: Yahoo V8 Extendido (gratis, sin límites, incluye dividendos)
+      const v8Data = await yahooV8Service.getExtendedQuote(symbol);
       if (v8Data && v8Data.regularMarketPrice > 0) {
         console.log(`[Financials] Datos básicos obtenidos via Yahoo V8 para ${symbol}`);
         
-        // Para datos fundamentales completos, intentar RapidAPI
+        // PRIORIDAD 2: Yahoo Crumb Service (gratis, con autenticación)
+        const crumbData = await yahooCrumbService.getQuoteSummary(symbol);
+        if (crumbData && crumbData.hasData) {
+          console.log(`[Financials] Datos completos via Yahoo Crumb para ${symbol}`);
+          const financials = this.parseFromCrumbService(symbol, crumbData, v8Data);
+          financialsCache.set(symbol, { data: financials, timestamp: Date.now() });
+          return financials;
+        }
+        
+        // PRIORIDAD 3: RapidAPI (100 req/mes - como fallback)
         if (rapidApiYahooService.isAvailable()) {
           const rapidApiData = await rapidApiYahooService.getQuoteSummary(symbol);
           if (rapidApiData && rapidApiData.dataAvailable) {
@@ -162,13 +174,23 @@ class CompanyFinancialsService {
           }
         }
         
-        // Si no hay RapidAPI, usar solo datos de V8
+        // Si no hay datos completos, usar solo datos de V8 extendido
+        console.log(`[Financials] Usando solo datos V8 extendido para ${symbol}`);
         const financials = this.parseFromYahooV8(symbol, v8Data);
         financialsCache.set(symbol, { data: financials, timestamp: Date.now() });
         return financials;
       }
       
-      // PRIORIDAD 2: RapidAPI (cuando V8 falla)
+      // PRIORIDAD 4: Solo Crumb Service (cuando V8 falla)
+      const crumbData = await yahooCrumbService.getQuoteSummary(symbol);
+      if (crumbData && crumbData.hasData) {
+        console.log(`[Financials] Datos obtenidos via Yahoo Crumb para ${symbol}`);
+        const financials = this.parseFromCrumbService(symbol, crumbData);
+        financialsCache.set(symbol, { data: financials, timestamp: Date.now() });
+        return financials;
+      }
+      
+      // PRIORIDAD 5: RapidAPI solo (cuando todo lo demás falla)
       if (rapidApiYahooService.isAvailable()) {
         const rapidApiData = await rapidApiYahooService.getQuoteSummary(symbol);
         if (rapidApiData && rapidApiData.dataAvailable) {
@@ -179,25 +201,8 @@ class CompanyFinancialsService {
         }
       }
       
-      // PRIORIDAD 3: Yahoo directo (puede dar 401)
-      console.log(`[Financials] Intentando Yahoo directo para ${symbol}`);
-      const modules = [
-        'assetProfile',
-        'summaryDetail',
-        'financialData',
-        'defaultKeyStatistics',
-        'earningsHistory',
-        'earningsTrend',
-        'recommendationTrend'
-      ].join(',');
-      
-      const yahooUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
-      
-      const response = await fetchWithCorsProxy(yahooUrl, {
-        signal: AbortSignal.timeout(15000),
-      });
-      
-      const data = await response.json();
+      console.log(`[Financials] No se pudieron obtener datos para ${symbol}`);
+      return null;
       const result = data.quoteSummary?.result?.[0];
       
       if (!result) {
@@ -217,7 +222,8 @@ class CompanyFinancialsService {
   }
   
   /**
-   * Parsea datos de Yahoo V8 (solo precio y datos básicos)
+   * Parsea datos de Yahoo V8 Extendido (precio, dividendos, volatilidad)
+   * Calcula métricas derivadas cuando es posible
    */
   private parseFromYahooV8(symbol: string, v8Data: YahooV8Data): CompanyFinancials {
     const priceChangePercent = v8Data.priceChangePercent || 0;
@@ -247,59 +253,78 @@ class CompanyFinancialsService {
       }
     }
     
+    // Usar dividendYield calculado desde V8 extendido
+    const dividendYield = v8Data.dividendYield || 0;
+    
+    // Determinar nombre del activo
+    const name = v8Data.longName || v8Data.shortName || symbol;
+    
+    // Construir descripción del analista basada en datos técnicos disponibles
+    let analystRating = 'Datos técnicos V8';
+    if (dividendYield > 0) {
+      analystRating += ` | Div: ${dividendYield.toFixed(2)}%`;
+    }
+    if (v8Data.volatility30d) {
+      analystRating += ` | Vol: ${v8Data.volatility30d.toFixed(1)}%`;
+    }
+    
+    // Tenemos datos parciales pero útiles (precio, dividendos si existen, tendencia)
+    const hasUsefulData = v8Data.regularMarketPrice > 0 && 
+                          (v8Data.fiftyDayAverage > 0 || dividendYield > 0);
+    
     return {
       // Información básica
       symbol,
-      name: symbol,
+      name,
       sector: '',
       industry: '',
       
-      // Valoración
+      // Valoración (no disponible sin datos fundamentales)
       marketCap: 0,
       enterpriseValue: 0,
       
-      // Ratios de valoración
+      // Ratios de valoración (no disponible)
       peRatio: 0,
       forwardPE: 0,
       pegRatio: 0,
       priceToBook: 0,
       priceToSales: 0,
       
-      // Ingresos y beneficios
+      // Ingresos y beneficios (no disponible)
       revenue: 0,
       revenueGrowth: 0,
       netIncome: 0,
       earningsGrowth: 0,
       
-      // Márgenes
+      // Márgenes (no disponible)
       grossMargin: 0,
       operatingMargin: 0,
       profitMargin: 0,
       
-      // Por acción
+      // Por acción (no disponible)
       eps: 0,
       epsForward: 0,
       
-      // Dividendos
-      dividendYield: 0,
-      payoutRatio: 0,
+      // Dividendos - AHORA DISPONIBLE VIA V8 EXTENDIDO
+      dividendYield,
+      payoutRatio: 0, // No disponible sin fundamentales
       
-      // Liquidez y deuda
+      // Liquidez y deuda (no disponible)
       currentRatio: 0,
       debtToEquity: 0,
       
-      // Rentabilidad
+      // Rentabilidad (no disponible)
       returnOnEquity: 0,
       returnOnAssets: 0,
       
-      // Analistas
-      analystRating: 'Sin datos',
+      // Analistas (descripción técnica)
+      analystRating,
       targetPrice: 0,
       targetPriceHigh: 0,
       targetPriceLow: 0,
       numberOfAnalysts: 0,
       
-      // Expectativas
+      // Expectativas (no disponible)
       lastEarningsSurprise: 0,
       avgEarningsSurprise: 0,
       nextEarningsEstimate: 0,
@@ -307,9 +332,9 @@ class CompanyFinancialsService {
       revenueEstimate: 0,
       hasPositiveSurpriseHistory: false,
       
-      // Meta
+      // Meta - marcamos como parcialmente disponible
       lastUpdated: new Date(),
-      dataAvailable: false, // Indicar que son datos limitados
+      dataAvailable: hasUsefulData, // TRUE si tenemos datos técnicos útiles
     };
   }
   
@@ -445,6 +470,121 @@ class CompanyFinancialsService {
       nextEarningsEstimate,
       currentQuarterGrowthEstimate,
       revenueEstimate,
+      hasPositiveSurpriseHistory: positiveSurprises >= Math.ceil(earningsHistory.length / 2),
+      
+      lastUpdated: new Date(),
+      dataAvailable: true,
+    };
+  }
+  
+  /**
+   * Parsea datos desde Yahoo Crumb Service al formato CompanyFinancials
+   * Opcionalmente combina con datos de Yahoo V8
+   */
+  private parseFromCrumbService(symbol: string, data: QuoteSummaryData, v8Data?: YahooV8Data): CompanyFinancials {
+    // Calcular rating de analistas desde recommendationTrend
+    const recs = data.recommendationTrend || { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0 };
+    const totalRecs = recs.strongBuy + recs.buy + recs.hold + recs.sell + recs.strongSell;
+    
+    let analystRating = 'Sin datos';
+    if (totalRecs > 0) {
+      const buyScore = recs.strongBuy * 2 + recs.buy;
+      const sellScore = recs.strongSell * 2 + recs.sell;
+      if (buyScore > sellScore * 2) analystRating = 'Compra fuerte';
+      else if (buyScore > sellScore) analystRating = 'Comprar';
+      else if (sellScore > buyScore * 2) analystRating = 'Venta fuerte';
+      else if (sellScore > buyScore) analystRating = 'Vender';
+      else analystRating = 'Mantener';
+    }
+    
+    // Calcular earnings surprise desde earningsHistory
+    let lastEarningsSurprise = 0;
+    let avgEarningsSurprise = 0;
+    let positiveSurprises = 0;
+    const earningsHistory: { quarter: string; epsActual: number; epsEstimate: number; surprise: number }[] = [];
+    
+    if (data.earningsHistory && data.earningsHistory.length > 0) {
+      const surprises: number[] = [];
+      
+      for (const quarter of data.earningsHistory) {
+        if (quarter.epsEstimate !== 0) {
+          const surprise = quarter.surprisePercent || 
+            ((quarter.epsActual - quarter.epsEstimate) / Math.abs(quarter.epsEstimate)) * 100;
+          surprises.push(surprise);
+          if (surprise > 0) positiveSurprises++;
+          earningsHistory.push({
+            quarter: quarter.quarter,
+            epsActual: quarter.epsActual,
+            epsEstimate: quarter.epsEstimate,
+            surprise,
+          });
+        }
+      }
+      
+      if (surprises.length > 0) {
+        lastEarningsSurprise = surprises[0];
+        avgEarningsSurprise = surprises.reduce((a, b) => a + b, 0) / surprises.length;
+      }
+    }
+    
+    // Convertir porcentajes (vienen como decimales 0.25 = 25%)
+    const toPercent = (val: number | undefined): number => {
+      if (!val) return 0;
+      return val < 1 && val > -1 ? val * 100 : val;
+    };
+    
+    // Usar datos de V8 si están disponibles
+    const price = v8Data?.regularMarketPrice || 0;
+    const marketCap = v8Data?.marketCap || data.marketCap || 0;
+    
+    return {
+      name: data.longName || data.shortName || symbol,
+      symbol,
+      sector: data.sector || '',
+      industry: data.industry || '',
+      
+      marketCap,
+      enterpriseValue: data.enterpriseValue || 0,
+      
+      peRatio: data.trailingPE || 0,
+      forwardPE: data.forwardPE || 0,
+      pegRatio: data.pegRatio || 0,
+      priceToBook: data.priceToBook || 0,
+      priceToSales: 0, // No disponible directamente
+      
+      revenue: data.totalRevenue || 0,
+      revenueGrowth: toPercent(data.revenueGrowth),
+      netIncome: 0, // No viene directamente
+      earningsGrowth: toPercent(data.earningsGrowth),
+      
+      grossMargin: toPercent(data.grossMargins),
+      operatingMargin: toPercent(data.operatingMargins),
+      profitMargin: toPercent(data.profitMargins),
+      
+      eps: data.trailingEps || 0,
+      epsForward: data.forwardEps || 0,
+      
+      dividendYield: toPercent(data.dividendYield),
+      payoutRatio: 0, // No disponible
+      
+      currentRatio: data.currentRatio || 0,
+      debtToEquity: data.debtToEquity || 0,
+      
+      returnOnEquity: toPercent(data.returnOnEquity),
+      returnOnAssets: toPercent(data.returnOnAssets),
+      
+      analystRating,
+      targetPrice: data.targetMeanPrice || 0,
+      targetPriceHigh: data.targetHighPrice || 0,
+      targetPriceLow: data.targetLowPrice || 0,
+      numberOfAnalysts: data.numberOfAnalystOpinions || 0,
+      
+      earningsHistory,
+      lastEarningsSurprise,
+      avgEarningsSurprise,
+      nextEarningsEstimate: 0,
+      currentQuarterGrowthEstimate: 0,
+      revenueEstimate: 0,
       hasPositiveSurpriseHistory: positiveSurprises >= Math.ceil(earningsHistory.length / 2),
       
       lastUpdated: new Date(),
@@ -741,6 +881,7 @@ class CompanyFinancialsService {
       expectationsScore,
       hasExpectationsData, // NUEVO: indica si hay datos reales
       overallScore,
+      dataAvailable: true, // Si llegamos aquí, hay datos disponibles
     };
   }
   

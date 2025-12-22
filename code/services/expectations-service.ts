@@ -15,6 +15,7 @@
  */
 
 import { rapidApiYahooService, YahooQuoteSummary } from './rapidapi-yahoo-service';
+import { yahooCrumbService } from './yahoo-crumb-service';
 import { yahooV8Service } from './yahoo-v8-service';
 
 // ============================================================================
@@ -138,7 +139,16 @@ class ExpectationsService {
         return null;
       }
       
-      // PASO 2: Intentar con RapidAPI para datos completos de earnings
+      // PASO 2: Intentar con Yahoo Crumb Service (GRATIS, ilimitado)
+      const crumbData = await yahooCrumbService.getQuoteSummary(symbol);
+      if (crumbData && crumbData.hasData && crumbData.earningsHistory) {
+        console.log(`[Expectations] Datos obtenidos via Yahoo Crumb para ${symbol}`);
+        const expectations = this.parseFromCrumbService(symbol, crumbData);
+        expectationsCache.set(symbol, { data: expectations, timestamp: Date.now() });
+        return expectations;
+      }
+      
+      // PASO 3: Fallback a RapidAPI (100 req/mes)
       if (rapidApiYahooService.isAvailable()) {
         const rapidApiData = await rapidApiYahooService.getQuoteSummary(symbol);
         if (rapidApiData && rapidApiData.dataAvailable && rapidApiData.earningsHistory) {
@@ -149,7 +159,7 @@ class ExpectationsService {
         }
       }
       
-      // PASO 3: Generar datos básicos desde V8 (sin earnings detallados)
+      // PASO 4: Generar datos básicos desde V8 (sin earnings detallados)
       console.log(`[Expectations] Generando datos básicos desde V8 para ${symbol}`);
       const basicExpectations = this.generateBasicExpectations(symbol, v8Data);
       expectationsCache.set(symbol, { data: basicExpectations, timestamp: Date.now() });
@@ -236,6 +246,124 @@ class ExpectationsService {
       
       // Resumen
       summary: `Datos limitados. Tendencia de precio: ${trendScore > 50 ? 'positiva' : trendScore < 50 ? 'negativa' : 'neutral'}. Datos de earnings no disponibles.`,
+    };
+  }
+  
+  /**
+   * Parsea datos desde Yahoo Crumb Service al formato ExpectationsData
+   */
+  private parseFromCrumbService(symbol: string, data: QuoteSummaryData): ExpectationsData {
+    // Parsear earnings surprise desde earningsHistory
+    const earningsSurprises: EarningsSurprise[] = (data.earningsHistory || []).map((q) => ({
+      quarter: q.quarter,
+      date: new Date(),
+      epsActual: q.epsActual,
+      epsEstimate: q.epsEstimate,
+      epsSurprisePercent: q.surprisePercent || 
+        (q.epsEstimate !== 0 ? ((q.epsActual - q.epsEstimate) / Math.abs(q.epsEstimate)) * 100 : 0),
+      revenueActual: null,
+      revenueEstimate: null,
+      revenueSurprisePercent: null,
+    }));
+    
+    let lastEpsSurprise: number | null = null;
+    let avgEpsSurprise: number | null = null;
+    let beatRate = 0;
+    
+    if (earningsSurprises.length > 0) {
+      lastEpsSurprise = earningsSurprises[0].epsSurprisePercent;
+      avgEpsSurprise = earningsSurprises.reduce((sum, e) => sum + e.epsSurprisePercent, 0) / earningsSurprises.length;
+      beatRate = earningsSurprises.filter(e => e.epsSurprisePercent > 0).length / earningsSurprises.length * 100;
+    }
+    
+    // Próximos earnings
+    const nextEarningsTimestamp = data.earningsDate;
+    const nextEarningsDate = nextEarningsTimestamp ? new Date(nextEarningsTimestamp * 1000) : null;
+    const now = new Date();
+    const daysUntil = nextEarningsDate 
+      ? Math.ceil((nextEarningsDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    
+    const nextEarnings: NextEarningsInfo = {
+      date: nextEarningsDate,
+      daysUntil,
+      isWithin7Days: daysUntil !== null && daysUntil <= 7 && daysUntil >= 0,
+      isWithin30Days: daysUntil !== null && daysUntil <= 30 && daysUntil >= 0,
+      epsEstimate: data.forwardEps || null,
+      revenueEstimate: null,
+      whisperNumber: null,
+      historicalBeatRate: beatRate,
+    };
+    
+    // Revisiones (simplificado - no hay datos de revisiones en crumb service)
+    const revisions: AnalystRevision[] = [];
+    
+    // Calcular scores
+    const epsSurpriseScore = this.calculateEpsSurpriseScore(lastEpsSurprise, avgEpsSurprise, beatRate);
+    const revenueSurpriseScore = 50;
+    const revisionScoreNorm = 50;
+    const timingScore = this.calculateTimingScore(nextEarnings);
+    
+    // Determinar riesgo de earnings
+    let earningsRisk: 'high' | 'medium' | 'low' = 'low';
+    if (daysUntil !== null && daysUntil >= 0) {
+      if (daysUntil <= 7) earningsRisk = 'high';
+      else if (daysUntil <= 14) earningsRisk = 'medium';
+    }
+    
+    // Score combinado
+    const expectationsScore = Math.round(
+      epsSurpriseScore * 0.35 +
+      revenueSurpriseScore * 0.15 +
+      revisionScoreNorm * 0.25 +
+      timingScore * 0.25
+    );
+    
+    // Summary
+    let summary = '';
+    if (lastEpsSurprise !== null) {
+      if (lastEpsSurprise > 10) summary = `Superó expectativas (+${lastEpsSurprise.toFixed(1)}%)`;
+      else if (lastEpsSurprise > 0) summary = `Cumplió/superó ligeramente (+${lastEpsSurprise.toFixed(1)}%)`;
+      else summary = `No alcanzó expectativas (${lastEpsSurprise.toFixed(1)}%)`;
+    } else {
+      summary = 'Sin datos de earnings surprise';
+    }
+    
+    if (nextEarnings.isWithin7Days) {
+      summary += ' ⚠️ Earnings en próximos 7 días';
+    }
+    
+    // Determinar expectationsOutlook
+    let expectationsOutlook = 'Sin datos';
+    if (avgEpsSurprise !== null) {
+      if (avgEpsSurprise > 5) expectationsOutlook = 'Supera expectativas';
+      else if (avgEpsSurprise > -5) expectationsOutlook = 'Cumple expectativas';
+      else expectationsOutlook = 'Decepciona';
+    }
+    
+    return {
+      symbol,
+      timestamp: new Date(),
+      earningsSurprises,
+      lastEpsSurprise,
+      avgEpsSurprise,
+      lastRevenueSurprise: null,
+      avgRevenueSurprise: null,
+      beatRate,
+      consistencyScore: beatRate,
+      revisions,
+      overallRevisionTrend: 'unknown',
+      revisionScore: 0,
+      nextEarnings,
+      earningsRisk,
+      epsSurpriseScore,
+      revenueSurpriseScore,
+      revisionScore_normalized: revisionScoreNorm,
+      timingScore,
+      expectationsScore,
+      hasData: earningsSurprises.length > 0,
+      dataQuality: earningsSurprises.length >= 4 ? 'high' : earningsSurprises.length > 0 ? 'medium' : 'low',
+      summary,
     };
   }
   

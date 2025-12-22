@@ -8,6 +8,30 @@ interface PredictionCardAnalysisProps {
   prediction: InvestmentPrediction;
 }
 
+// Factores esenciales por tipo de activo
+const ESSENTIAL_FACTORS: Record<string, string[]> = {
+  stock: ['trend', 'technical', 'sentiment', 'news', 'financials'],
+  crypto: ['trend', 'technical', 'sentiment', 'news'],
+  etf: ['trend', 'technical', 'macro'],
+  index: ['trend', 'technical', 'macro', 'sentiment'],
+};
+
+// Detectar tipo de activo y devolver factores esenciales
+function getEssentialFactors(symbol: string): string[] {
+  const upperSymbol = symbol.toUpperCase();
+  
+  if (upperSymbol.includes('-USD') || ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'].some(c => upperSymbol.startsWith(c))) {
+    return ESSENTIAL_FACTORS.crypto;
+  }
+  if (['SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO'].includes(upperSymbol)) {
+    return ESSENTIAL_FACTORS.etf;
+  }
+  if (['^GSPC', '^DJI', '^IXIC', '^RUT'].includes(upperSymbol)) {
+    return ESSENTIAL_FACTORS.index;
+  }
+  return ESSENTIAL_FACTORS.stock;
+}
+
 export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ prediction }) => {
   const [showReasoning, setShowReasoning] = useState(false);
   const [marketInfo, setMarketInfo] = useState<MarketHoursInfo | null>(null);
@@ -140,8 +164,23 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                 {/* Barra de factores */}
                 <View style={styles.factorBarContainer}>
                   {prediction.analysisData.factorBreakdown.availableFactors
-                    .filter(f => prediction.analysisData?.factorBreakdown?.relevantFactors.includes(f.name))
-                    .map((factor, index) => (
+                    .filter(f => {
+                      // Solo mostrar factores relevantes para este tipo de activo
+                      const isRelevant = prediction.analysisData?.factorBreakdown?.relevantFactors.includes(f.name);
+                      if (!isRelevant) return false;
+                      
+                      // Factores esenciales siempre se muestran (con advertencia si no hay datos)
+                      // Factores no esenciales solo se muestran si tienen datos
+                      const essentialFactors = getEssentialFactors(prediction.symbol || '');
+                      const isEssential = essentialFactors.includes(f.name);
+                      
+                      return f.hasData || isEssential;
+                    })
+                    .map((factor, index) => {
+                      const essentialFactors = getEssentialFactors(prediction.symbol || '');
+                      const isEssential = essentialFactors.includes(factor.name);
+                      
+                      return (
                     <View key={index} style={styles.factorItem}>
                       <View style={styles.factorHeader}>
                         <Text style={styles.factorName}>
@@ -156,6 +195,7 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                            factor.name === 'financials' ? '💰 Financieros' :
                            factor.name === 'expectations' ? '🎯 Expectativas' :
                            factor.name === 'technical' ? '📈 Técnico' : factor.name}
+                          {isEssential && !factor.hasData && ' ⚠️'}
                         </Text>
                         <Text style={[
                           styles.factorScore,
@@ -163,7 +203,7 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                                    factor.score > 15 ? '#4CAF50' :
                                    factor.score < -15 ? '#F44336' : '#FF9800' }
                         ]}>
-                          {!factor.hasData ? 'N/D' :
+                          {!factor.hasData ? (isEssential ? 'Sin datos' : 'N/D') :
                            factor.score > 0 ? `+${factor.score}` : factor.score}
                         </Text>
                       </View>
@@ -179,8 +219,13 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                           }
                         ]} />
                       </View>
+                      {isEssential && !factor.hasData && (
+                        <Text style={{ fontSize: 9, color: '#E65100', fontStyle: 'italic', marginTop: 2 }}>
+                          Este factor es importante pero no hay datos disponibles
+                        </Text>
+                      )}
                     </View>
-                  ))}
+                  )})}
                 </View>
 
                 {/* Explicación de confianza */}

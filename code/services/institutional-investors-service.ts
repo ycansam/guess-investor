@@ -206,7 +206,15 @@ class InstitutionalInvestorsService {
       return null;
     }
     
-    // PASO 2: Intentar con RapidAPI para datos institucionales
+    // PASO 2: Intentar con Yahoo Crumb Service (GRATIS, ilimitado)
+    const crumbData = await yahooCrumbService.getQuoteSummary(symbol);
+    if (crumbData && crumbData.hasData && 
+        (crumbData.institutionsPercentHeld || crumbData.insiderPercentHeld)) {
+      console.log(`[Institutional] Datos obtenidos via Yahoo Crumb para ${symbol}`);
+      return this.parseFromCrumbService(crumbData);
+    }
+    
+    // PASO 3: Fallback a RapidAPI (100 req/mes)
     if (rapidApiYahooService.isAvailable()) {
       const rapidApiData = await rapidApiYahooService.getQuoteSummary(symbol);
       if (rapidApiData && rapidApiData.dataAvailable && 
@@ -216,9 +224,41 @@ class InstitutionalInvestorsService {
       }
     }
     
-    // PASO 3: Retornar datos básicos derivados de V8
+    // PASO 4: Retornar datos básicos derivados de V8
     console.log(`[Institutional] Generando datos básicos desde V8 para ${symbol}`);
     return this.generateBasicInstitutionalData(v8Data);
+  }
+  
+  /**
+   * Parsea datos desde Yahoo Crumb Service
+   */
+  private parseFromCrumbService(data: QuoteSummaryData): {
+    institutionalOwnership: InstitutionalActivity['institutionalOwnership'];
+    insiderTransactions: InstitutionalActivity['insiderTransactions'];
+    netSharePurchaseActivity: InstitutionalActivity['netSharePurchaseActivity'];
+    topInstitutions: InstitutionalActivity['topInstitutions'];
+    hasData: boolean;
+  } {
+    const instPercent = data.institutionsPercentHeld ? data.institutionsPercentHeld * 100 : 0;
+    const instCount = data.institutionsCount || 0;
+    const insiderPercent = data.insiderPercentHeld ? data.insiderPercentHeld * 100 : 0;
+    
+    return {
+      institutionalOwnership: instPercent > 0 ? {
+        percentage: instPercent,
+        numberOfInstitutions: instCount,
+        trend: 'stable' as const, // No hay datos de tendencia en crumb service
+      } : null,
+      insiderTransactions: null, // No hay transacciones detalladas
+      netSharePurchaseActivity: insiderPercent > 0 ? {
+        buyPercentInsiderShares: 0,
+        sellPercentInsiderShares: 0,
+        netPercentInsiderShares: 0,
+        trend: 'neutral' as const,
+      } : null,
+      topInstitutions: [],
+      hasData: instPercent > 0 || insiderPercent > 0,
+    };
   }
   
   /**

@@ -598,6 +598,12 @@ export const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
   },
+  factorWarning: {
+    fontSize: 9,
+    color: '#E65100',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
   confidenceExplanation: {
     fontSize: 11,
     color: '#555',

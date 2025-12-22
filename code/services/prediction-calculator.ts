@@ -876,11 +876,17 @@ class PredictionCalculatorService {
     }
     
     // Score de fundamentales (-100 a +100), solo para acciones
+    // IMPORTANTE: Solo usar si realmente hay datos fundamentales disponibles
     let financialsScore = 0;
-    if (financials) {
+    let hasFinancialsData = false;
+    if (financials && financials.dataAvailable) {
       // Convertir score 0-100 a -100/+100
       financialsScore = (financials.overallScore - 50) * 2;
+      hasFinancialsData = true;
       console.log(`[PredictionCalc] Financials score: ${financialsScore} (overall: ${financials.overallScore})`);
+    } else if (financials) {
+      // Hay objeto pero sin datos reales (solo datos de precio de V8)
+      console.log(`[PredictionCalc] Financials: Sin datos fundamentales disponibles para ${symbol}`);
     }
     
     // Score de expectativas MEJORADO (-100 a +100)
@@ -1038,7 +1044,7 @@ class PredictionCalculatorService {
       { name: 'forex', score: forexScore, hasData: hasForexData, baseWeight: timeframeWeights.forex },
       { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, baseWeight: timeframeWeights.institutional },
       { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, baseWeight: timeframeWeights.seasonality },
-      { name: 'financials', score: financialsScore, hasData: financials !== null, baseWeight: timeframeWeights.financials },
+      { name: 'financials', score: financialsScore, hasData: hasFinancialsData, baseWeight: timeframeWeights.financials },
       { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, baseWeight: timeframeWeights.expectations },
     ];
     
