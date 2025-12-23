@@ -106,7 +106,9 @@ export interface YahooV8Data {
  * Cache local para reducir llamadas
  */
 const cache = new Map<string, { data: YahooV8Data; timestamp: number }>();
-const CACHE_DURATION = 60 * 1000; // 1 minuto (datos casi en tiempo real)
+const historicalCache = new Map<string, { data: YahooV8Data; timestamp: number }>();
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutos
+const HISTORICAL_CACHE_DURATION = 15 * 60 * 1000; // 15 minutos para históricos
 
 let currentProxyIndex = 0;
 
@@ -417,14 +419,42 @@ class YahooV8Service {
   }
   
   /**
-   * Obtiene datos históricos con rango personalizado
+   * Obtiene datos históricos con rango personalizado (con cache de 15 min)
    */
   async getHistorical(
     symbol: string,
     range: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | 'max' = '1mo',
     interval: '1m' | '5m' | '15m' | '1h' | '1d' | '1wk' | '1mo' = '1d'
   ): Promise<YahooV8Data | null> {
-    return fetchSymbol(symbol, range, interval);
+    const cacheKey = `hist_${symbol}_${range}_${interval}`;
+    const cached = historicalCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < HISTORICAL_CACHE_DURATION) {
+      console.log(`[YahooV8] Historical cache hit: ${symbol} ${range}`);
+      return cached.data;
+    }
+    
+    const data = await fetchSymbol(symbol, range, interval);
+    
+    if (data) {
+      historicalCache.set(cacheKey, { data, timestamp: Date.now() });
+    }
+    
+    return data;
+  }
+  
+  /**
+   * Obtiene datos históricos simplificados (para compatibilidad con asset-classifier)
+   */
+  async getHistoricalData(symbol: string, range: string): Promise<{ close: number; volume: number; timestamp: number }[] | null> {
+    // Mapear rango a formato válido
+    let validRange: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' = '3mo';
+    if (range.includes('90') || range.includes('3m')) validRange = '3mo';
+    else if (range.includes('30') || range.includes('1m')) validRange = '1mo';
+    else if (range.includes('1y') || range.includes('365')) validRange = '1y';
+    
+    const data = await this.getHistorical(symbol, validRange, '1d');
+    return data?.historicalPrices || null;
   }
   
   /**
@@ -448,6 +478,7 @@ class YahooV8Service {
    */
   clearCache(): void {
     cache.clear();
+    historicalCache.clear();
     console.log('[YahooV8] Cache cleared');
   }
   

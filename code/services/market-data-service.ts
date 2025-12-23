@@ -178,6 +178,24 @@ class MarketDataService {
   }
 
   /**
+   * Obtiene datos cacheados sincrónicamente (sin fetch)
+   * Retorna null si no hay cache válido
+   */
+  getCachedAssets(): MarketAsset[] | null {
+    const now = Date.now();
+    const allCached = POPULAR_ASSETS.every(asset => {
+      const cached = marketCache.get(asset.symbol);
+      return cached && (now - cached.timestamp) < CACHE_DURATION;
+    });
+
+    if (!allCached) {
+      return null;
+    }
+
+    return this.getAssetsFromCache();
+  }
+
+  /**
    * Limpia el cache (útil para forzar refresh)
    */
   clearCache(): void {

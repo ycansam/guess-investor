@@ -32,7 +32,7 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-const CACHE_DURATION = 60 * 1000; // 1 minuto de caché
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutos de caché
 const FETCH_TIMEOUT = 15000; // 15 segundos timeout
 const MAX_RETRIES = 2;
 

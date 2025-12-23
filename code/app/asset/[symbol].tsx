@@ -111,7 +111,7 @@ export default function AssetDetailScreen() {
 
   // Cargar datos del gráfico según timeframe
   const loadChartData = useCallback(async () => {
-    if (!symbol || !assetData) return;
+    if (!symbol) return;
 
     setLoading(true);
     try {
@@ -176,7 +176,7 @@ export default function AssetDetailScreen() {
       console.error('[AssetDetail] Error loading chart:', error);
     }
     setLoading(false);
-  }, [symbol, assetData, selectedTimeframe, longtermHistoryRange]);
+  }, [symbol, selectedTimeframe, longtermHistoryRange]);
 
   // Calcular predicción
   const handlePredict = useCallback(async () => {
@@ -242,10 +242,16 @@ export default function AssetDetailScreen() {
   }, [loadAssetData]);
 
   useEffect(() => {
-    if (assetData) {
-      loadChartData();
+    loadChartData();
+  }, [loadChartData]);
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
     }
-  }, [assetData, loadChartData]);
+  }, [router]);
 
   const chartWidth = width - 64;
   const chartAreaWidth = chartWidth - 70; // Ancho útil del gráfico (menos ejes y padding)
@@ -307,7 +313,7 @@ export default function AssetDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerInfo}>

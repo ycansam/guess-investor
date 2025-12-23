@@ -58,11 +58,21 @@ export function MarketList() {
     return extraPadding; // Sin límite máximo para pantallas muy anchas
   }, [width, isDesktop]);
 
-  const [assets, setAssets] = useState<MarketAsset[]>(
-    POPULAR_ASSETS.map(a => ({ ...a, loading: true }))
-  );
+  // Inicializar con datos cacheados si existen, sino mostrar loading
+  const [assets, setAssets] = useState<MarketAsset[]>(() => {
+    const cached = marketDataService.getCachedAssets();
+    if (cached) {
+      console.log('[MarketList] Initialized from cache');
+      return cached;
+    }
+    return POPULAR_ASSETS.map(a => ({ ...a, loading: true }));
+  });
   const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(() => {
+    // Si hay cache, marcar como actualizado
+    const cached = marketDataService.getCachedAssets();
+    return cached ? new Date() : null;
+  });
   const [sortBy, setSortBy] = useState<SortType>('gainers');
   const [filterBy, setFilterBy] = useState<FilterType>('all');
 
@@ -77,10 +87,20 @@ export function MarketList() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    // Solo cargar si no hay datos válidos en cache
+    const cached = marketDataService.getCachedAssets();
+    if (!cached) {
+      loadData();
+    }
     
-    // Refrescar cada 15 minutos
-    const interval = setInterval(loadData, 15 * 60 * 1000);
+    // Refrescar cada 15 minutos SOLO si el cache ha expirado
+    const interval = setInterval(() => {
+      const currentCache = marketDataService.getCachedAssets();
+      if (!currentCache) {
+        console.log('[MarketList] Cache expired, refreshing...');
+        loadData();
+      }
+    }, 60 * 1000); // Verificar cada minuto si hay que refrescar
     return () => clearInterval(interval);
   }, [loadData]);
 

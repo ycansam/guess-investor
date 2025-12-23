@@ -6,26 +6,25 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
-import { assetClassifierService } from '../../../services/asset-classifier-service';
 import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
 import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
-  TIMEFRAME_INFO,
-  trainingCacheService,
-  TrainingPrediction,
-  TrainingTimeframe,
+    TIMEFRAME_INFO,
+    trainingCacheService,
+    TrainingPrediction,
+    TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { useChatStore } from '../../../store/chat-store';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
@@ -67,11 +66,20 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
   }, []);
 
-  const [assets, setAssets] = useState<MarketAsset[]>(
-    POPULAR_ASSETS.map(a => ({ ...a, loading: true }))
-  );
+  // Inicializar con datos cacheados si existen
+  const [assets, setAssets] = useState<MarketAsset[]>(() => {
+    const cached = marketDataService.getCachedAssets();
+    if (cached) {
+      console.log('[MarketPredictions] Initialized from cache');
+      return cached;
+    }
+    return POPULAR_ASSETS.map(a => ({ ...a, loading: true }));
+  });
   const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(() => {
+    const cached = marketDataService.getCachedAssets();
+    return cached ? new Date() : null;
+  });
   const [selectedTimeframe, setSelectedTimeframe] = useState<TrainingTimeframe>('intraday');
   const [predictingSymbol, setPredictingSymbol] = useState<string | null>(null);
   const [cachedPredictions, setCachedPredictions] = useState<TrainingPrediction[]>([]);
@@ -107,36 +115,34 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   }, []);
 
   useEffect(() => {
-    loadData();
+    // Solo cargar si no hay datos válidos en cache
+    const cached = marketDataService.getCachedAssets();
+    if (!cached) {
+      loadData();
+    } else {
+      // Aún así inicializar training cache
+      trainingCacheService.init().then(() => {
+        setCachedPredictions(trainingCacheService.getAllActive());
+      });
+    }
     
-    // Refrescar cada 5 minutos (más frecuente que MarketList porque estamos entrenando)
-    const interval = setInterval(loadData, 5 * 60 * 1000);
+    // Verificar cada minuto si el cache ha expirado
+    const interval = setInterval(() => {
+      const currentCache = marketDataService.getCachedAssets();
+      if (!currentCache) {
+        console.log('[MarketPredictions] Cache expired, refreshing...');
+        loadData();
+      }
+    }, 60 * 1000);
     return () => clearInterval(interval);
   }, [loadData]);
 
-  // Cargar recomendaciones de timeframe para los activos visibles
-  useEffect(() => {
-    const loadRecommendations = async () => {
-      const recommendations = new Map<string, TrainingTimeframe>();
-      
-      for (const asset of assets.slice(0, 20)) { // Solo los primeros 20 para no saturar
-        try {
-          const recs = await assetClassifierService.getRecommendedTimeframe(asset.symbol);
-          if (recs.length > 0) {
-            recommendations.set(asset.symbol, recs[0].timeframe);
-          }
-        } catch (error) {
-          console.error(`Error getting recommendation for ${asset.symbol}:`, error);
-        }
-      }
-      
-      setRecommendedTimeframes(recommendations);
-    };
-    
-    if (assets.length > 0) {
-      loadRecommendations();
-    }
-  }, [assets]);
+  // Cargar recomendaciones de timeframe solo cuando el usuario interactúa
+  // NO se cargan automáticamente al montar para evitar peticiones innecesarias
+  const [recommendationsLoaded, setRecommendationsLoaded] = useState(false);
+  
+  // Las recomendaciones se cargarán bajo demanda cuando se seleccione un activo
+  // No hacer carga inicial automática de todos los activos
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
