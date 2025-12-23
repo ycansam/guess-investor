@@ -43,10 +43,10 @@ interface AssetData {
 const TIMEFRAME_CONFIG = {
   intraday: {
     label: 'Intradía',
-    historyRange: '5d' as const,
+    historyRange: '3d' as const,
     historyInterval: '15m' as const,
     predictionDays: 1,
-    description: '4 días anteriores + predicción 1 día',
+    description: '2 días anteriores + predicción 1 día',
   },
   swing: {
     label: 'Swing',
@@ -146,13 +146,24 @@ export default function AssetDetailScreen() {
         setLastPriceForPrediction(lastPrice.close);
         setLastTimestamp(lastPrice.timestamp);
 
-        // Crear datos para gifted-charts - mostrar etiquetas cada N puntos
-        const labelInterval = Math.max(1, Math.floor(prices.length / 6));
+        // Crear datos para gifted-charts - mostrar solo 4 etiquetas bien distribuidas
+        const labelInterval = Math.max(1, Math.floor(prices.length / 3));
+        let lastLabelDate = '';
         const giftedData: ChartDataPoint[] = prices.map((p, idx) => {
           const date = new Date(p.timestamp);
-          const label = idx % labelInterval === 0 
-            ? `${date.getDate()}/${date.getMonth() + 1}` 
-            : '';
+          const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
+          const isLastPoint = idx === prices.length - 1;
+          
+          // Mostrar etiqueta en: primer punto, intervalos, y último punto (si es fecha diferente)
+          let label = '';
+          if (idx === 0) {
+            label = dateStr;
+            lastLabelDate = dateStr;
+          } else if ((idx % labelInterval === 0 || isLastPoint) && dateStr !== lastLabelDate) {
+            label = dateStr;
+            lastLabelDate = dateStr;
+          }
+          
           return {
             value: p.close,
             label,
@@ -237,7 +248,7 @@ export default function AssetDetailScreen() {
   }, [assetData, loadChartData]);
 
   const chartWidth = width - 64;
-  const chartAreaWidth = chartWidth - 60; // Ancho útil del gráfico (menos ejes y padding)
+  const chartAreaWidth = chartWidth - 70; // Ancho útil del gráfico (menos ejes y padding)
 
   // Calcular el yAxisOffset para que el gráfico no empiece desde 0
   const yAxisOffset = useMemo(() => {
@@ -248,10 +259,11 @@ export default function AssetDetailScreen() {
     return Math.max(0, minValue * 0.95);
   }, [chartData, predictionData]);
 
-  // Calcular spacing uniforme
+  // Calcular spacing uniforme para todos los puntos
   const chartSpacing = useMemo(() => {
     if (chartData.length === 0) return 3;
-    const totalPoints = chartData.length + (predictionData.length > 0 ? predictionData.length : 0);
+    
+    const totalPoints = chartData.length + predictionData.length;
     return chartAreaWidth / Math.max(totalPoints - 1, 1);
   }, [chartData.length, predictionData.length, chartAreaWidth]);
 
@@ -442,13 +454,16 @@ export default function AssetDetailScreen() {
                   startOpacity={0.8}
                   endOpacity={0.1}
                   yAxisOffset={yAxisOffset}
+                  formatYLabel={(label) => formatPrice(parseFloat(label))}
                   yAxisColor="#4b5563"
                   xAxisColor="#4b5563"
-                  yAxisTextStyle={{ color: '#9ca3af', fontSize: 10 }}
-                  xAxisLabelTextStyle={{ color: '#9ca3af', fontSize: 9 }}
+                  yAxisTextStyle={{ color: '#9ca3af', fontSize: 11, fontWeight: '500' }}
+                  xAxisLabelTextStyle={{ color: '#9ca3af', fontSize: 10, fontWeight: '500' }}
+                  yAxisLabelWidth={50}
+                  labelsExtraHeight={25}
                   rulesColor="#374151"
                   rulesType="dashed"
-                  noOfSections={5}
+                  noOfSections={4}
                   showVerticalLines
                   verticalLinesColor="#37415180"
                   pointerConfig={{

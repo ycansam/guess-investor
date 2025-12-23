@@ -252,38 +252,24 @@ class PredictionTrackingService {
     });
   }
   
-  /**
-   * Determina si el mercado ya cerró para un símbolo dado
-   * NYSE/NASDAQ cierran a las 16:00 ET (21:00 UTC, 22:00 España invierno)
-   * Crypto opera 24/7, usamos cierre a las 00:00 UTC
-   */
-  private isMarketClosed(symbol: string, targetDate: Date): boolean {
+  private isCryptoSymbol(symbol: string): boolean {
+    return symbol.includes('-USD') || symbol === 'BTC' || symbol === 'ETH' || symbol === 'DOGE' || symbol === 'SOL' || symbol === 'XRP';
+  }
+
+  private getFirstMarketCloseAfterPrediction(symbol: string, predictionDate: Date): Date {
+    const closeHour = this.isCryptoSymbol(symbol) ? 23 : 22; // Crypto se considera cerrado a las 23:00 locales, acciones a las 22:00 locales
+    const firstClose = new Date(predictionDate);
+    firstClose.setHours(closeHour, 0, 0, 0);
+    if (predictionDate.getHours() >= closeHour) {
+      firstClose.setDate(firstClose.getDate() + 1);
+    }
+    return firstClose;
+  }
+
+  private hasMarketClosedSincePrediction(symbol: string, predictionDate: Date): boolean {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-    
-    // Si la fecha objetivo ya pasó, definitivamente podemos verificar
-    if (target < today) {
-      return true;
-    }
-    
-    // Si es hoy, verificar si el mercado cerró
-    if (target.getTime() === today.getTime()) {
-      const isCrypto = symbol.includes('-USD') || symbol === 'BTC' || symbol === 'ETH' || 
-                       symbol === 'DOGE' || symbol === 'SOL' || symbol === 'XRP';
-      
-      if (isCrypto) {
-        // Crypto: podemos verificar a partir de las 23:00 hora local
-        return now.getHours() >= 23;
-      } else {
-        // Acciones: NYSE cierra 16:00 ET = 21:00 UTC = 22:00 España (invierno)
-        // Usamos 22:00 hora local como referencia conservadora
-        return now.getHours() >= 22;
-      }
-    }
-    
-    // Si la fecha objetivo es futura, el mercado aún no cerró para ese día
-    return false;
+    const firstClose = this.getFirstMarketCloseAfterPrediction(symbol, predictionDate);
+    return now >= firstClose;
   }
 
   /**
@@ -300,10 +286,12 @@ class PredictionTrackingService {
       if (prediction.status !== 'pending') continue;
       
       const targetDate = new Date(prediction.targetDate);
+      const predictionDate = new Date(prediction.predictionDate);
+      const timeframeElapsed = now >= targetDate;
+      const marketClosedOnce = this.hasMarketClosedSincePrediction(prediction.symbol, predictionDate);
       
-      // Verificar si el mercado ya cerró para esta predicción
-      if (!this.isMarketClosed(prediction.symbol, targetDate)) {
-        console.log(`[Tracking] ${prediction.symbol}: Mercado aún no cierra para fecha ${targetDate.toLocaleDateString()}`);
+      if (!(timeframeElapsed && marketClosedOnce)) {
+        console.log(`[Tracking] ${prediction.symbol}: Esperando a que pase el timeframe y al menos un cierre de mercado. target=${targetDate.toLocaleDateString()} cierreMin=${this.getFirstMarketCloseAfterPrediction(prediction.symbol, predictionDate).toLocaleString()}`);
         continue;
       }
       
