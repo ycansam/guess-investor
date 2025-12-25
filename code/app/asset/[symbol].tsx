@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { predictionCalculatorService } from '../../services/prediction-calculator';
+import { trainingCacheService, TrainingTimeframe } from '../../services/training-cache-service';
 import { yahooV8Service } from '../../services/yahoo-v8-service';
 
 // Tipos de timeframe para el gráfico
@@ -83,6 +84,7 @@ export default function AssetDetailScreen() {
   const [longtermHistoryRange, setLongtermHistoryRange] = useState<'1m' | '3m'>('1m');
   const [longtermPredictionDays, setLongtermPredictionDays] = useState<15 | 30 | 90>(15);
   const [prediction, setPrediction] = useState<{ change: number; confidence: number } | null>(null);
+  const [predictionFromCache, setPredictionFromCache] = useState(false);
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
 
@@ -206,6 +208,7 @@ export default function AssetDetailScreen() {
           change: pred.predictedChange,
           confidence: pred.confidence,
         });
+        setPredictionFromCache(false);
 
         // Crear puntos de predicción
         const targetPrice = lastPriceForPrediction * (1 + pred.predictedChange / 100);
@@ -244,6 +247,60 @@ export default function AssetDetailScreen() {
   useEffect(() => {
     loadChartData();
   }, [loadChartData]);
+
+  // Cargar predicción cacheada cuando cambia el timeframe
+  useEffect(() => {
+    const loadCachedPrediction = async () => {
+      if (!symbol || lastPriceForPrediction === 0) return;
+      
+      await trainingCacheService.init();
+      const cached = trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
+      
+      if (cached) {
+        console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}`);
+        setPrediction({
+          change: cached.predictedChange,
+          confidence: cached.confidence,
+        });
+        setPredictionFromCache(true);
+        
+        // Crear puntos de predicción desde cache
+        const targetPrice = lastPriceForPrediction * (1 + cached.predictedChange / 100);
+        const config = TIMEFRAME_CONFIG[selectedTimeframe];
+        let predictionDays = config.predictionDays;
+        if (selectedTimeframe === 'longterm') {
+          predictionDays = longtermPredictionDays;
+        }
+        
+        const predPoints: ChartDataPoint[] = [];
+        const steps = 10;
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const totalMs = predictionDays * msPerDay;
+        
+        for (let i = 0; i <= steps; i++) {
+          const progress = i / steps;
+          const interpolatedValue = lastPriceForPrediction + (targetPrice - lastPriceForPrediction) * progress;
+          const timestamp = lastTimestamp + (totalMs * progress);
+          const date = new Date(timestamp);
+          const label = i === steps ? `${date.getDate()}/${date.getMonth() + 1}` : '';
+          
+          predPoints.push({
+            value: interpolatedValue,
+            label,
+          });
+        }
+        
+        setPredictionData(predPoints);
+      } else {
+        // No hay predicción cacheada, resetear
+        setPrediction(null);
+        setPredictionFromCache(false);
+        setPredictionData([]);
+      }
+    };
+    
+    loadCachedPrediction();
+  }, [symbol, selectedTimeframe, lastPriceForPrediction, lastTimestamp, longtermPredictionDays]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -548,7 +605,12 @@ export default function AssetDetailScreen() {
         {/* Info de predicción */}
         {prediction && (
           <View style={styles.predictionInfo}>
-            <Text style={styles.predictionTitle}>Predicción</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.predictionTitle}>Predicción</Text>
+              {predictionFromCache && (
+                <Text style={{ fontSize: 11, color: '#6b7280' }}>📌 Guardada</Text>
+              )}
+            </View>
             <View style={styles.predictionDetails}>
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Cambio esperado</Text>

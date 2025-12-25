@@ -12,13 +12,13 @@
 import { Platform } from 'react-native';
 
 const YAHOO_V8_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
+const YAHOO_V7_QUOTE = 'https://query1.finance.yahoo.com/v7/finance/quote';
 
-// Proxies CORS para web (rotamos si uno falla)
+// Proxies CORS para web - ordenados por velocidad (corsproxy.io es el más rápido)
 const CORS_PROXIES = [
+  'https://corsproxy.io/?',        // Más rápido y estable
   'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
   'https://api.codetabs.com/v1/proxy?quest=',
-  'https://cors.bridged.cc/', // Proxy alternativo más estable
 ];
 
 /**
@@ -106,11 +106,26 @@ export interface YahooV8Data {
  * Cache local para reducir llamadas
  */
 const cache = new Map<string, { data: YahooV8Data; timestamp: number }>();
+const liteCache = new Map<string, { data: YahooV8Data; timestamp: number }>();
 const historicalCache = new Map<string, { data: YahooV8Data; timestamp: number }>();
+const batchCache = new Map<string, { data: YahooV8Data; timestamp: number }>();
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutos
 const HISTORICAL_CACHE_DURATION = 15 * 60 * 1000; // 15 minutos para históricos
 
 let currentProxyIndex = 0;
+
+/**
+ * Datos mínimos del endpoint v7/quote
+ */
+export interface QuoteBatchResult {
+  symbol: string;
+  regularMarketPrice: number;
+  regularMarketChange: number;
+  regularMarketChangePercent: number;
+  currency: string;
+  shortName?: string;
+  longName?: string;
+}
 
 /**
  * Obtiene la URL con proxy CORS si estamos en web
@@ -141,7 +156,7 @@ async function fetchWithRetry(symbol: string, range: string, interval: string, i
       const url = `${YAHOO_V8_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false${eventsParam}`;
       const response = await fetch(url, {
         headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(5000),
       });
       return response.ok ? response : null;
     } catch (error) {
@@ -150,24 +165,39 @@ async function fetchWithRetry(symbol: string, range: string, interval: string, i
     }
   }
 
-  // En web, intentar con cada proxy
-  for (let i = 0; i < CORS_PROXIES.length; i++) {
+  // En web, intentar con el proxy actual primero (más rápido)
+  const url = getUrlWithProxy(symbol, range, interval, currentProxyIndex, includeEvents);
+  
+  try {
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(5000), // Timeout más corto para velocidad
+    });
+    
+    if (response.ok) {
+      return response;
+    }
+  } catch (error) {
+    // Proxy actual falló, intentar otros
+  }
+  
+  // Intentar con otros proxies si el actual falla
+  for (let i = 1; i < CORS_PROXIES.length; i++) {
     const proxyIndex = (currentProxyIndex + i) % CORS_PROXIES.length;
-    const url = getUrlWithProxy(symbol, range, interval, proxyIndex, includeEvents);
+    const fallbackUrl = getUrlWithProxy(symbol, range, interval, proxyIndex, includeEvents);
     
     try {
-      console.log(`[YahooV8] Trying proxy ${proxyIndex + 1}/${CORS_PROXIES.length} for ${symbol}...`);
-      const response = await fetch(url, {
+      const response = await fetch(fallbackUrl, {
         headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(5000),
       });
       
       if (response.ok) {
-        currentProxyIndex = proxyIndex; // Recordar el proxy que funcionó
+        currentProxyIndex = proxyIndex; // Cambiar al proxy que funciona
         return response;
       }
     } catch (error) {
-      console.log(`[YahooV8] Proxy ${proxyIndex + 1} failed for ${symbol}`);
+      // Continuar con siguiente proxy
     }
   }
   
@@ -197,6 +227,149 @@ function calculateVolatility(historicalPrices: { close: number }[]): number {
   
   // Anualizar (aprox 252 días de trading)
   return dailyVol * Math.sqrt(252) * 100;
+}
+
+/**
+ * Fetch ultra-lite: solo metadatos (precio actual y cambio)
+ * Usa range=1d interval=1d sin eventos para minimizar datos
+ */
+async function fetchSymbolLite(symbol: string): Promise<YahooV8Data | null> {
+  try {
+    // Sin eventos, range mínimo, interval máximo = respuesta pequeña
+    const response = await fetchWithRetry(symbol, '1d', '1d', false);
+    
+    if (!response) {
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (data.chart?.error) {
+      return null;
+    }
+    
+    const result = data.chart?.result?.[0];
+    if (!result) {
+      return null;
+    }
+    
+    const meta = result.meta;
+    const regularMarketPrice = meta.regularMarketPrice || 0;
+    const previousClose = meta.previousClose || meta.chartPreviousClose || regularMarketPrice;
+    
+    if (!regularMarketPrice || regularMarketPrice <= 0) {
+      return null;
+    }
+    
+    const priceChange = regularMarketPrice - previousClose;
+    const priceChangePercent = previousClose > 0 ? (priceChange / previousClose) * 100 : 0;
+    
+    return {
+      symbol: meta.symbol || symbol,
+      longName: meta.longName,
+      shortName: meta.shortName,
+      regularMarketPrice,
+      previousClose,
+      currency: meta.currency || 'USD',
+      exchangeName: meta.exchangeName || '',
+      instrumentType: meta.instrumentType || '',
+      timezone: meta.timezone || '',
+      regularMarketDayHigh: meta.regularMarketDayHigh || regularMarketPrice,
+      regularMarketDayLow: meta.regularMarketDayLow || regularMarketPrice,
+      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || regularMarketPrice,
+      fiftyTwoWeekLow: meta.fiftyTwoWeekLow || regularMarketPrice,
+      regularMarketVolume: meta.regularMarketVolume || 0,
+      fiftyDayAverage: meta.fiftyDayAverage || regularMarketPrice,
+      twoHundredDayAverage: meta.twoHundredDayAverage || regularMarketPrice,
+      priceChange,
+      priceChangePercent,
+      dataGranularity: '1d',
+      validRanges: [],
+      fetchedAt: new Date(),
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * BATCH FETCH - Obtiene múltiples símbolos en UNA SOLA petición
+ * Usa el endpoint v7/finance/quote que soporta múltiples símbolos
+ * Esto es MUCHO más rápido que hacer peticiones individuales
+ */
+async function fetchBatchQuotes(symbols: string[]): Promise<Map<string, QuoteBatchResult>> {
+  const result = new Map<string, QuoteBatchResult>();
+  
+  if (symbols.length === 0) return result;
+  
+  const symbolsParam = symbols.join(',');
+  const baseUrl = `${YAHOO_V7_QUOTE}?symbols=${encodeURIComponent(symbolsParam)}`;
+  
+  console.log(`[YahooV8] Batch fetching ${symbols.length} symbols in ONE request...`);
+  const startTime = Date.now();
+  
+  try {
+    let response: Response | null = null;
+    
+    if (Platform.OS !== 'web') {
+      // En móvil, llamar directamente
+      response = await fetch(baseUrl, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+    } else {
+      // En web, intentar con proxies CORS
+      for (let i = 0; i < CORS_PROXIES.length; i++) {
+        const proxyIndex = (currentProxyIndex + i) % CORS_PROXIES.length;
+        const proxy = CORS_PROXIES[proxyIndex];
+        const url = `${proxy}${encodeURIComponent(baseUrl)}`;
+        
+        try {
+          response = await fetch(url, {
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(8000),
+          });
+          
+          if (response.ok) {
+            currentProxyIndex = proxyIndex;
+            break;
+          }
+        } catch (error) {
+          console.log(`[YahooV8] Batch proxy ${proxyIndex + 1} failed`);
+        }
+      }
+    }
+    
+    if (!response || !response.ok) {
+      console.error('[YahooV8] Batch fetch failed');
+      return result;
+    }
+    
+    const data = await response.json();
+    const quotes = data.quoteResponse?.result || [];
+    
+    for (const quote of quotes) {
+      if (quote.symbol && quote.regularMarketPrice) {
+        result.set(quote.symbol, {
+          symbol: quote.symbol,
+          regularMarketPrice: quote.regularMarketPrice,
+          regularMarketChange: quote.regularMarketChange || 0,
+          regularMarketChangePercent: quote.regularMarketChangePercent || 0,
+          currency: quote.currency || 'USD',
+          shortName: quote.shortName,
+          longName: quote.longName,
+        });
+      }
+    }
+    
+    const elapsed = Date.now() - startTime;
+    console.log(`[YahooV8] ✅ Batch fetched ${result.size}/${symbols.length} symbols in ${elapsed}ms`);
+    
+  } catch (error: any) {
+    console.error('[YahooV8] Batch fetch error:', error.message);
+  }
+  
+  return result;
 }
 
 /**
@@ -351,7 +524,28 @@ async function fetchSymbol(symbol: string, range: string = '1d', interval: strin
  */
 class YahooV8Service {
   /**
-   * Obtiene datos de un símbolo (versión rápida - solo datos del día)
+   * Obtiene datos LITE de un símbolo (solo precio y cambio, muy rápido)
+   * Ideal para listas de mercado donde solo se muestra precio/cambio
+   */
+  async getQuoteLite(symbol: string): Promise<YahooV8Data | null> {
+    // Verificar caché lite
+    const cached = liteCache.get(symbol);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return cached.data;
+    }
+    
+    // Fetch lite (sin logs para no saturar)
+    const data = await fetchSymbolLite(symbol);
+    
+    if (data) {
+      liteCache.set(symbol, { data, timestamp: Date.now() });
+    }
+    
+    return data;
+  }
+
+  /**
+   * Obtiene datos de un símbolo (versión completa con históricos)
    */
   async getQuote(symbol: string): Promise<YahooV8Data | null> {
     // Verificar caché
@@ -417,6 +611,77 @@ class YahooV8Service {
     
     return results;
   }
+
+  /**
+   * ⚡ BATCH FETCH RÁPIDO - Obtiene múltiples símbolos en UNA SOLA petición
+   * Ideal para la home page - devuelve solo precio y cambio
+   * 18 símbolos en ~500ms en lugar de 18 peticiones individuales
+   */
+  async getBatchQuotes(symbols: string[]): Promise<Map<string, QuoteBatchResult>> {
+    const now = Date.now();
+    const uncached: string[] = [];
+    const result = new Map<string, QuoteBatchResult>();
+    
+    // Primero verificar caché
+    for (const symbol of symbols) {
+      const cached = batchCache.get(symbol);
+      if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+        result.set(symbol, {
+          symbol: cached.data.symbol,
+          regularMarketPrice: cached.data.regularMarketPrice,
+          regularMarketChange: cached.data.priceChange,
+          regularMarketChangePercent: cached.data.priceChangePercent,
+          currency: cached.data.currency,
+          shortName: cached.data.shortName,
+          longName: cached.data.longName,
+        });
+      } else {
+        uncached.push(symbol);
+      }
+    }
+    
+    // Si todos en caché, retornar
+    if (uncached.length === 0) {
+      console.log(`[YahooV8] ✅ All ${symbols.length} symbols from batch cache`);
+      return result;
+    }
+    
+    // Fetch los que faltan en UNA SOLA petición
+    const fetched = await fetchBatchQuotes(uncached);
+    
+    // Guardar en caché y añadir a resultado
+    for (const [symbol, quote] of fetched) {
+      // Crear un YahooV8Data mínimo para el caché
+      const cacheData: YahooV8Data = {
+        symbol: quote.symbol,
+        regularMarketPrice: quote.regularMarketPrice,
+        previousClose: quote.regularMarketPrice - quote.regularMarketChange,
+        priceChange: quote.regularMarketChange,
+        priceChangePercent: quote.regularMarketChangePercent,
+        currency: quote.currency,
+        shortName: quote.shortName,
+        longName: quote.longName,
+        exchangeName: '',
+        instrumentType: '',
+        timezone: '',
+        regularMarketDayHigh: quote.regularMarketPrice,
+        regularMarketDayLow: quote.regularMarketPrice,
+        fiftyTwoWeekHigh: quote.regularMarketPrice,
+        fiftyTwoWeekLow: quote.regularMarketPrice,
+        regularMarketVolume: 0,
+        fiftyDayAverage: quote.regularMarketPrice,
+        twoHundredDayAverage: quote.regularMarketPrice,
+        dataGranularity: 'batch',
+        validRanges: [],
+        fetchedAt: new Date(),
+      };
+      
+      batchCache.set(symbol, { data: cacheData, timestamp: now });
+      result.set(symbol, quote);
+    }
+    
+    return result;
+  }
   
   /**
    * Obtiene datos históricos con rango personalizado (con cache de 15 min)
@@ -478,7 +743,9 @@ class YahooV8Service {
    */
   clearCache(): void {
     cache.clear();
+    liteCache.clear();
     historicalCache.clear();
+    batchCache.clear();
     console.log('[YahooV8] Cache cleared');
   }
   

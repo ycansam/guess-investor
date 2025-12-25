@@ -54,7 +54,28 @@ class MarketDataService {
   private batchPromise: Promise<Map<string, MarketAsset>> | null = null;
 
   /**
-   * Obtiene datos de un símbolo con cache de 15 minutos
+   * Obtiene datos LITE de un símbolo (solo precio y cambio) con cache de 15 minutos
+   * Optimizado para listas de mercado
+   */
+  async getQuoteLite(symbol: string): Promise<YahooV8Data | null> {
+    const cached = marketCache.get(symbol);
+    const now = Date.now();
+
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+      return cached.data;
+    }
+
+    const data = await yahooV8Service.getQuoteLite(symbol);
+    
+    if (data) {
+      marketCache.set(symbol, { data, timestamp: now });
+    }
+
+    return data;
+  }
+
+  /**
+   * Obtiene datos completos de un símbolo con cache de 15 minutos
    */
   async getQuote(symbol: string): Promise<YahooV8Data | null> {
     const cached = marketCache.get(symbol);
@@ -110,33 +131,47 @@ class MarketDataService {
     const result = new Map<string, MarketAsset>();
     const symbols = POPULAR_ASSETS.map(a => a.symbol);
 
-    console.log(`[MarketData] Batch fetching ${symbols.length} symbols...`);
+    console.log(`[MarketData] ⚡ Fetching ${symbols.length} symbols in parallel...`);
+    const startTime = Date.now();
 
-    // Fetch en paralelo con límite de concurrencia
-    const batchSize = 5;
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const batch = symbols.slice(i, i + batchSize);
-      const promises = batch.map(async (symbol) => {
+    try {
+      // TODAS las peticiones en paralelo - máxima velocidad
+      const promises = symbols.map(async (symbol) => {
         try {
-          const data = await this.getQuote(symbol);
+          const data = await this.getQuoteLite(symbol);
           if (data) {
             const asset = POPULAR_ASSETS.find(a => a.symbol === symbol)!;
-            result.set(symbol, {
-              ...asset,
-              price: data.regularMarketPrice,
-              change: data.priceChange,
-              changePercent: data.priceChangePercent,
-              currency: data.currency,
-            });
+            return {
+              symbol,
+              asset: {
+                ...asset,
+                price: data.regularMarketPrice,
+                change: data.priceChange,
+                changePercent: data.priceChangePercent,
+                currency: data.currency,
+              } as MarketAsset
+            };
           }
         } catch (error) {
-          console.error(`[MarketData] Error fetching ${symbol}:`, error);
+          // Silenciar errores individuales
         }
+        return null;
       });
-      await Promise.all(promises);
+      
+      const results = await Promise.all(promises);
+      
+      for (const r of results) {
+        if (r) {
+          result.set(r.symbol, r.asset);
+        }
+      }
+      
+      const elapsed = Date.now() - startTime;
+      console.log(`[MarketData] ✅ Fetched ${result.size}/${symbols.length} symbols in ${elapsed}ms`);
+    } catch (error) {
+      console.error('[MarketData] Fetch error:', error);
     }
 
-    console.log(`[MarketData] Fetched ${result.size}/${symbols.length} symbols`);
     return result;
   }
 
