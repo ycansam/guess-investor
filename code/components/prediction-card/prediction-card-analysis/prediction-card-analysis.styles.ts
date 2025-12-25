@@ -1,42 +1,43 @@
 import { StyleSheet } from 'react-native';
 
+// Tema oscuro
+const DARK = {
+  bg: '#0a0a0a',
+  bgCard: '#111111',
+  bgSecondary: '#1a1a1a',
+  border: '#2a2a2a',
+  text: '#ffffff',
+  textSecondary: '#9ca3af',
+  textMuted: '#6b7280',
+  accent: '#6366f1',
+  accentLight: '#818cf8',
+};
+
 export const styles = StyleSheet.create({
-  toggleButton: {
-    backgroundColor: '#E8F4FD',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  toggleButtonText: {
-    fontSize: 13,
-    color: '#1976D2',
-    fontWeight: '600',
-  },
   container: {
-    backgroundColor: '#F8F9FA',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
+    backgroundColor: DARK.bgCard,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
   },
   label: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#333',
-    marginBottom: 12,
+    color: DARK.text,
+    marginBottom: 16,
   },
   section: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#555',
-    marginBottom: 4,
+    color: DARK.textSecondary,
+    marginBottom: 8,
   },
   text: {
     fontSize: 12,
-    color: '#666',
+    color: DARK.textSecondary,
     lineHeight: 18,
   },
   dataGrid: {
@@ -47,30 +48,31 @@ export const styles = StyleSheet.create({
   },
   dataItem: {
     width: '30%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 8,
-    padding: 8,
+    padding: 10,
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: DARK.border,
   },
   dataLabel: {
     fontSize: 10,
-    color: '#888',
-    marginBottom: 2,
+    color: DARK.textMuted,
+    marginBottom: 4,
     textAlign: 'center',
   },
   dataValue: {
     fontSize: 14,
     fontWeight: '700',
+    color: DARK.text,
   },
   sentimentContainer: {
-    marginTop: 4,
+    marginTop: 8,
   },
   sentimentBar: {
     height: 12,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 6,
     overflow: 'hidden',
     marginBottom: 6,
@@ -87,45 +89,47 @@ export const styles = StyleSheet.create({
   sentimentScore: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
   },
   sentimentSource: {
     fontSize: 11,
-    color: '#888',
+    color: DARK.textMuted,
     fontStyle: 'italic',
   },
   // Indicadores institucionales de sentimiento (VIX, Put/Call)
   institutionalSentiment: {
     marginTop: 12,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: DARK.border,
   },
   vixContainer: {
     marginBottom: 8,
   },
   vixLabel: {
     fontSize: 12,
-    color: '#666',
+    color: DARK.textMuted,
     marginBottom: 2,
   },
   vixValue: {
     fontSize: 14,
     fontWeight: '600',
+    color: DARK.text,
   },
   pcRatioContainer: {
     marginBottom: 8,
   },
   pcRatioLabel: {
     fontSize: 12,
-    color: '#666',
+    color: DARK.textMuted,
     marginBottom: 2,
   },
   pcRatioValue: {
     fontSize: 14,
     fontWeight: '600',
+    color: DARK.text,
   },
   overallSentimentScore: {
     fontSize: 13,
@@ -134,28 +138,28 @@ export const styles = StyleSheet.create({
     marginTop: 6,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: DARK.border,
   },
   conclusionText: {
     fontSize: 13,
-    color: '#333',
+    color: DARK.textSecondary,
     lineHeight: 20,
     fontStyle: 'italic',
-    backgroundColor: '#FFFFFF',
-    padding: 10,
+    backgroundColor: DARK.bgSecondary,
+    padding: 12,
     borderRadius: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#1976D2',
-    marginTop: 4,
+    borderLeftColor: DARK.accent,
+    marginTop: 8,
   },
   // Financials
   financialsContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 8,
-    padding: 10,
-    marginTop: 4,
+    padding: 12,
+    marginTop: 8,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   financialsRow: {
     flexDirection: 'row',
@@ -169,14 +173,14 @@ export const styles = StyleSheet.create({
   },
   financialLabel: {
     fontSize: 9,
-    color: '#888',
+    color: DARK.textMuted,
     marginBottom: 2,
     textAlign: 'center',
   },
   financialValue: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#333',
+    color: DARK.text,
     textAlign: 'center',
   },
   analystRow: {
@@ -185,7 +189,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E8E8E8',
+    borderTopColor: DARK.border,
     marginTop: 4,
   },
   ratingBadge: {
@@ -193,24 +197,25 @@ export const styles = StyleSheet.create({
   },
   ratingLabel: {
     fontSize: 9,
-    color: '#888',
+    color: DARK.textMuted,
     marginBottom: 2,
   },
   ratingValue: {
     fontSize: 13,
     fontWeight: '700',
+    color: DARK.text,
   },
   targetPriceContainer: {
     alignItems: 'flex-end',
   },
   targetPriceLabel: {
     fontSize: 9,
-    color: '#888',
+    color: DARK.textMuted,
   },
   targetPriceValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#333',
+    color: DARK.text,
   },
   targetPriceDiff: {
     fontSize: 11,
@@ -220,16 +225,16 @@ export const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E8E8E8',
+    borderTopColor: DARK.border,
   },
   overallScoreLabel: {
     fontSize: 10,
-    color: '#666',
+    color: DARK.textMuted,
     marginBottom: 4,
   },
   overallScoreBarBg: {
     height: 8,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 4,
@@ -245,12 +250,12 @@ export const styles = StyleSheet.create({
   },
   // News
   newsContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   newsHeader: {
     flexDirection: 'row',
@@ -264,21 +269,21 @@ export const styles = StyleSheet.create({
   },
   newsCount: {
     fontSize: 11,
-    color: '#888',
+    color: DARK.textMuted,
   },
   newsSummary: {
     fontSize: 12,
-    color: '#555',
+    color: DARK.textSecondary,
     lineHeight: 18,
   },
   // Macro
   macroContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   macroHeader: {
     flexDirection: 'row',
@@ -289,7 +294,7 @@ export const styles = StyleSheet.create({
   macroRegion: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
   },
   macroOutlook: {
     fontSize: 12,
@@ -297,17 +302,17 @@ export const styles = StyleSheet.create({
   },
   macroSummary: {
     fontSize: 12,
-    color: '#555',
+    color: DARK.textSecondary,
     lineHeight: 18,
   },
   // Competitors
   competitorsContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   competitorsHeader: {
     flexDirection: 'row',
@@ -318,7 +323,7 @@ export const styles = StyleSheet.create({
   competitorsSector: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
   },
   competitorsTrend: {
     fontSize: 12,
@@ -335,23 +340,23 @@ export const styles = StyleSheet.create({
   },
   competitorsNames: {
     fontSize: 11,
-    color: '#888',
+    color: DARK.textMuted,
     fontStyle: 'italic',
     marginBottom: 6,
   },
   competitorsSummary: {
     fontSize: 12,
-    color: '#555',
+    color: DARK.textSecondary,
     lineHeight: 18,
   },
   // Forex
   forexContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   forexHeader: {
     flexDirection: 'row',
@@ -362,7 +367,7 @@ export const styles = StyleSheet.create({
   forexBaseCurrency: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
   },
   forexTrend: {
     fontSize: 12,
@@ -370,23 +375,23 @@ export const styles = StyleSheet.create({
   },
   forexPairs: {
     fontSize: 11,
-    color: '#888',
+    color: DARK.textMuted,
     fontStyle: 'italic',
     marginBottom: 6,
   },
   forexSummary: {
     fontSize: 12,
-    color: '#555',
+    color: DARK.textSecondary,
     lineHeight: 18,
   },
   // Institutional investors
   institutionalContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   institutionalRow: {
     flexDirection: 'row',
@@ -399,14 +404,14 @@ export const styles = StyleSheet.create({
   },
   institutionalLabel: {
     fontSize: 9,
-    color: '#888',
+    color: DARK.textMuted,
     marginBottom: 2,
     textAlign: 'center',
   },
   institutionalValue: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#333',
+    color: DARK.text,
     textAlign: 'center',
   },
   insiderSection: {
@@ -416,7 +421,7 @@ export const styles = StyleSheet.create({
     marginBottom: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E8E8E8',
+    borderTopColor: DARK.border,
   },
   insiderBadge: {
     paddingHorizontal: 10,
@@ -425,28 +430,28 @@ export const styles = StyleSheet.create({
   },
   insiderValue: {
     fontSize: 11,
-    color: '#555',
+    color: DARK.textSecondary,
     fontWeight: '600',
   },
   institutionalHolders: {
     fontSize: 11,
-    color: '#888',
+    color: DARK.textMuted,
     fontStyle: 'italic',
     marginBottom: 6,
   },
   institutionalSummary: {
     fontSize: 12,
-    color: '#555',
+    color: DARK.textSecondary,
     lineHeight: 18,
   },
   // Seasonality
   seasonalityContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   seasonalityHeader: {
     flexDirection: 'row',
@@ -457,7 +462,7 @@ export const styles = StyleSheet.create({
   seasonalitySector: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
   },
   seasonalityScore: {
     fontSize: 12,
@@ -471,7 +476,7 @@ export const styles = StyleSheet.create({
   },
   seasonalityRegion: {
     fontSize: 11,
-    color: '#666',
+    color: DARK.textMuted,
     fontWeight: '500',
   },
   seasonalityEvents: {
@@ -479,22 +484,22 @@ export const styles = StyleSheet.create({
   },
   seasonalityEvent: {
     fontSize: 11,
-    color: '#555',
+    color: DARK.textSecondary,
     marginBottom: 2,
   },
   seasonalitySummary: {
     fontSize: 12,
-    color: '#555',
+    color: DARK.textSecondary,
     lineHeight: 18,
   },
   // Market Hours
   marketHoursContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
     borderLeftWidth: 4,
   },
   marketHoursHeader: {
@@ -506,7 +511,7 @@ export const styles = StyleSheet.create({
   marketExchange: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#333',
+    color: DARK.text,
   },
   marketStatusBadge: {
     flexDirection: 'row',
@@ -528,13 +533,13 @@ export const styles = StyleSheet.create({
   },
   marketHoursDetail: {
     fontSize: 11,
-    color: '#666',
+    color: DARK.textMuted,
     marginBottom: 2,
   },
   marketNextEvent: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#333',
+    color: DARK.text,
     marginBottom: 4,
   },
   marketSuggestion: {
@@ -544,16 +549,16 @@ export const styles = StyleSheet.create({
   },
   // Factor Breakdown
   factorBreakdownContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 12,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E8E8E8',
+    borderColor: DARK.border,
   },
   factorAssetType: {
     fontSize: 11,
-    color: '#666',
+    color: DARK.textMuted,
     marginBottom: 8,
     fontStyle: 'italic',
   },
@@ -582,7 +587,7 @@ export const styles = StyleSheet.create({
   },
   factorName: {
     fontSize: 11,
-    color: '#333',
+    color: DARK.text,
   },
   factorScore: {
     fontSize: 11,
@@ -590,7 +595,7 @@ export const styles = StyleSheet.create({
   },
   factorBar: {
     height: 4,
-    backgroundColor: '#E8E8E8',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -600,15 +605,15 @@ export const styles = StyleSheet.create({
   },
   factorWarning: {
     fontSize: 9,
-    color: '#E65100',
+    color: '#FF9800',
     fontStyle: 'italic',
     marginTop: 2,
   },
   confidenceExplanation: {
     fontSize: 11,
-    color: '#555',
+    color: DARK.textSecondary,
     lineHeight: 16,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: DARK.bgSecondary,
     padding: 8,
     borderRadius: 6,
   },
@@ -616,7 +621,7 @@ export const styles = StyleSheet.create({
   // Estilos de Auditoría
   auditSubtitle: {
     fontSize: 11,
-    color: '#666',
+    color: DARK.textMuted,
     fontStyle: 'italic',
     marginBottom: 8,
   },
@@ -624,7 +629,7 @@ export const styles = StyleSheet.create({
     marginBottom: 12,
   },
   auditSourceItem: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 6,
     padding: 8,
     marginBottom: 6,
@@ -634,28 +639,28 @@ export const styles = StyleSheet.create({
   auditSourceName: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
     marginBottom: 2,
   },
   auditSourceValue: {
     fontSize: 11,
-    color: '#666',
+    color: DARK.textMuted,
     marginBottom: 4,
   },
   auditSourceUrl: {
     fontSize: 10,
-    color: '#1976D2',
+    color: '#64B5F6',
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
   auditCalcTitle: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
     marginBottom: 6,
   },
   auditCalcContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 6,
     padding: 8,
     marginBottom: 10,
@@ -664,26 +669,26 @@ export const styles = StyleSheet.create({
     marginBottom: 8,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
+    borderBottomColor: DARK.border,
   },
   auditStepName: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#555',
+    color: DARK.textSecondary,
   },
   auditStepFormula: {
     fontSize: 10,
-    color: '#888',
+    color: DARK.textMuted,
     fontFamily: 'monospace',
     marginVertical: 2,
   },
   auditStepResult: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#333',
+    color: DARK.text,
   },
   auditFinalFormula: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#1a2e1a',
     borderRadius: 6,
     padding: 10,
     borderLeftWidth: 3,
@@ -692,22 +697,22 @@ export const styles = StyleSheet.create({
   auditFormulaTitle: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#333',
+    color: DARK.text,
     marginBottom: 4,
   },
   auditFormulaText: {
     fontSize: 11,
-    color: '#555',
+    color: DARK.textSecondary,
     fontFamily: 'monospace',
   },
   // Technical Analysis Styles
   technicalContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: DARK.bgCard,
     borderRadius: 8,
     padding: 10,
     marginTop: 4,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: DARK.border,
   },
   technicalHeader: {
     flexDirection: 'row',
@@ -716,7 +721,7 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: DARK.border,
   },
   technicalTrend: {
     fontSize: 14,
@@ -734,7 +739,7 @@ export const styles = StyleSheet.create({
   },
   technicalItem: {
     width: '32%',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: DARK.bgSecondary,
     borderRadius: 6,
     padding: 8,
     alignItems: 'center',
@@ -742,7 +747,7 @@ export const styles = StyleSheet.create({
   },
   technicalLabel: {
     fontSize: 9,
-    color: '#888',
+    color: DARK.textMuted,
     marginBottom: 2,
     textAlign: 'center',
   },
@@ -752,7 +757,7 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
   },
   technicalAlert: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: '#2e2a1a',
     borderRadius: 6,
     padding: 8,
     marginBottom: 8,
@@ -767,12 +772,12 @@ export const styles = StyleSheet.create({
   },
   technicalSignal: {
     fontSize: 11,
-    color: '#555',
+    color: DARK.textSecondary,
     marginBottom: 2,
   },
   technicalSummary: {
     fontSize: 11,
-    color: '#666',
+    color: DARK.textMuted,
     fontStyle: 'italic',
     lineHeight: 16,
   },

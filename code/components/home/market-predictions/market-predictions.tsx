@@ -6,25 +6,25 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
 import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { useChatStore } from '../../../store/chat-store';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
@@ -564,12 +564,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
                 onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
               >
                 <Text style={styles.chartButtonText}>📊</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.predictionAnalysisButton}
-                onPress={() => setSelectedPrediction(cached)}
-              >
-                <Text style={styles.predictionAnalysisButtonText}>🔍</Text>
               </TouchableOpacity>
             </View>
           ) : isPredicting ? (

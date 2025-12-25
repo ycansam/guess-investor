@@ -17,9 +17,11 @@ import {
   View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
-import { predictionCalculatorService } from '../../services/prediction-calculator';
-import { trainingCacheService, TrainingTimeframe } from '../../services/training-cache-service';
+import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
+import { CalculatedPrediction, predictionCalculatorService } from '../../services/prediction-calculator';
+import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
 import { yahooV8Service } from '../../services/yahoo-v8-service';
+import { InvestmentPrediction } from '../../types';
 
 // Tipos de timeframe para el gráfico
 type ChartTimeframe = 'intraday' | 'swing' | 'longterm';
@@ -69,6 +71,102 @@ const TIMEFRAME_CONFIG = {
 const LONGTERM_RANGES = ['1m', '3m'] as const;
 const LONGTERM_PREDICTIONS = [15, 30, 90] as const;
 
+// Helper para convertir CalculatedPrediction o TrainingPrediction a InvestmentPrediction
+function toInvestmentPrediction(
+  calc: CalculatedPrediction | null,
+  training: TrainingPrediction | null,
+  symbol: string,
+  timeframe: string
+): InvestmentPrediction | null {
+  if (calc) {
+    // Generar un reasoning a partir de los factores
+    const factorSummary = calc.factorBreakdown?.signalSummary || 'neutral';
+    const reasoningText = factorSummary === 'coherent_bullish' ? 'Señales alcistas coherentes'
+      : factorSummary === 'coherent_bearish' ? 'Señales bajistas coherentes'
+      : factorSummary === 'mixed' ? 'Señales mixtas'
+      : 'Señales neutrales';
+    
+    return {
+      id: `${symbol}-${Date.now()}`,
+      asset: calc.asset,
+      symbol: calc.symbol,
+      assetType: calc.assetType,
+      currentPrice: calc.currentPrice,
+      predictedPrice: calc.predictedPriceMax,
+      predictedPriceMin: calc.predictedPriceMin,
+      predictedPriceMax: calc.predictedPriceMax,
+      predictedChange: calc.predictedChange,
+      confidence: calc.confidence,
+      timeframe,
+      direction: calc.direction,
+      reasoning: reasoningText,
+      createdAt: new Date(),
+      analysisData: {
+        sentiment: calc.sentiment,
+        historical: calc.historical,
+        financials: calc.financials,
+        news: calc.news,
+        macro: calc.macro,
+        competitors: calc.competitors,
+        forex: calc.forex,
+        institutional: calc.institutional,
+        seasonality: calc.seasonality,
+        technicalAnalysis: calc.technicalAnalysis,
+        factorBreakdown: calc.factorBreakdown,
+        audit: calc.audit,
+        uncertainty: calc.uncertaintyScore !== undefined ? {
+          score: calc.uncertaintyScore,
+          shouldPredict: calc.shouldPredict ?? true,
+          warning: calc.uncertaintyWarning,
+          reasons: calc.uncertaintyReasons,
+        } : undefined,
+      },
+    };
+  }
+  
+  if (training?.analysisData) {
+    const ad = training.analysisData;
+    return {
+      id: `${symbol}-${Date.now()}`,
+      asset: ad.asset,
+      symbol: ad.symbol,
+      assetType: ad.assetType,
+      currentPrice: ad.currentPrice,
+      predictedPrice: ad.predictedPriceMax,
+      predictedPriceMin: ad.predictedPriceMin,
+      predictedPriceMax: ad.predictedPriceMax,
+      predictedChange: ad.predictedChange,
+      confidence: ad.confidence,
+      timeframe,
+      direction: ad.direction,
+      reasoning: training.reasoning,
+      createdAt: training.createdAt,
+      analysisData: {
+        sentiment: ad.sentiment,
+        historical: ad.historical,
+        financials: ad.financials,
+        news: ad.news,
+        macro: ad.macro,
+        competitors: ad.competitors,
+        forex: ad.forex,
+        institutional: ad.institutional,
+        seasonality: ad.seasonality,
+        technicalAnalysis: ad.technicalAnalysis,
+        factorBreakdown: ad.factorBreakdown,
+        audit: ad.audit,
+        uncertainty: ad.uncertaintyScore !== undefined ? {
+          score: ad.uncertaintyScore,
+          shouldPredict: ad.shouldPredict ?? true,
+          warning: ad.uncertaintyWarning,
+          reasons: ad.uncertaintyReasons,
+        } : undefined,
+      },
+    };
+  }
+  
+  return null;
+}
+
 export default function AssetDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
@@ -84,6 +182,7 @@ export default function AssetDetailScreen() {
   const [longtermHistoryRange, setLongtermHistoryRange] = useState<'1m' | '3m'>('1m');
   const [longtermPredictionDays, setLongtermPredictionDays] = useState<15 | 30 | 90>(15);
   const [prediction, setPrediction] = useState<{ change: number; confidence: number } | null>(null);
+  const [fullPrediction, setFullPrediction] = useState<InvestmentPrediction | null>(null);
   const [predictionFromCache, setPredictionFromCache] = useState(false);
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
@@ -209,10 +308,29 @@ export default function AssetDetailScreen() {
           confidence: pred.confidence,
         });
         setPredictionFromCache(false);
+        
+        // Guardar predicción completa para el análisis
+        const investmentPred = toInvestmentPrediction(pred, null, symbol, selectedTimeframe);
+        setFullPrediction(investmentPred);
+
+        // Guardar en cache para que persista al cambiar timeframes
+        const targetPrice = lastPriceForPrediction * (1 + pred.predictedChange / 100);
+        await trainingCacheService.set(symbol, selectedTimeframe as TrainingTimeframe, {
+          symbol,
+          timeframe: selectedTimeframe as TrainingTimeframe,
+          name: assetData?.name || symbol,
+          icon: assetType === 'crypto' ? '₿' : '📈',
+          direction: pred.direction,
+          confidence: pred.confidence,
+          predictedChange: pred.predictedChange,
+          currentPrice: lastPriceForPrediction,
+          targetPrice,
+          reasoning: investmentPred?.reasoning || '',
+          analysisData: pred,
+          createdAt: new Date(),
+        });
 
         // Crear puntos de predicción
-        const targetPrice = lastPriceForPrediction * (1 + pred.predictedChange / 100);
-
         // Generar puntos intermedios para la predicción
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
@@ -238,7 +356,7 @@ export default function AssetDetailScreen() {
       console.error('[AssetDetail] Error calculating prediction:', error);
     }
     setPredicting(false);
-  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction, lastTimestamp]);
+  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction, lastTimestamp, assetData?.name]);
 
   useEffect(() => {
     loadAssetData();
@@ -263,6 +381,10 @@ export default function AssetDetailScreen() {
           confidence: cached.confidence,
         });
         setPredictionFromCache(true);
+        
+        // Guardar predicción completa para el análisis
+        const investmentPred = toInvestmentPrediction(null, cached, symbol, selectedTimeframe);
+        setFullPrediction(investmentPred);
         
         // Crear puntos de predicción desde cache
         const targetPrice = lastPriceForPrediction * (1 + cached.predictedChange / 100);
@@ -294,6 +416,7 @@ export default function AssetDetailScreen() {
       } else {
         // No hay predicción cacheada, resetear
         setPrediction(null);
+        setFullPrediction(null);
         setPredictionFromCache(false);
         setPredictionData([]);
       }
@@ -637,6 +760,13 @@ export default function AssetDetailScreen() {
           </View>
         )}
 
+        {/* Análisis detallado de la predicción */}
+        {fullPrediction && fullPrediction.analysisData && (
+          <View style={styles.analysisContainer}>
+            <PredictionCardAnalysis prediction={fullPrediction} />
+          </View>
+        )}
+
         {/* Espaciado inferior */}
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -853,5 +983,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+  },
+  analysisContainer: {
+    marginTop: 16,
   },
 });
