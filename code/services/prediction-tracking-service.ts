@@ -117,14 +117,64 @@ class PredictionTrackingService {
     
     try {
       const data = await AsyncStorage.getItem(TRACKING_STORAGE_KEY);
+      console.log(`[Tracking] Raw data from storage:`, data ? `${data.length} chars` : 'null');
       this.predictions = data ? JSON.parse(data) : [];
       this.loaded = true;
       console.log(`[Tracking] Cargadas ${this.predictions.length} predicciones`);
+      if (this.predictions.length > 0) {
+        const verified = this.predictions.filter(p => p.status === 'verified').length;
+        const pending = this.predictions.filter(p => p.status === 'pending').length;
+        console.log(`[Tracking] Desglose: ${verified} verificadas, ${pending} pendientes`);
+      }
     } catch (error) {
       console.error('[Tracking] Error cargando predicciones:', error);
       this.predictions = [];
       this.loaded = true;
     }
+  }
+  
+  /**
+   * Fuerza la recarga desde storage (útil para debug)
+   */
+  async forceReload(): Promise<void> {
+    console.log('[Tracking] Forzando recarga desde storage...');
+    this.loaded = false;
+    this.predictions = [];
+    await this.load();
+  }
+  
+  /**
+   * Devuelve información de debug
+   */
+  async getDebugInfo(): Promise<{ 
+    loaded: boolean; 
+    count: number; 
+    storageSize: number;
+    verified: number;
+    pending: number;
+    rawDataPreview: string;
+  }> {
+    const data = await AsyncStorage.getItem(TRACKING_STORAGE_KEY);
+    
+    // Preview de los primeros caracteres para ver estructura
+    let rawDataPreview = 'null';
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        rawDataPreview = `Array[${parsed.length}] - IDs: ${parsed.slice(0, 3).map((p: any) => p.id || 'no-id').join(', ')}...`;
+      } catch {
+        rawDataPreview = data.substring(0, 100) + '...';
+      }
+    }
+    
+    return {
+      loaded: this.loaded,
+      count: this.predictions.length,
+      storageSize: data ? data.length : 0,
+      verified: this.predictions.filter(p => p.status === 'verified').length,
+      pending: this.predictions.filter(p => p.status === 'pending').length,
+      rawDataPreview,
+    };
   }
   
   /**

@@ -2,43 +2,68 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export type TabType = 'market' | 'training';
+export type TabType = 'favorites' | 'explore' | 'predictions';
 
 interface TabBarProps {
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
   predictionsCount: number;
+  favoritesCount?: number;
 }
 
-export function TabBar({ activeTab, onTabChange, predictionsCount }: TabBarProps) {
+export function TabBar({ activeTab, onTabChange, predictionsCount, favoritesCount = 0 }: TabBarProps) {
   return (
     <View style={styles.container}>
       <TouchableOpacity
-        style={[styles.tab, activeTab === 'market' && styles.activeTab]}
-        onPress={() => onTabChange('market')}
+        style={[styles.tab, activeTab === 'favorites' && styles.activeTab]}
+        onPress={() => onTabChange('favorites')}
       >
         <Ionicons
-          name="trending-up-outline"
-          size={20}
-          color={activeTab === 'market' ? '#6366f1' : '#6b7280'}
+          name={activeTab === 'favorites' ? 'heart' : 'heart-outline'}
+          size={18}
+          color={activeTab === 'favorites' ? '#ef4444' : '#6b7280'}
         />
-        <Text style={[styles.tabText, activeTab === 'market' && styles.activeTabText]}>
-          Mercado
+        <Text style={[styles.tabText, activeTab === 'favorites' && styles.activeTabTextFav]}>
+          Favoritos
+        </Text>
+        {favoritesCount > 0 && (
+          <View style={styles.badgeFav}>
+            <Text style={styles.badgeText}>{favoritesCount > 99 ? '99+' : favoritesCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'explore' && styles.activeTab]}
+        onPress={() => onTabChange('explore')}
+      >
+        <Ionicons
+          name="search-outline"
+          size={18}
+          color={activeTab === 'explore' ? '#6366f1' : '#6b7280'}
+        />
+        <Text style={[styles.tabText, activeTab === 'explore' && styles.activeTabText]}>
+          Explorar
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.tab, activeTab === 'training' && styles.activeTab]}
-        onPress={() => onTabChange('training')}
+        style={[styles.tab, activeTab === 'predictions' && styles.activeTab]}
+        onPress={() => onTabChange('predictions')}
       >
         <Ionicons
           name="bulb-outline"
-          size={20}
-          color={activeTab === 'training' ? '#6366f1' : '#6b7280'}
+          size={18}
+          color={activeTab === 'predictions' ? '#f59e0b' : '#6b7280'}
         />
-        <Text style={[styles.tabText, activeTab === 'training' && styles.activeTabText]}>
+        <Text style={[styles.tabText, activeTab === 'predictions' && styles.activeTabTextPred]}>
           Predic.
         </Text>
+        {predictionsCount > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{predictionsCount > 99 ? '99+' : predictionsCount}</Text>
+          </View>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -71,13 +96,46 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: '#6b7280',
-    marginLeft: 6,
+    marginLeft: 4,
   },
   activeTabText: {
     color: '#6366f1',
     fontWeight: '600',
+  },
+  activeTabTextFav: {
+    color: '#ef4444',
+    fontWeight: '600',
+  },
+  activeTabTextPred: {
+    color: '#f59e0b',
+    fontWeight: '600',
+  },
+  badge: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    paddingHorizontal: 4,
+  },
+  badgeFav: {
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });

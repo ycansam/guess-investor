@@ -18,7 +18,8 @@ import {
   useWindowDimensions,
   View
 } from 'react-native';
-import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
+import { favoritesService } from '../../../services/favorites-service';
+import { ALL_ASSETS, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
   TIMEFRAME_INFO,
@@ -66,15 +67,11 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
   }, []);
 
-  // Inicializar con datos cacheados si existen
-  const [assets, setAssets] = useState<MarketAsset[]>(() => {
-    const cached = marketDataService.getCachedAssets();
-    if (cached) {
-      console.log('[MarketPredictions] Initialized from cache');
-      return cached;
-    }
-    return POPULAR_ASSETS.map(a => ({ ...a, loading: true }));
-  });
+  // Estado para favoritos
+  const [favoriteSymbols, setFavoriteSymbols] = useState<Set<string>>(new Set());
+
+  // Inicializar con datos cacheados si existen (solo favoritos)
+  const [assets, setAssets] = useState<MarketAsset[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(() => {
     const cached = marketDataService.getCachedAssets();
@@ -97,42 +94,71 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     handleRemovePrediction,
   } = useHome();
 
-  // Inicializar cache y cargar datos
+  // Inicializar cache y cargar datos (solo favoritos)
   const loadData = useCallback(async () => {
     try {
-      // Inicializar cache desde storage
+      // Inicializar servicios
       await trainingCacheService.init();
+      await favoritesService.init();
       
-      const data = await marketDataService.getPopularAssets();
-      setAssets(data);
+      // Obtener favoritos y predicciones activas
+      const favSymbols = favoritesService.getAll();
+      setFavoriteSymbols(new Set(favSymbols));
+      
+      const activePredictions = trainingCacheService.getAllActive();
+      setCachedPredictions(activePredictions);
+      
+      // Combinar favoritos + activos con predicciones activas
+      const predictedSymbols = activePredictions.map(p => p.symbol);
+      const allSymbols = [...new Set([...favSymbols, ...predictedSymbols])];
+      
+      if (allSymbols.length === 0) {
+        setAssets([]);
+        setLastUpdate(new Date());
+        return;
+      }
+      
+      // Obtener activos (favoritos + con predicción)
+      const relevantAssets = allSymbols
+        .map(symbol => ALL_ASSETS.find(a => a.symbol === symbol))
+        .filter((a): a is MarketAsset => a !== undefined);
+      
+      // Obtener precios
+      const assetsWithPrices = await Promise.all(
+        relevantAssets.map(async (asset) => {
+          try {
+            const data = await marketDataService.getQuoteLite(asset.symbol);
+            if (data) {
+              return {
+                ...asset,
+                price: data.regularMarketPrice,
+                change: data.priceChange,
+                changePercent: data.priceChangePercent,
+                currency: data.currency,
+                loading: false,
+              };
+            }
+          } catch (error) {
+            // Silenciar
+          }
+          return { ...asset, loading: false };
+        })
+      );
+      
+      setAssets(assetsWithPrices);
       setLastUpdate(new Date());
-      
-      // Actualizar predicciones cacheadas
-      setCachedPredictions(trainingCacheService.getAllActive());
     } catch (error) {
       console.error('[MarketPredictions] Error loading data:', error);
     }
   }, []);
 
   useEffect(() => {
-    // Solo cargar si no hay datos válidos en cache
-    const cached = marketDataService.getCachedAssets();
-    if (!cached) {
-      loadData();
-    } else {
-      // Aún así inicializar training cache
-      trainingCacheService.init().then(() => {
-        setCachedPredictions(trainingCacheService.getAllActive());
-      });
-    }
+    // Cargar favoritos al montar
+    loadData();
     
-    // Verificar cada minuto si el cache ha expirado
+    // Refrescar cada minuto
     const interval = setInterval(() => {
-      const currentCache = marketDataService.getCachedAssets();
-      if (!currentCache) {
-        console.log('[MarketPredictions] Cache expired, refreshing...');
-        loadData();
-      }
+      loadData();
     }, 60 * 1000);
     return () => clearInterval(interval);
   }, [loadData]);
@@ -788,6 +814,15 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         renderItem={renderAsset}
         keyExtractor={(item, index) => `${sortBy}-${index}-${item.symbol}`}
         ListHeaderComponent={renderHeader}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>🎯</Text>
+            <Text style={styles.emptyTitle}>Sin predicciones ni favoritos</Text>
+            <Text style={styles.emptyText}>
+              Añade activos a favoritos desde "Explorar" o crea predicciones para verlos aquí
+            </Text>
+          </View>
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -798,6 +833,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         contentContainerStyle={[
           styles.listContent,
           isDesktop && styles.listContentDesktop,
+          sortedAssets.length === 0 && styles.emptyListContent,
         ]}
         showsVerticalScrollIndicator={false}
       />
@@ -1365,5 +1401,32 @@ const styles = StyleSheet.create({
   },
   recommendedBadgeText: {
     fontSize: 10,
+  },
+  // Empty state
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#9ca3af',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyListContent: {
+    flexGrow: 1,
   },
 });

@@ -32,12 +32,27 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const loadData = async () => {
     setLoading(true);
     try {
+      // Forzar recarga desde storage para asegurar datos frescos
+      await predictionTrackingService.forceReload();
+      
+      // Debug: obtener info después de recargar
+      const debugInfo = await predictionTrackingService.getDebugInfo();
+      console.log('[TrackingStatsCard] Debug info:', debugInfo);
+      
       const [statsData, predictionsData, metricsData, calibrationData] = await Promise.all([
         predictionTrackingService.getStats(),
         predictionTrackingService.getAllPredictions(),
         mlMetricsService.calculateMetrics(),
         confidenceCalibrationService.getModel(),
       ]);
+      
+      console.log('[TrackingStatsCard] Stats loaded:', {
+        total: statsData.totalPredictions,
+        verified: statsData.verified,
+        pending: statsData.pending
+      });
+      console.log('[TrackingStatsCard] Predictions loaded:', predictionsData.length);
+      
       setStats(statsData);
       setPredictions(predictionsData);
       setMetrics(metricsData);
@@ -48,8 +63,6 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       setLoading(false);
     }
   };
-
-
 
   const handleVerify = async () => {
     console.log('[TrackingStatsCard] handleVerify llamado');

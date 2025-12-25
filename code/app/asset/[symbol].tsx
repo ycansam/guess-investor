@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
+import { currencyService } from '../../services/currency-service';
 import { CalculatedPrediction, predictionCalculatorService } from '../../services/prediction-calculator';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
 import { yahooV8Service } from '../../services/yahoo-v8-service';
@@ -186,6 +187,7 @@ export default function AssetDetailScreen() {
   const [predictionFromCache, setPredictionFromCache] = useState(false);
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
+  const [priceInEur, setPriceInEur] = useState<number | null>(null);
 
   // Cargar datos del activo
   const loadAssetData = useCallback(async () => {
@@ -203,12 +205,23 @@ export default function AssetDetailScreen() {
           change: v8Data.priceChange,
           changePercent: v8Data.priceChangePercent,
         });
+        
+        // Convertir a EUR
+        if (v8Data.currency && v8Data.currency !== 'EUR') {
+          const eurPrice = await currencyService.convertToEUR(v8Data.regularMarketPrice, v8Data.currency);
+          setPriceInEur(eurPrice);
+        } else {
+          setPriceInEur(v8Data.regularMarketPrice);
+        }
       }
     } catch (error) {
       console.error('[AssetDetail] Error loading asset:', error);
     }
     setLoading(false);
   }, [symbol]);
+
+  // Estado para la tasa de cambio a EUR
+  const [eurExchangeRate, setEurExchangeRate] = useState<number>(1);
 
   // Cargar datos del gráfico según timeframe
   const loadChartData = useCallback(async () => {
@@ -232,6 +245,14 @@ export default function AssetDetailScreen() {
       const historical = await yahooV8Service.getHistorical(symbol, range as any, config.historyInterval);
 
       if (historical?.historicalPrices && historical.historicalPrices.length > 0) {
+        // Obtener la tasa de cambio a EUR
+        const currency = assetData?.currency || 'USD';
+        let rate = 1;
+        if (currency !== 'EUR') {
+          rate = await currencyService.getExchangeRateToEUR(currency);
+        }
+        setEurExchangeRate(rate);
+
         // Filtrar y formatear datos
         let prices = historical.historicalPrices;
 
@@ -242,9 +263,9 @@ export default function AssetDetailScreen() {
           prices = prices.slice(-70);
         }
 
-        // Guardar último precio y timestamp para predicción
+        // Guardar último precio y timestamp para predicción (en EUR)
         const lastPrice = prices[prices.length - 1];
-        setLastPriceForPrediction(lastPrice.close);
+        setLastPriceForPrediction(lastPrice.close * rate);
         setLastTimestamp(lastPrice.timestamp);
 
         // Crear datos para gifted-charts - mostrar solo 4 etiquetas bien distribuidas
@@ -266,7 +287,7 @@ export default function AssetDetailScreen() {
           }
           
           return {
-            value: p.close,
+            value: p.close * rate, // Convertir a EUR
             label,
           };
         });
@@ -277,7 +298,7 @@ export default function AssetDetailScreen() {
       console.error('[AssetDetail] Error loading chart:', error);
     }
     setLoading(false);
-  }, [symbol, selectedTimeframe, longtermHistoryRange]);
+  }, [symbol, selectedTimeframe, longtermHistoryRange, assetData?.currency]);
 
   // Calcular predicción
   const handlePredict = useCallback(async () => {
@@ -505,7 +526,7 @@ export default function AssetDetailScreen() {
         {assetData && (
           <View style={styles.priceContainer}>
             <Text style={styles.price}>
-              {assetData.price.toFixed(2)} {assetData.currency}
+              {priceInEur !== null ? priceInEur.toFixed(2) : assetData.price.toFixed(2)} €
             </Text>
             <Text style={[styles.change, { color: assetData.changePercent >= 0 ? '#22c55e' : '#ef4444' }]}>
               {assetData.changePercent >= 0 ? '+' : ''}{assetData.changePercent.toFixed(2)}%
@@ -676,7 +697,7 @@ export default function AssetDetailScreen() {
                           borderColor: '#6366f1',
                         }}>
                           <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
-                            {formatPrice(item.value)} {assetData?.currency || ''}
+                            {formatPrice(item.value)} €
                           </Text>
                         </View>
                       );

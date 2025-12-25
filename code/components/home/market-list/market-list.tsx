@@ -1,9 +1,11 @@
 /**
  * Lista de activos del mercado con precios en tiempo real
+ * Con búsqueda, favoritos, paginación infinita y categorías
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -12,27 +14,23 @@ import {
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     useWindowDimensions,
     View,
 } from 'react-native';
-import { MarketAsset, marketDataService, POPULAR_ASSETS } from '../../../services/market-data-service';
+import { favoritesService } from '../../../services/favorites-service';
+import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
+import { trainingCacheService } from '../../../services/training-cache-service';
 
-type SortType = 'gainers' | 'losers' | 'popular' | 'bullish';
-type FilterType = 'all' | 'intraday' | 'swing' | 'longterm';
+type SortType = 'predicted' | 'gainers' | 'losers' | 'popular' | 'bullish';
 
 const SORT_OPTIONS: { key: SortType; label: string; icon: string }[] = [
+  { key: 'predicted', label: 'Con predicción', icon: '🎯' },
   { key: 'gainers', label: 'Subidas', icon: '📈' },
   { key: 'losers', label: 'Bajadas', icon: '📉' },
   { key: 'popular', label: 'Popular', icon: '🔥' },
   { key: 'bullish', label: 'Alcistas', icon: '🐂' },
-];
-
-const FILTER_OPTIONS: { key: FilterType; label: string; description: string }[] = [
-  { key: 'all', label: 'Todos', description: 'Todos los activos' },
-  { key: 'intraday', label: 'Intradía', description: 'Alta volatilidad' },
-  { key: 'swing', label: 'Swing', description: '2-7 días' },
-  { key: 'longterm', label: 'L/P', description: 'Largo plazo' },
 ];
 
 // Breakpoints para responsive
@@ -42,191 +40,284 @@ const BREAKPOINTS = {
   wide: 1280,
 };
 
-// Ancho máximo del contenido en desktop
 const MAX_CONTENT_WIDTH = 800;
+const BATCH_SIZE = 10;
 
-export function MarketList() {
+interface MarketListProps {
+  onFavoritesChange?: () => void;
+}
+
+export function MarketList({ onFavoritesChange }: MarketListProps) {
   const { width } = useWindowDimensions();
   const router = useRouter();
   const isDesktop = Platform.OS === 'web' && width >= BREAKPOINTS.desktop;
-  const isWide = Platform.OS === 'web' && width >= BREAKPOINTS.wide;
   
-  // Calcular padding horizontal dinámico para centrar contenido en desktop
   const horizontalPadding = useMemo(() => {
     if (!isDesktop) return 0;
     const extraPadding = Math.max(0, (width - MAX_CONTENT_WIDTH) / 2);
-    return extraPadding; // Sin límite máximo para pantallas muy anchas
+    return extraPadding;
   }, [width, isDesktop]);
 
-  // Inicializar con datos cacheados si existen, sino mostrar loading
-  const [assets, setAssets] = useState<MarketAsset[]>(() => {
-    const cached = marketDataService.getCachedAssets();
-    if (cached) {
-      console.log('[MarketList] Initialized from cache');
-      return cached;
-    }
-    return POPULAR_ASSETS.map(a => ({ ...a, loading: true }));
-  });
+  // Estado
+  const [allAssets, setAllAssets] = useState<MarketAsset[]>([]);
+  const [displayedAssets, setDisplayedAssets] = useState<MarketAsset[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(() => {
-    // Si hay cache, marcar como actualizado
-    const cached = marketDataService.getCachedAssets();
-    return cached ? new Date() : null;
-  });
-  const [sortBy, setSortBy] = useState<SortType>('gainers');
-  const [filterBy, setFilterBy] = useState<FilterType>('all');
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  
+  // Filtros y búsqueda
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<SortType>('predicted');
+  const [selectedCategory, setSelectedCategory] = useState<AssetCategory | null>(null);
+  const searchInputRef = useRef<any>(null);
+  
+  // Favoritos y predicciones
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [predictedSymbols, setPredictedSymbols] = useState<Set<string>>(new Set());
 
-  const loadData = useCallback(async () => {
+  // Cargar favoritos y predicciones
+  const loadFavoritesAndPredictions = useCallback(async () => {
     try {
-      const data = await marketDataService.getPopularAssets();
-      setAssets(data);
-      setLastUpdate(new Date());
+      await favoritesService.init();
+      setFavorites(new Set(favoritesService.getAll()));
+      
+      await trainingCacheService.init();
+      const predictions = trainingCacheService.getAllActive();
+      const symbols = new Set(predictions.map(p => p.symbol));
+      setPredictedSymbols(symbols);
     } catch (error) {
-      console.error('[MarketList] Error loading data:', error);
+      console.error('Error loading favorites/predictions:', error);
     }
   }, []);
 
-  useEffect(() => {
-    // Solo cargar si no hay datos válidos en cache
-    const cached = marketDataService.getCachedAssets();
-    if (!cached) {
-      loadData();
-    }
-    
-    // Refrescar cada 15 minutos SOLO si el cache ha expirado
-    const interval = setInterval(() => {
-      const currentCache = marketDataService.getCachedAssets();
-      if (!currentCache) {
-        console.log('[MarketList] Cache expired, refreshing...');
-        loadData();
+  // Cargar datos inicial
+  const loadData = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        marketDataService.clearCache();
+        setPage(1);
       }
-    }, 60 * 1000); // Verificar cada minuto si hay que refrescar
-    return () => clearInterval(interval);
-  }, [loadData]);
+      
+      const result = await marketDataService.getAssetsPaginated(
+        1,
+        selectedCategory || undefined,
+        debouncedSearchQuery
+      );
+      
+      setAllAssets(result.assets);
+      setDisplayedAssets(result.assets);
+      setHasMore(result.hasMore);
+      setLastUpdate(new Date());
+      setPage(1);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCategory, debouncedSearchQuery]);
+
+  // Cargar más datos (infinite scroll)
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const result = await marketDataService.getAssetsPaginated(
+        nextPage,
+        selectedCategory || undefined,
+        debouncedSearchQuery
+      );
+      
+      setDisplayedAssets(prev => [...prev, ...result.assets]);
+      setHasMore(result.hasMore);
+      setPage(nextPage);
+    } catch (error) {
+      console.error('Error loading more:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, page, selectedCategory, debouncedSearchQuery]);
+
+  useEffect(() => {
+    loadFavoritesAndPredictions();
+    loadData();
+  }, []);
+
+  // Debounce para la búsqueda (evita perder foco)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Recargar cuando cambian filtros (usa debouncedSearchQuery)
+  useEffect(() => {
+    // No mostrar loading al buscar para evitar perder foco
+    loadData();
+  }, [selectedCategory, debouncedSearchQuery]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    marketDataService.clearCache();
-    await loadData();
+    await loadFavoritesAndPredictions();
+    await loadData(true);
     setRefreshing(false);
-  }, [loadData]);
+  }, [loadData, loadFavoritesAndPredictions]);
+
+  // Toggle favorito
+  const toggleFavorite = useCallback(async (symbol: string) => {
+    await favoritesService.toggle(symbol);
+    setFavorites(new Set(favoritesService.getAll()));
+    onFavoritesChange?.();
+  }, [onFavoritesChange]);
 
   // Filtrar y ordenar activos
-  const sortedAndFilteredAssets = useMemo(() => {
-    let filtered = [...assets];
+  const sortedAssets = useMemo(() => {
+    let sorted = [...displayedAssets];
     
-    // Aplicar filtro
-    switch (filterBy) {
-      case 'intraday':
-        // Activos con alta volatilidad (crypto y tech volátiles)
-        filtered = filtered.filter(a => 
-          a.type === 'crypto' || 
-          ['TSLA', 'NVDA', 'AMD', 'META'].includes(a.symbol)
-        );
-        break;
-      case 'swing':
-        // Buenos para swing trading (tech y ETFs)
-        filtered = filtered.filter(a => 
-          a.type === 'stock' || a.type === 'etf'
-        );
-        break;
-      case 'longterm':
-        // Largo plazo (grandes empresas estables y ETFs)
-        filtered = filtered.filter(a => 
-          a.type === 'etf' || 
-          ['AAPL', 'MSFT', 'GOOGL', 'AMZN'].includes(a.symbol) ||
-          a.symbol.endsWith('.MC')
-        );
-        break;
-    }
-    
-    // Aplicar ordenación
     switch (sortBy) {
+      case 'predicted':
+        // Predicciones primero
+        sorted.sort((a, b) => {
+          const aHasPred = predictedSymbols.has(a.symbol) ? 1 : 0;
+          const bHasPred = predictedSymbols.has(b.symbol) ? 1 : 0;
+          if (aHasPred !== bHasPred) return bHasPred - aHasPred;
+          return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+        });
+        break;
       case 'gainers':
-        filtered.sort((a, b) => (b.changePercent ?? -999) - (a.changePercent ?? -999));
+        sorted.sort((a, b) => (b.changePercent ?? -999) - (a.changePercent ?? -999));
         break;
       case 'losers':
-        filtered.sort((a, b) => (a.changePercent ?? 999) - (b.changePercent ?? 999));
+        sorted.sort((a, b) => (a.changePercent ?? 999) - (b.changePercent ?? 999));
         break;
       case 'popular':
-        // Ordenar por "popularidad" (orden original que es por relevancia)
-        // Mantener orden pero priorizar los que tienen datos
-        filtered.sort((a, b) => {
+        sorted.sort((a, b) => {
           if (a.price && !b.price) return -1;
           if (!a.price && b.price) return 1;
           return 0;
         });
         break;
       case 'bullish':
-        // Tendencia alcista: mayor % subida con datos disponibles
-        filtered = filtered.filter(a => (a.changePercent ?? 0) > 0);
-        filtered.sort((a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0));
+        sorted = sorted.filter(a => (a.changePercent ?? 0) > 0);
+        sorted.sort((a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0));
         break;
     }
     
-    return filtered;
-  }, [assets, sortBy, filterBy]);
+    return sorted;
+  }, [displayedAssets, sortBy, predictedSymbols]);
 
-  const renderAsset = ({ item }: { item: MarketAsset }) => (
-    <TouchableOpacity 
-      style={styles.assetRow}
-      onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
-      activeOpacity={0.7}
-    >
-      {/* Icono */}
-      <View style={styles.iconContainer}>
-        <Text style={styles.icon}>{item.icon}</Text>
-      </View>
+  // Categorías disponibles
+  const categories = useMemo(() => marketDataService.getCategories(), []);
 
-      {/* Nombre, símbolo y precio */}
-      <View style={styles.infoContainer}>
-        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-        <View style={styles.subInfo}>
-          <Text style={styles.symbol}>{item.symbol}</Text>
-          {!item.loading && !item.error && item.price !== undefined && (
-            <Text style={styles.priceInline}>
-              {formatPrice(item.price, item.currency)}
-            </Text>
+  const renderAsset = ({ item }: { item: MarketAsset }) => {
+    const isFavorite = favorites.has(item.symbol);
+    const hasPrediction = predictedSymbols.has(item.symbol);
+    
+    return (
+      <TouchableOpacity 
+        style={styles.assetRow}
+        onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
+        activeOpacity={0.7}
+      >
+        {/* Icono */}
+        <View style={styles.iconContainer}>
+          <Text style={styles.icon}>{item.icon}</Text>
+          {hasPrediction && (
+            <View style={styles.predictionBadge}>
+              <Text style={styles.predictionBadgeText}>🎯</Text>
+            </View>
           )}
         </View>
-      </View>
 
-      {/* Cambio porcentual */}
-      <View style={styles.priceContainer}>
-        {item.loading ? (
-          <ActivityIndicator size="small" color="#6b7280" />
-        ) : item.error ? (
-          <Text style={styles.errorText}>-</Text>
-        ) : (
-          <View style={[
-            styles.changeBadge,
-            { backgroundColor: getChangeColor(item.changePercent) + '20' }
-          ]}>
-            <Text style={[
-              styles.changeText,
-              { color: getChangeColor(item.changePercent) }
-            ]}>
-              {formatChange(item.changePercent)}
-            </Text>
+        {/* Info */}
+        <View style={styles.infoContainer}>
+          <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+          <View style={styles.subInfo}>
+            <Text style={styles.symbol}>{item.symbol}</Text>
+            {!item.loading && !item.error && item.price !== undefined && (
+              <Text style={styles.priceInline}>
+                {formatPrice(item.price, item.currency)}
+              </Text>
+            )}
           </View>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+        </View>
+
+        {/* Cambio % */}
+        <View style={styles.priceContainer}>
+          {item.loading ? (
+            <ActivityIndicator size="small" color="#6b7280" />
+          ) : item.error ? (
+            <Text style={styles.errorText}>-</Text>
+          ) : (
+            <View style={[
+              styles.changeBadge,
+              { backgroundColor: getChangeColor(item.changePercent) + '20' }
+            ]}>
+              <Text style={[styles.changeText, { color: getChangeColor(item.changePercent) }]}>
+                {formatChange(item.changePercent)}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Favorito */}
+        <TouchableOpacity 
+          style={styles.favoriteButton}
+          onPress={() => toggleFavorite(item.symbol)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons 
+            name={isFavorite ? 'heart' : 'heart-outline'} 
+            size={22} 
+            color={isFavorite ? '#ef4444' : '#6b7280'} 
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
 
   const renderHeader = () => (
     <View>
-      {/* Título y hora */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>📊 Mercado</Text>
-        {lastUpdate && (
-          <Text style={styles.lastUpdate}>
-            {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+      {/* Categorías horizontales */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoriesContainer}
+        contentContainerStyle={styles.categoriesContent}
+      >
+        <TouchableOpacity
+          style={[styles.categoryChip, !selectedCategory && styles.categoryChipActive]}
+          onPress={() => setSelectedCategory(null)}
+        >
+          <Text style={styles.categoryIcon}>🌐</Text>
+          <Text style={[styles.categoryLabel, !selectedCategory && styles.categoryLabelActive]}>
+            Todos
           </Text>
-        )}
-      </View>
-      
-      {/* Selector de ordenación */}
+        </TouchableOpacity>
+        {categories.map(cat => (
+          <TouchableOpacity
+            key={cat.category}
+            style={[styles.categoryChip, selectedCategory === cat.category && styles.categoryChipActive]}
+            onPress={() => setSelectedCategory(cat.category)}
+          >
+            <Text style={styles.categoryIcon}>{cat.icon}</Text>
+            <Text style={[
+              styles.categoryLabel, 
+              selectedCategory === cat.category && styles.categoryLabelActive
+            ]}>
+              {cat.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Ordenación */}
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -236,58 +327,83 @@ export function MarketList() {
         {SORT_OPTIONS.map(option => (
           <TouchableOpacity
             key={option.key}
-            style={[
-              styles.sortChip,
-              sortBy === option.key && styles.sortChipActive
-            ]}
+            style={[styles.sortChip, sortBy === option.key && styles.sortChipActive]}
             onPress={() => setSortBy(option.key)}
           >
             <Text style={styles.sortIcon}>{option.icon}</Text>
-            <Text style={[
-              styles.sortLabel,
-              sortBy === option.key && styles.sortLabelActive
-            ]}>
+            <Text style={[styles.sortLabel, sortBy === option.key && styles.sortLabelActive]}>
               {option.label}
             </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
       
-      {/* Filtros de timeframe */}
-      <View style={styles.filterContainer}>
-        {FILTER_OPTIONS.map(option => (
-          <TouchableOpacity
-            key={option.key}
-            style={[
-              styles.filterChip,
-              filterBy === option.key && styles.filterChipActive
-            ]}
-            onPress={() => setFilterBy(option.key)}
-          >
-            <Text style={[
-              styles.filterLabel,
-              filterBy === option.key && styles.filterLabelActive
-            ]}>
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Info */}
+      <View style={styles.infoBar}>
+        <Text style={styles.resultCount}>
+          {sortedAssets.length} activos
+        </Text>
+        {lastUpdate && (
+          <Text style={styles.lastUpdate}>
+            {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        )}
       </View>
-      
-      {/* Contador de resultados */}
-      <Text style={styles.resultCount}>
-        {sortedAndFilteredAssets.length} activos
-      </Text>
     </View>
   );
 
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.loadingFooter}>
+        <ActivityIndicator size="small" color="#6366f1" />
+        <Text style={styles.loadingText}>Cargando más...</Text>
+      </View>
+    );
+  };
+
+  const renderEmpty = () => {
+    if (loading) {
+      return (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color="#6366f1" />
+          <Text style={styles.emptyText}>Cargando activos...</Text>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyIcon}>🔍</Text>
+        <Text style={styles.emptyText}>No se encontraron activos</Text>
+        <Text style={styles.emptySubtext}>Prueba con otro término de búsqueda</Text>
+      </View>
+    );
+  };
+
   return (
-    <View style={[
-      styles.container,
-      isDesktop && { paddingHorizontal: horizontalPadding }
-    ]}>
+    <View style={[styles.container, isDesktop && { paddingHorizontal: horizontalPadding }]}>
+      {/* Barra de búsqueda FUERA del FlatList para mantener foco */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar activo..."
+          placeholderTextColor="#6b7280"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={20} color="#6b7280" />
+          </TouchableOpacity>
+        )}
+      </View>
+
       <FlatList
-        data={sortedAndFilteredAssets}
+        data={sortedAssets}
         renderItem={({ item }) => (
           <View style={isDesktop && styles.assetRowDesktop}>
             {renderAsset({ item } as any)}
@@ -295,6 +411,10 @@ export function MarketList() {
         )}
         keyExtractor={(item) => item.symbol}
         ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -313,13 +433,11 @@ export function MarketList() {
 }
 
 // Helpers
-// Tipo de cambio USD/EUR aproximado (se podría obtener dinámicamente)
 const USD_TO_EUR = 0.92;
 
 function formatPrice(price?: number, currency?: string): string {
   if (price === undefined) return '-';
   
-  // Convertir a EUR si es USD
   let priceInEur = price;
   if (currency === 'USD') {
     priceInEur = price * USD_TO_EUR;
@@ -354,6 +472,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 20,
+    flexGrow: 1,
   },
   listContentDesktop: {
     paddingTop: 16,
@@ -362,33 +481,37 @@ const styles = StyleSheet.create({
   assetRowDesktop: {
     paddingHorizontal: 24,
   },
-  header: {
+  // Búsqueda
+  searchContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    // En web desktop se aplicará padding extra desde el container
+    backgroundColor: '#1a1a1a',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2e2e2e',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
     color: '#ffffff',
+    fontSize: 15,
+    padding: 0,
   },
-  lastUpdate: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  // Selector de ordenación
-  sortContainer: {
+  // Categorías
+  categoriesContainer: {
     marginBottom: 8,
   },
-  sortContent: {
+  categoriesContent: {
     paddingHorizontal: 12,
-    gap: 8,
   },
-  sortChip: {
+  categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -396,65 +519,73 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderRadius: 20,
     marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#2e2e2e',
+  },
+  categoryChipActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  categoryIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  categoryLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#a0a0a0',
+  },
+  categoryLabelActive: {
+    color: '#ffffff',
+  },
+  // Ordenación
+  sortContainer: {
+    marginBottom: 8,
+  },
+  sortContent: {
+    paddingHorizontal: 12,
+  },
+  sortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    marginRight: 8,
   },
   sortChipActive: {
     backgroundColor: '#6366f1',
   },
   sortIcon: {
-    fontSize: 14,
+    fontSize: 12,
     marginRight: 4,
   },
   sortLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
     color: '#a0a0a0',
   },
   sortLabelActive: {
     color: '#ffffff',
   },
-  // Filtros de timeframe
-  filterContainer: {
+  // Info bar
+  infoBar: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 8,
-    gap: 8,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2e2e2e',
-  },
-  filterChipActive: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
-  },
-  filterLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#a0a0a0',
-  },
-  filterLabelActive: {
-    color: '#ffffff',
+    paddingBottom: 8,
   },
   resultCount: {
     fontSize: 12,
     color: '#6b7280',
-    paddingHorizontal: 16,
-    paddingBottom: 8,
   },
-  sectionHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#1a1a1a',
+  lastUpdate: {
+    fontSize: 12,
+    color: '#6b7280',
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#a0a0a0',
-  },
+  // Asset row
   assetRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -471,16 +602,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    position: 'relative',
   },
   icon: {
     fontSize: 22,
   },
+  predictionBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#f59e0b',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  predictionBadgeText: {
+    fontSize: 10,
+  },
   infoContainer: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 8,
   },
   name: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#ffffff',
     marginBottom: 2,
@@ -491,23 +637,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   symbol: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#6b7280',
   },
   priceInline: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#a0a0a0',
     fontWeight: '500',
   },
   priceContainer: {
     alignItems: 'flex-end',
-    minWidth: 80,
-  },
-  price: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 4,
+    minWidth: 70,
   },
   changeBadge: {
     paddingHorizontal: 8,
@@ -515,11 +655,47 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   changeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   errorText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#ef4444',
+  },
+  favoriteButton: {
+    padding: 8,
+    marginLeft: 4,
+  },
+  // Loading & Empty states
+  loadingFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  loadingText: {
+    color: '#6b7280',
+    fontSize: 13,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  emptyText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  emptySubtext: {
+    color: '#6b7280',
+    fontSize: 13,
   },
 });
