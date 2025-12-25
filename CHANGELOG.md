@@ -1,8 +1,43 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 22 de diciembre de 2025  
-**Versión:** `1.1.0`  
-**Commit actual:** `11cbc1a`
+**Última actualización:** 25 de diciembre de 2025  
+**Versión:** `1.2.0`  
+**Commit actual:** `d54cad0`
+
+---
+
+## [1.2.0] - 25 de diciembre de 2025
+
+### Nueva Navegación y UI
+- **Sistema de 3 pestañas** (`a115d41`) - Favoritos, Explorar y Predicciones como pestañas principales
+- **Pestaña Favoritos** - Lista de activos marcados como favoritos con acceso rápido
+- **Pestaña Explorar** - Buscador dinámico con +120 activos organizados por categorías
+- **Buscador con debounce** - Búsqueda en tiempo real sin perder foco del input
+
+### Gráficos Interactivos con Predicciones
+- **Gráficos históricos** (`b157fcf`) - Integración de react-native-gifted-charts
+- **Predicción visual** (`48d1fdd`) - Línea de predicción superpuesta al histórico
+- **3 Timeframes** - Intradía (1 día), Swing (4 días), Largo Plazo (15-90 días)
+- **Tooltips interactivos** - Precio en EUR al tocar cualquier punto del gráfico
+- **Leyenda visual** - Histórico (verde) vs Predicción (morado punteado)
+
+### Conversión a Euros
+- **Precios en EUR** - Todos los precios convertidos a euros usando tipos de cambio en tiempo real
+- **Currency Service** - Integración con Yahoo Finance para tipos de cambio actualizados
+- **Fallback rates** - Tipos de cambio predefinidos si falla la API
+
+### Nuevos Activos - Categoría Commodities
+- **Oro Físico** (`GC=F`) - Futuros de oro
+- **Plata Física** (`SI=F`) - Futuros de plata
+- **Mineras de oro** - Newmont (NEM), Barrick Gold (GOLD), Franco-Nevada (FNV), Wheaton Precious (WPM)
+- **ETFs de minería** - GDX (Gold Miners), GDXJ (Junior Gold Miners)
+- **Energía** - Petróleo Crudo (CL=F), Gas Natural (NG=F)
+
+### Correcciones
+- **Fix gráficos intradía** (`d54cad0`) - Etiquetas de días corregidas, predicción inicia desde fecha actual
+- **Fix verificación predicciones** (`6114015`) - Arreglado bug que impedía verificar predicciones completadas
+- **Optimización fetching** (`190b602`) - Carga de datos reducida a menos de 1 segundo
+- **Fix cache** (`d4326f7`) - Corregido manejo de cache de predicciones
 
 ---
 
@@ -36,6 +71,15 @@
 
 | Commit | Fecha | Funcionalidad |
 |--------|-------|---------------|
+| `d54cad0` | 25/12/2025 | **Fix gráficos** - Corregidas etiquetas de días en gráfico intradía, predicción inicia desde fecha actual |
+| `a115d41` | 25/12/2025 | **Nueva navegación** - 3 pestañas (Favoritos/Explorar/Predicciones), buscador dinámico con +120 activos, categorías horizontales, infinite scroll con batching |
+| `6d38c50` | 24/12/2025 | **Info predicción en chart** - Panel de información de predicción integrado en gráfico |
+| `190b602` | 24/12/2025 | **Optimización fetching** - Carga de datos reducida a <1 segundo con cache mejorado |
+| `d4326f7` | 24/12/2025 | **Fix cache** - Corregido manejo de cache de predicciones |
+| `6114015` | 24/12/2025 | **Fix verificación** - Arreglado bug que impedía verificar predicciones completadas |
+| `48d1fdd` | 23/12/2025 | **Gráfico con predicción** - Línea de predicción superpuesta al histórico con estilos diferenciados |
+| `a7d39b9` | 23/12/2025 | **Migración gráfico** - Migrado a react-native-gifted-charts |
+| `b157fcf` | 23/12/2025 | **Gráficos interactivos** - Página de detalle de activo con gráficos históricos y tooltips |
 | `1cffc8e` | 21/12/2025 | **Sistema de Accuracy Scoring** - Nuevo sistema de puntuación que considera precisión del cambio porcentual, no solo dirección. Score 0-100 con clasificación: Excellent (75-100), Good (50-75), Poor (25-50), Failed (0-25) |
 | `1cffc8e` | 21/12/2025 | **Mejoras de contraste** - Modal de análisis individual con mejor contraste: fondos más oscuros, textos más brillantes (#818cf8), labels #9ca3af |
 | `1cffc8e` | 21/12/2025 | **Modal full screen** - Tracking de predicciones ahora ocupa toda la pantalla para mejor visualización |
