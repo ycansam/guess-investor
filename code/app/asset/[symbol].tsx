@@ -268,22 +268,24 @@ export default function AssetDetailScreen() {
         setLastPriceForPrediction(lastPrice.close * rate);
         setLastTimestamp(lastPrice.timestamp);
 
-        // Crear datos para gifted-charts - mostrar solo 4 etiquetas bien distribuidas
-        const labelInterval = Math.max(1, Math.floor(prices.length / 3));
-        let lastLabelDate = '';
+        // Crear datos para gifted-charts
+        // Para las etiquetas: mostrar fecha al inicio de cada día + último punto
+        let lastShownDate = '';
+        
         const giftedData: ChartDataPoint[] = prices.map((p, idx) => {
           const date = new Date(p.timestamp);
           const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
           const isLastPoint = idx === prices.length - 1;
           
-          // Mostrar etiqueta en: primer punto, intervalos, y último punto (si es fecha diferente)
           let label = '';
-          if (idx === 0) {
+          
+          // Mostrar etiqueta cuando cambia de día o es el último punto
+          if (dateStr !== lastShownDate) {
             label = dateStr;
-            lastLabelDate = dateStr;
-          } else if ((idx % labelInterval === 0 || isLastPoint) && dateStr !== lastLabelDate) {
-            label = dateStr;
-            lastLabelDate = dateStr;
+            lastShownDate = dateStr;
+          } else if (isLastPoint && label === '') {
+            // Si es el último punto y no tiene etiqueta, agregar hora
+            label = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
           }
           
           return {
@@ -352,17 +354,19 @@ export default function AssetDetailScreen() {
         });
 
         // Crear puntos de predicción
-        // Generar puntos intermedios para la predicción
+        // La predicción comienza desde el momento actual
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
         const msPerDay = 24 * 60 * 60 * 1000;
         const totalMs = predictionDays * msPerDay;
+        const now = Date.now();
 
         for (let i = 0; i <= steps; i++) {
           const progress = i / steps;
           const interpolatedValue = lastPriceForPrediction + (targetPrice - lastPriceForPrediction) * progress;
-          const timestamp = lastTimestamp + (totalMs * progress);
+          const timestamp = now + (totalMs * progress);
           const date = new Date(timestamp);
+          // Solo mostrar etiqueta en el último punto (fecha objetivo)
           const label = i === steps ? `${date.getDate()}/${date.getMonth() + 1}` : '';
 
           predPoints.push({
@@ -419,11 +423,12 @@ export default function AssetDetailScreen() {
         const steps = 10;
         const msPerDay = 24 * 60 * 60 * 1000;
         const totalMs = predictionDays * msPerDay;
+        const now = Date.now();
         
         for (let i = 0; i <= steps; i++) {
           const progress = i / steps;
           const interpolatedValue = lastPriceForPrediction + (targetPrice - lastPriceForPrediction) * progress;
-          const timestamp = lastTimestamp + (totalMs * progress);
+          const timestamp = now + (totalMs * progress);
           const date = new Date(timestamp);
           const label = i === steps ? `${date.getDate()}/${date.getMonth() + 1}` : '';
           
