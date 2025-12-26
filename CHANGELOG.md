@@ -259,16 +259,25 @@ Loss = α·DirectionLoss + β·MagnitudeLoss + γ·RangeLoss
 | Factor | Implementado | Pendiente | % |
 |--------|-------------|-----------|---|
 | **Trend** | Cambios 30d/90d/1Y, volatilidad | - | 100% |
-| **Technical** | SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bollinger, Volumen, Cruces | Patrones chartistas, soportes/resistencias | ~80% |
-| **Sentiment** | StockTwits, Reddit, Fear & Greed (crypto), **VIX Index**, **Put/Call Ratio (CBOE SPX)** | Short interest (requiere API FINRA pagada), Twitter/X (requiere API pagada), options flow detallado | ~70% |
-| **News** | Yahoo News + análisis keywords, **Earnings calendar**, **Dividendos**, **Acciones de analistas** (upgrades/downgrades), **Detección de eventos regulatorios** (SEC, FDA, FTC, DOJ, EU, antitrust) | Splits históricos, M&A rumores | ~65% |
-| **Macro** | Índices regionales, bonos 10Y, VIX, commodities, **CPI (Inflación)**, **GDP (PIB)**, **NFP (Empleo)**, **Tasas Fed/BCE/BoE/BoJ/PBOC**, **PMI (Manufacturing/Services)**, **Ciclo económico**, **Eventos económicos próximos** | - | ~75% |
+| **Technical** | SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bollinger, Volumen, Golden/Death Cross | Patrones chartistas, soportes/resistencias | ~85% |
+| **Sentiment** | StockTwits, Reddit, **Fear & Greed Index** (crypto con histórico), **VIX Index**, **Put/Call Ratio (CBOE SPX)** | Short interest (requiere API FINRA pagada), Twitter/X (requiere API pagada) | ~75% |
+| **News** | Yahoo News + análisis keywords, **Earnings calendar**, **Dividendos**, **Acciones de analistas** (upgrades/downgrades), **Detección de eventos regulatorios** (SEC, FDA, FTC, DOJ, EU, antitrust) | Splits históricos, M&A rumores | ~70% |
+| **Macro** | Índices regionales, bonos 10Y, VIX, commodities, **CPI (Inflación)**, **GDP (PIB)**, **NFP (Empleo)**, **Tasas Fed/BCE/BoE/BoJ/PBOC**, **PMI (Manufacturing/Services)**, **Ciclo económico**, **Eventos económicos próximos** | - | ~80% |
 | **Competitors** | Rendimiento relativo vs competidores mapeados | Cuota de mercado, comparación de ratios P/E | ~50% |
-| **Forex** | Exposición por empresa, cambios de pares | Hedging, volatilidad FX | ~60% |
-| **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades) | 13F filings SEC detallados | ~75% |
+| **Forex** | Exposición por empresa, cambios de pares, conversión automática EUR | Hedging, volatilidad FX | ~65% |
+| **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades, volumen inusual) | 13F filings SEC detallados | ~85% |
 | **Seasonality** | 50+ eventos para 20+ países, patrones globales | Patrones históricos por acción específica | ~60% |
 | **Financials** | Ingresos, márgenes, EPS, P/E, deuda, ROE, rating analistas | FCF, CAPEX, balance completo | ~65% |
-| **Expectations** | EPS surprise histórico, **Revenue surprise**, **Revisiones analistas** (7d/30d/90d), EPS/Revenue estimados, **Fecha próx. earnings**, **Beat rate**, **Riesgo earnings**, **Whisper numbers** | Guidance management | ~75% |
+| **Expectations** | EPS surprise histórico, **Revenue surprise**, **Revisiones analistas** (7d/30d/90d), EPS/Revenue estimados, **Fecha próx. earnings**, **Beat rate**, **Riesgo earnings**, **Whisper numbers** | Guidance management | ~80% |
+
+### Servicios Integrados (v1.2)
+
+| Servicio | Factor | Descripción |
+|----------|--------|-------------|
+| `dark-pools-service.ts` | Institutional | Detecta acumulación/distribución institucional oculta, short volume ratio, block trades |
+| `cot-report-service.ts` | Institutional | Posiciones de especuladores vs comerciales (Commitment of Traders) |
+| `etf-flows-service.ts` | Institutional | Flujos de dinero a ETFs sectoriales, rotación sectorial |
+| `fear-greed-service.ts` | Sentiment | Fear & Greed Index para crypto (0-100 con histórico) |
 
 ### APIs/Fuentes de Datos
 
@@ -280,12 +289,33 @@ Loss = α·DirectionLoss + β·MagnitudeLoss + γ·RangeLoss
 | **Yahoo Finance Search** | Noticias |
 | **Yahoo Finance VIX** | Índice de volatilidad VIX (indicador de miedo), **estimación de posiciones COT** |
 | **CBOE Options API** | Put/Call Ratio de opciones SPX (indicador institucional) |
-| **ETFs Sectoriales** | Flujos de **SPY, QQQ, XLK, XLF, EZU, VGK, FEZ**, etc. para detectar rotación sectorial (incluye Europa) |
+| **ETFs Sectoriales** | Flujos de **SPY, QQQ, XLK, XLF, XLE, XLV, XLY, SMH, GDX, EZU, VGK, FEZ**, etc. para detectar rotación sectorial |
 | **StockTwits API** | Sentimiento USA/crypto |
 | **Reddit JSON** | Sentimiento social (r/wallstreetbets, r/stocks) |
-| **Alternative.me** | Fear & Greed Index (crypto) |
+| **Alternative.me** | Fear & Greed Index (crypto) con histórico 30 días |
 | **Datos económicos hardcoded** | **CPI, GDP, NFP, PMI, Tasas bancos centrales** (actualizados con datos oficiales de BLS, BEA, Fed, BCE, BoE, NBS) |
 | **Datos hardcoded** | Competidores, exposición forex, eventos estacionales, **mapeos stock-futuros para COT** (incluye EURO STOXX 50), **calendario eventos económicos** |
+
+### Optimizador ML (v1.2)
+
+| Característica | Descripción |
+|----------------|-------------|
+| **Algoritmo** | Adam optimizer (antes SGD+Momentum) |
+| **Learning Rate** | 0.001 (adaptativo por parámetro) |
+| **Bias Correction** | ✅ Corrige sesgo en primeras iteraciones |
+| **Time Decay** | Predicciones recientes pesan más (half-life 180 días) |
+| **Loss Function** | 35% dirección + 25% magnitud + 10% rango + 30% accuracy score |
+| **Pesos por Volatilidad** | Ajuste dinámico según volatilidad del activo (low/medium/high) |
+
+---
+
+## Commodities Soportados (v1.2)
+
+| Categoría | Símbolos |
+|-----------|----------|
+| **Futuros** | GC=F (oro), SI=F (plata), CL=F (petróleo), NG=F (gas), PL=F (platino), PA=F (paladio), HG=F (cobre), ZC=F (maíz), ZW=F (trigo), ZS=F (soja) |
+| **ETFs Commodities** | GLD, SLV, USO, UNG, DBA, DBC, PDBC, GSG, COMT |
+| **Mineras Oro/Plata** | NEM, GOLD, FNV, WPM, AEM, KGC, AU, GDX, GDXJ, SIL, SILJ |
 
 ---
 
