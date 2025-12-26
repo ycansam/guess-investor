@@ -263,12 +263,33 @@ Loss = α·DirectionLoss + β·MagnitudeLoss + γ·RangeLoss
 | **Sentiment** | StockTwits, Reddit, **Fear & Greed Index** (crypto con histórico), **VIX Index**, **Put/Call Ratio (CBOE SPX)** | Short interest (requiere API FINRA pagada), Twitter/X (requiere API pagada) | ~75% |
 | **News** | Yahoo News + análisis keywords, **Earnings calendar**, **Dividendos**, **Acciones de analistas** (upgrades/downgrades), **Detección de eventos regulatorios** (SEC, FDA, FTC, DOJ, EU, antitrust) | Splits históricos, M&A rumores | ~70% |
 | **Macro** | Índices regionales, bonos 10Y, VIX, commodities, **CPI (Inflación)**, **GDP (PIB)**, **NFP (Empleo)**, **Tasas Fed/BCE/BoE/BoJ/PBOC**, **PMI (Manufacturing/Services)**, **Ciclo económico**, **Eventos económicos próximos** | - | ~80% |
-| **Competitors** | Rendimiento relativo vs competidores mapeados | Cuota de mercado, comparación de ratios P/E | ~50% |
+| **Competitors** | Rendimiento vs 50+ empresas mapeadas, **P/E ratio vs sector**, **Market Cap ranking**, valoración relativa | Cuota de mercado | ~65% |
 | **Forex** | Exposición por empresa, cambios de pares, conversión automática EUR | Hedging, volatilidad FX | ~65% |
 | **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades, volumen inusual) | 13F filings SEC detallados | ~85% |
 | **Seasonality** | 50+ eventos para 20+ países, patrones globales | Patrones históricos por acción específica | ~60% |
 | **Financials** | Ingresos, márgenes, EPS, P/E, deuda, ROE, rating analistas | FCF, CAPEX, balance completo | ~65% |
 | **Expectations** | EPS surprise histórico, **Revenue surprise**, **Revisiones analistas** (7d/30d/90d), EPS/Revenue estimados, **Fecha próx. earnings**, **Beat rate**, **Riesgo earnings**, **Whisper numbers** | Guidance management | ~80% |
+
+### Empresas con Competidores Mapeados (v1.2)
+
+| Sector | Empresas |
+|--------|----------|
+| **Tech Big** | AAPL, MSFT, GOOGL, META, AMZN, NVDA |
+| **Semiconductores** | AMD, INTC, TSM, ASML, LRCX, AMAT |
+| **Software/Cloud** | CRM, ADBE, ORCL, SAP.DE |
+| **Banca USA** | JPM, BAC, GS, MS, WFC |
+| **Banca EU** | SAN.MC, BBVA.MC, BNP.PA |
+| **Pagos** | V, MA, PYPL, SQ |
+| **Healthcare** | JNJ, PFE, LLY, UNH, CVS, CI, MRK, NVO |
+| **Consumer** | PG, KO, PEP, MCD, NKE, WMT, COST, HD |
+| **Streaming** | NFLX, DIS, WBD |
+| **Energía** | XOM, CVX, COP, REP.MC, IBE.MC |
+| **Autos** | TSLA, F, GM |
+| **Mineras** | NEM, GOLD, AEM, FNV |
+| **Lujo EU** | MC.PA, KER.PA, RMS.PA, OR.PA |
+| **Industrial** | BA, LMT, RTX, SIE.DE, GE, HON |
+| **Crypto** | BTC-USD, ETH-USD, SOL-USD |
+| **Asia** | 1810.HK (Xiaomi), 005930.KS (Samsung) |
 
 ### Servicios Integrados (v1.2)
 

@@ -6,6 +6,11 @@
  * - Si a los competidores les va mal → puede arrastrar a la empresa
  * - Si la empresa destaca vs competidores → señal positiva
  * - Si los competidores suben → puede indicar sector fuerte
+ * 
+ * MEJORADO v1.2:
+ * - Comparación de ratios P/E
+ * - Market Cap comparativo
+ * - Más empresas mapeadas
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
@@ -18,6 +23,10 @@ export interface CompetitorData {
   change1w: number; // Cambio % 1 semana
   change1m: number; // Cambio % 1 mes
   trend: 'up' | 'down' | 'neutral';
+  // NUEVO: Fundamentales para comparación
+  peRatio?: number;
+  marketCap?: number;
+  forwardPE?: number;
 }
 
 export interface CompetitorAnalysis {
@@ -38,6 +47,17 @@ export interface CompetitorAnalysis {
   companyVsSector1w: number;
   companyVsSector1m: number;
   outperforming: boolean; // ¿La empresa supera al sector?
+  
+  // NUEVO: Análisis de valoración
+  valuationAnalysis?: {
+    companyPE: number;
+    sectorAvgPE: number;
+    peVsSector: number; // % diferencia (negativo = más barato)
+    isUndervalued: boolean;
+    companyMarketCap: number;
+    sectorAvgMarketCap: number;
+    marketCapRank: number; // Posición por tamaño (1 = mayor)
+  };
   
   // Score final (-100 a +100)
   competitorScore: number;
@@ -143,6 +163,314 @@ const COMPANY_COMPETITORS: Record<string, { sector: string; sectorName: string; 
       { symbol: 'GS', name: 'Goldman Sachs' },
     ]
   },
+  'BAC': {
+    sector: 'banking_us',
+    sectorName: 'Banca USA',
+    competitors: [
+      { symbol: 'JPM', name: 'JPMorgan' },
+      { symbol: 'WFC', name: 'Wells Fargo' },
+    ]
+  },
+  'GS': {
+    sector: 'banking_us',
+    sectorName: 'Banca de Inversión',
+    competitors: [
+      { symbol: 'MS', name: 'Morgan Stanley' },
+      { symbol: 'JPM', name: 'JPMorgan' },
+    ]
+  },
+  'MS': {
+    sector: 'banking_us',
+    sectorName: 'Banca de Inversión',
+    competitors: [
+      { symbol: 'GS', name: 'Goldman Sachs' },
+      { symbol: 'JPM', name: 'JPMorgan' },
+    ]
+  },
+  
+  // Pagos digitales
+  'V': {
+    sector: 'payments',
+    sectorName: 'Pagos Digitales',
+    competitors: [
+      { symbol: 'MA', name: 'Mastercard' },
+      { symbol: 'PYPL', name: 'PayPal' },
+    ]
+  },
+  'MA': {
+    sector: 'payments',
+    sectorName: 'Pagos Digitales',
+    competitors: [
+      { symbol: 'V', name: 'Visa' },
+      { symbol: 'PYPL', name: 'PayPal' },
+    ]
+  },
+  'PYPL': {
+    sector: 'payments',
+    sectorName: 'Pagos Digitales',
+    competitors: [
+      { symbol: 'SQ', name: 'Block (Square)' },
+      { symbol: 'V', name: 'Visa' },
+    ]
+  },
+  
+  // Semiconductores (ampliado)
+  'AMD': {
+    sector: 'semiconductors',
+    sectorName: 'Semiconductores',
+    competitors: [
+      { symbol: 'NVDA', name: 'NVIDIA' },
+      { symbol: 'INTC', name: 'Intel' },
+    ]
+  },
+  'INTC': {
+    sector: 'semiconductors',
+    sectorName: 'Semiconductores',
+    competitors: [
+      { symbol: 'AMD', name: 'AMD' },
+      { symbol: 'NVDA', name: 'NVIDIA' },
+    ]
+  },
+  'TSM': {
+    sector: 'semiconductors',
+    sectorName: 'Fabricación de Chips',
+    competitors: [
+      { symbol: 'INTC', name: 'Intel' },
+      { symbol: 'ASML', name: 'ASML' },
+    ]
+  },
+  'ASML': {
+    sector: 'semiconductors',
+    sectorName: 'Equipos de Semiconductores',
+    competitors: [
+      { symbol: 'LRCX', name: 'Lam Research' },
+      { symbol: 'AMAT', name: 'Applied Materials' },
+    ]
+  },
+  
+  // Healthcare / Pharma
+  'JNJ': {
+    sector: 'healthcare',
+    sectorName: 'Salud Diversificada',
+    competitors: [
+      { symbol: 'PFE', name: 'Pfizer' },
+      { symbol: 'UNH', name: 'UnitedHealth' },
+    ]
+  },
+  'PFE': {
+    sector: 'pharma',
+    sectorName: 'Farmacéuticas',
+    competitors: [
+      { symbol: 'MRK', name: 'Merck' },
+      { symbol: 'LLY', name: 'Eli Lilly' },
+    ]
+  },
+  'LLY': {
+    sector: 'pharma',
+    sectorName: 'Farmacéuticas',
+    competitors: [
+      { symbol: 'NVO', name: 'Novo Nordisk' },
+      { symbol: 'PFE', name: 'Pfizer' },
+    ]
+  },
+  'UNH': {
+    sector: 'health_insurance',
+    sectorName: 'Seguros de Salud',
+    competitors: [
+      { symbol: 'CVS', name: 'CVS Health' },
+      { symbol: 'CI', name: 'Cigna' },
+    ]
+  },
+  
+  // Consumer Goods
+  'PG': {
+    sector: 'consumer_goods',
+    sectorName: 'Bienes de Consumo',
+    competitors: [
+      { symbol: 'KO', name: 'Coca-Cola' },
+      { symbol: 'PEP', name: 'PepsiCo' },
+    ]
+  },
+  'KO': {
+    sector: 'beverages',
+    sectorName: 'Bebidas',
+    competitors: [
+      { symbol: 'PEP', name: 'PepsiCo' },
+      { symbol: 'KDP', name: 'Keurig Dr Pepper' },
+    ]
+  },
+  'PEP': {
+    sector: 'beverages',
+    sectorName: 'Bebidas y Snacks',
+    competitors: [
+      { symbol: 'KO', name: 'Coca-Cola' },
+      { symbol: 'MDLZ', name: 'Mondelez' },
+    ]
+  },
+  'MCD': {
+    sector: 'restaurants',
+    sectorName: 'Restaurantes',
+    competitors: [
+      { symbol: 'SBUX', name: 'Starbucks' },
+      { symbol: 'YUM', name: 'Yum! Brands' },
+    ]
+  },
+  'NKE': {
+    sector: 'apparel',
+    sectorName: 'Ropa Deportiva',
+    competitors: [
+      { symbol: 'ADDYY', name: 'Adidas' },
+      { symbol: 'LULU', name: 'Lululemon' },
+    ]
+  },
+  'WMT': {
+    sector: 'retail',
+    sectorName: 'Retail',
+    competitors: [
+      { symbol: 'TGT', name: 'Target' },
+      { symbol: 'COST', name: 'Costco' },
+    ]
+  },
+  'COST': {
+    sector: 'retail',
+    sectorName: 'Retail',
+    competitors: [
+      { symbol: 'WMT', name: 'Walmart' },
+      { symbol: 'TGT', name: 'Target' },
+    ]
+  },
+  'HD': {
+    sector: 'home_improvement',
+    sectorName: 'Mejoras del Hogar',
+    competitors: [
+      { symbol: 'LOW', name: 'Lowe\'s' },
+      { symbol: 'WMT', name: 'Walmart' },
+    ]
+  },
+  
+  // Streaming / Entertainment
+  'NFLX': {
+    sector: 'streaming',
+    sectorName: 'Streaming',
+    competitors: [
+      { symbol: 'DIS', name: 'Disney' },
+      { symbol: 'WBD', name: 'Warner Bros Discovery' },
+    ]
+  },
+  'DIS': {
+    sector: 'entertainment',
+    sectorName: 'Entretenimiento',
+    competitors: [
+      { symbol: 'NFLX', name: 'Netflix' },
+      { symbol: 'CMCSA', name: 'Comcast' },
+    ]
+  },
+  
+  // Cloud / Software
+  'CRM': {
+    sector: 'software',
+    sectorName: 'Software Empresarial',
+    competitors: [
+      { symbol: 'NOW', name: 'ServiceNow' },
+      { symbol: 'ORCL', name: 'Oracle' },
+    ]
+  },
+  'ADBE': {
+    sector: 'software',
+    sectorName: 'Software Creativo',
+    competitors: [
+      { symbol: 'CRM', name: 'Salesforce' },
+      { symbol: 'MSFT', name: 'Microsoft' },
+    ]
+  },
+  'ORCL': {
+    sector: 'software',
+    sectorName: 'Software/Cloud',
+    competitors: [
+      { symbol: 'MSFT', name: 'Microsoft' },
+      { symbol: 'IBM', name: 'IBM' },
+    ]
+  },
+  
+  // Aeroespacio
+  'BA': {
+    sector: 'aerospace',
+    sectorName: 'Aeroespacial',
+    competitors: [
+      { symbol: 'LMT', name: 'Lockheed Martin' },
+      { symbol: 'RTX', name: 'RTX (Raytheon)' },
+    ]
+  },
+  
+  // Autos tradicionales
+  'F': {
+    sector: 'automotive',
+    sectorName: 'Automoción',
+    competitors: [
+      { symbol: 'GM', name: 'General Motors' },
+      { symbol: 'TSLA', name: 'Tesla' },
+    ]
+  },
+  'GM': {
+    sector: 'automotive',
+    sectorName: 'Automoción',
+    competitors: [
+      { symbol: 'F', name: 'Ford' },
+      { symbol: 'TSLA', name: 'Tesla' },
+    ]
+  },
+  
+  // Europeas adicionales
+  'MC.PA': {
+    sector: 'luxury',
+    sectorName: 'Lujo',
+    competitors: [
+      { symbol: 'KER.PA', name: 'Kering' },
+      { symbol: 'RMS.PA', name: 'Hermès' },
+    ]
+  },
+  'OR.PA': {
+    sector: 'cosmetics',
+    sectorName: 'Cosmética',
+    competitors: [
+      { symbol: 'EL', name: 'Estée Lauder' },
+      { symbol: 'COTY', name: 'Coty' },
+    ]
+  },
+  'SAP.DE': {
+    sector: 'software',
+    sectorName: 'Software Empresarial',
+    competitors: [
+      { symbol: 'ORCL', name: 'Oracle' },
+      { symbol: 'CRM', name: 'Salesforce' },
+    ]
+  },
+  'SIE.DE': {
+    sector: 'industrial',
+    sectorName: 'Industrial',
+    competitors: [
+      { symbol: 'GE', name: 'General Electric' },
+      { symbol: 'HON', name: 'Honeywell' },
+    ]
+  },
+  
+  // Mineras de oro
+  'NEM': {
+    sector: 'gold_miners',
+    sectorName: 'Mineras de Oro',
+    competitors: [
+      { symbol: 'GOLD', name: 'Barrick Gold' },
+      { symbol: 'FNV', name: 'Franco-Nevada' },
+    ]
+  },
+  'GOLD': {
+    sector: 'gold_miners',
+    sectorName: 'Mineras de Oro',
+    competitors: [
+      { symbol: 'NEM', name: 'Newmont' },
+      { symbol: 'AEM', name: 'Agnico Eagle' },
+    ]
+  },
   
   // Energía
   'REP.MC': {
@@ -151,6 +479,22 @@ const COMPANY_COMPETITORS: Record<string, { sector: string; sectorName: string; 
     competitors: [
       { symbol: 'XOM', name: 'ExxonMobil' },
       { symbol: 'TTE.PA', name: 'TotalEnergies' },
+    ]
+  },
+  'XOM': {
+    sector: 'energy_oil',
+    sectorName: 'Petróleo y Gas',
+    competitors: [
+      { symbol: 'CVX', name: 'Chevron' },
+      { symbol: 'COP', name: 'ConocoPhillips' },
+    ]
+  },
+  'CVX': {
+    sector: 'energy_oil',
+    sectorName: 'Petróleo y Gas',
+    competitors: [
+      { symbol: 'XOM', name: 'ExxonMobil' },
+      { symbol: 'COP', name: 'ConocoPhillips' },
     ]
   },
   'IBE.MC': {
@@ -277,6 +621,40 @@ class CompetitorsService {
       if (change1w > 1 && change1m > 2) trend = 'up';
       else if (change1w < -1 && change1m < -2) trend = 'down';
       
+      // Obtener P/E ratio y market cap
+      let peRatio: number | undefined;
+      let marketCap: number | undefined;
+      let forwardPE: number | undefined;
+      
+      try {
+        const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=summaryDetail,defaultKeyStatistics,price`;
+        const summaryResponse = await fetchWithCorsProxy(summaryUrl);
+        const summaryData = await summaryResponse.json();
+        
+        const summaryResult = summaryData.quoteSummary?.result?.[0];
+        if (summaryResult) {
+          // P/E Ratio (trailing)
+          const trailingPE = summaryResult.summaryDetail?.trailingPE?.raw;
+          if (trailingPE && trailingPE > 0 && trailingPE < 1000) {
+            peRatio = trailingPE;
+          }
+          
+          // Forward P/E
+          const fwdPE = summaryResult.summaryDetail?.forwardPE?.raw;
+          if (fwdPE && fwdPE > 0 && fwdPE < 1000) {
+            forwardPE = fwdPE;
+          }
+          
+          // Market Cap
+          const mktCap = summaryResult.price?.marketCap?.raw;
+          if (mktCap && mktCap > 0) {
+            marketCap = mktCap;
+          }
+        }
+      } catch (valuationError) {
+        console.warn(`[Competitors] No se pudo obtener valoración para ${symbol}`);
+      }
+      
       const competitorData: CompetitorData = {
         symbol,
         name,
@@ -285,12 +663,15 @@ class CompetitorsService {
         change1w,
         change1m,
         trend,
+        peRatio,
+        marketCap,
+        forwardPE,
       };
       
       // Guardar en caché
       competitorCache.set(symbol, { data: competitorData, timestamp: Date.now() });
       
-      console.log(`[Competitors] ${symbol}: 1d=${change1d.toFixed(2)}%, 1w=${change1w.toFixed(2)}%, 1m=${change1m.toFixed(2)}%`);
+      console.log(`[Competitors] ${symbol}: 1d=${change1d.toFixed(2)}%, 1w=${change1w.toFixed(2)}%, 1m=${change1m.toFixed(2)}%, P/E=${peRatio?.toFixed(1) || 'N/A'}`);
       
       return competitorData;
       
@@ -307,7 +688,9 @@ class CompetitorsService {
     symbol: string,
     companyChange1d: number,
     companyChange1w: number,
-    companyChange1m: number
+    companyChange1m: number,
+    companyPE?: number,
+    companyMarketCap?: number
   ): Promise<CompetitorAnalysis> {
     console.log(`[Competitors] Analizando competidores para ${symbol}`);
     
@@ -410,6 +793,66 @@ class CompetitorsService {
     // Ajuste fino por rendimiento relativo semanal
     competitorScore += Math.max(-15, Math.min(15, companyVsSector1w * 2));
     
+    // 3. Análisis de valoración P/E (bonus/penalización adicional)
+    let valuationAnalysis: CompetitorAnalysis['valuationAnalysis'] = undefined;
+    
+    // Calcular P/E promedio del sector
+    const competitorsWithPE = validCompetitors.filter(c => c.peRatio && c.peRatio > 0);
+    if (competitorsWithPE.length > 0 && companyPE && companyPE > 0) {
+      const sectorAvgPE = competitorsWithPE.reduce((sum, c) => sum + (c.peRatio || 0), 0) / competitorsWithPE.length;
+      const peVsSector = companyPE - sectorAvgPE;
+      const peRatio = companyPE / sectorAvgPE;
+      
+      // Si la empresa tiene P/E más bajo que el promedio del sector = infravalorada
+      const isUndervalued = peRatio < 0.85; // 15% más barato
+      const isOvervalued = peRatio > 1.25;  // 25% más caro
+      
+      // Ajuste de score por valoración (±10 puntos max)
+      if (isUndervalued) {
+        competitorScore += Math.min(10, (1 - peRatio) * 20);
+        console.log(`[Competitors] ${symbol} infravalorado: P/E ${companyPE.toFixed(1)} vs sector ${sectorAvgPE.toFixed(1)} (+bonus)`);
+      } else if (isOvervalued) {
+        competitorScore -= Math.min(10, (peRatio - 1) * 15);
+        console.log(`[Competitors] ${symbol} sobrevalorado: P/E ${companyPE.toFixed(1)} vs sector ${sectorAvgPE.toFixed(1)} (-penalty)`);
+      }
+      
+      // Market cap ranking
+      let marketCapRank = 1;
+      if (companyMarketCap) {
+        const competitorsWithMktCap = validCompetitors.filter(c => c.marketCap && c.marketCap > 0);
+        const sortedByMktCap = [...competitorsWithMktCap].sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
+        
+        // Encontrar posición de la empresa
+        for (let i = 0; i < sortedByMktCap.length; i++) {
+          if ((sortedByMktCap[i].marketCap || 0) > companyMarketCap) {
+            marketCapRank++;
+          } else {
+            break;
+          }
+        }
+        
+        // Bonus por ser líder del sector (mayor market cap)
+        if (marketCapRank === 1 && sortedByMktCap.length > 0) {
+          competitorScore += 5;
+          console.log(`[Competitors] ${symbol} es líder del sector por market cap (+5)`);
+        }
+      }
+      
+      const sectorAvgMarketCap = validCompetitors
+        .filter(c => c.marketCap && c.marketCap > 0)
+        .reduce((sum, c) => sum + (c.marketCap || 0), 0) / Math.max(1, validCompetitors.filter(c => c.marketCap).length);
+      
+      valuationAnalysis = {
+        companyPE: companyPE,
+        sectorAvgPE: sectorAvgPE,
+        peVsSector: peVsSector,
+        isUndervalued: isUndervalued,
+        companyMarketCap: companyMarketCap,
+        sectorAvgMarketCap: sectorAvgMarketCap,
+        marketCapRank: marketCapRank,
+      };
+    }
+    
     // Limitar a -100 a +100
     competitorScore = Math.max(-100, Math.min(100, competitorScore));
     
@@ -437,6 +880,15 @@ class CompetitorsService {
           summary = `${symbol} similar a competidores (${competitorNames})`;
         }
       }
+      
+      // Añadir info de valoración al summary
+      if (valuationAnalysis) {
+        if (valuationAnalysis.isUndervalued) {
+          summary += `. P/E atractivo (${valuationAnalysis.companyPE?.toFixed(1)} vs ${valuationAnalysis.sectorAvgPE?.toFixed(1)} sector)`;
+        } else if (valuationAnalysis.peVsSector && valuationAnalysis.peVsSector > valuationAnalysis.sectorAvgPE * 0.25) {
+          summary += `. P/E elevado vs sector`;
+        }
+      }
     }
     
     console.log(`[Competitors] Score: ${competitorScore}, Sector: ${sectorTrend}, Outperforming: ${outperforming}`);
@@ -457,6 +909,7 @@ class CompetitorsService {
       competitorScore,
       hasData: true,
       summary,
+      valuationAnalysis,
     };
   }
 }
