@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
-import { favoritesService } from '../../services/favorites-service';
+import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
 import { TrackingStatsCard } from '../TrackingStatsCard';

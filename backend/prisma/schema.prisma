@@ -1,0 +1,211 @@
+// Prisma Schema for Guess Investor
+// Modelos migrados desde AsyncStorage del frontend
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Cambiar a "postgresql" en producción
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// PREDICTIONS - Predicciones generadas y su tracking
+// ============================================================================
+
+model Prediction {
+  id                String    @id @default(uuid())
+  symbol            String
+  assetType         String    // "stock" | "crypto" | "etf" | "commodity"
+  timeframe         String    // "intraday" | "swing" | "longterm"
+  
+  // Predicción
+  direction         String    // "up" | "down"
+  predictedChange   Float     // % esperado
+  confidence        Float     // 0-100
+  currentPrice      Float
+  targetPrice       Float
+  predictedPriceMin Float?
+  predictedPriceMax Float?
+  
+  // Fechas
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  
+  // Verificación (se llena después)
+  verified          Boolean   @default(false)
+  verifiedAt        DateTime?
+  actualPrice       Float?
+  actualChange      Float?
+  directionCorrect  Boolean?
+  accuracyScore     Float?    // 0-100
+  
+  // Análisis detallado (JSON)
+  factorBreakdown   String?   // JSON con scores de cada factor
+  reasoning         String?
+  
+  // Índices para búsquedas frecuentes
+  @@index([symbol])
+  @@index([verified])
+  @@index([createdAt])
+  @@index([symbol, timeframe])
+}
+
+// ============================================================================
+// FAVORITES - Activos favoritos del usuario
+// ============================================================================
+
+model Favorite {
+  id        String   @id @default(uuid())
+  symbol    String   @unique
+  name      String
+  assetType String
+  addedAt   DateTime @default(now())
+  sortOrder Int      @default(0)
+  
+  @@index([symbol])
+}
+
+// ============================================================================
+// LEARNED WEIGHTS - Pesos aprendidos por el sistema
+// ============================================================================
+
+model LearnedWeights {
+  id          String   @id @default(uuid())
+  
+  // Pesos por factor (0-1)
+  trend       Float    @default(0.091)
+  technical   Float    @default(0.091)
+  sentiment   Float    @default(0.091)
+  news        Float    @default(0.091)
+  macro       Float    @default(0.091)
+  competitors Float    @default(0.091)
+  forex       Float    @default(0.091)
+  institutional Float  @default(0.091)
+  seasonality Float    @default(0.091)
+  financials  Float    @default(0.091)
+  expectations Float   @default(0.091)
+  
+  // Metadata
+  version     Int      @default(1)
+  trainedAt   DateTime @default(now())
+  sampleCount Int      @default(0)
+  accuracy    Float?
+  
+  @@index([version])
+}
+
+// ============================================================================
+// ASSET ADJUSTMENTS - Ajustes específicos por activo
+// ============================================================================
+
+model AssetAdjustment {
+  id              String   @id @default(uuid())
+  symbol          String   @unique
+  
+  // Ajustes
+  magnitudeScale  Float    @default(1.0)  // 0.3-1.0, reduce predicciones
+  directionalBias Float    @default(0.0)  // -0.05 a +0.05
+  confidenceScale Float    @default(1.0)  // 0.5-1.0
+  
+  // Estadísticas aprendidas
+  avgError        Float?
+  avgBias         Float?
+  sampleCount     Int      @default(0)
+  
+  // Metadata
+  reason          String   @default("learned") // "manual" | "learned"
+  updatedAt       DateTime @updatedAt
+  
+  @@index([symbol])
+}
+
+// ============================================================================
+// ADAPTIVE WEIGHTS STATE - Estado del sistema adaptativo
+// ============================================================================
+
+model AdaptiveState {
+  id                String   @id @default(uuid())
+  
+  // Performance window
+  directionAccuracy Float?
+  avgAccuracyScore  Float?
+  sampleCount       Int      @default(0)
+  
+  // Ajustes actuales (JSON con ajustes por factor)
+  currentAdjustments String? // JSON
+  
+  // Metadata
+  lastUpdate        DateTime @default(now())
+  
+  @@index([lastUpdate])
+}
+
+// ============================================================================
+// CONFIDENCE CALIBRATION - Calibración de confianza
+// ============================================================================
+
+model ConfidenceCalibration {
+  id              String   @id @default(uuid())
+  
+  // Bins de calibración (JSON array)
+  calibrationBins String?  // JSON: [{binStart, binEnd, actualAccuracy, count}]
+  
+  // Parámetros del modelo
+  slope           Float    @default(1.0)
+  intercept       Float    @default(0.0)
+  
+  // Metadata
+  trainedAt       DateTime @default(now())
+  sampleCount     Int      @default(0)
+  
+  @@index([trainedAt])
+}
+
+// ============================================================================
+// MARKET DATA CACHE - Cache de datos de mercado
+// ============================================================================
+
+model MarketDataCache {
+  id          String   @id @default(uuid())
+  symbol      String
+  dataType    String   // "quote" | "history" | "profile" | "financials"
+  timeframe   String?  // para history: "1d", "5d", "1mo", etc.
+  
+  data        String   // JSON con los datos
+  
+  cachedAt    DateTime @default(now())
+  expiresAt   DateTime
+  
+  @@unique([symbol, dataType, timeframe])
+  @@index([symbol])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// TRAINING CACHE - Cache de predicciones para entrenamiento
+// ============================================================================
+
+model TrainingCache {
+  id              String   @id @default(uuid())
+  symbol          String
+  timeframe       String
+  
+  // Datos de la predicción
+  predictedChange Float
+  confidence      Float
+  direction       String
+  currentPrice    Float
+  targetPrice     Float
+  
+  // Análisis (JSON)
+  analysisData    String?
+  
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+  
+  @@unique([symbol, timeframe])
+  @@index([symbol])
+  @@index([expiresAt])
+}

@@ -18,9 +18,9 @@ import {
   useWindowDimensions,
   View
 } from 'react-native';
-import { favoritesService } from '../../../services/favorites-service';
+import { apiClient } from '../../../services/api-client';
+import { favoritesService } from '../../../services/favorites-service-v2';
 import { ALL_ASSETS, MarketAsset, marketDataService } from '../../../services/market-data-service';
-import { predictionCalculatorService } from '../../../services/prediction-calculator';
 import {
   TIMEFRAME_INFO,
   trainingCacheService,
@@ -131,9 +131,9 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
             if (data) {
               return {
                 ...asset,
-                price: data.regularMarketPrice,
-                change: data.priceChange,
-                changePercent: data.priceChangePercent,
+                price: data.price,
+                change: data.change,
+                changePercent: data.changePercent,
                 currency: data.currency,
                 loading: false,
               };
@@ -206,12 +206,10 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       // Enviar mensaje al chat (esto generará una predicción)
       await sendMessage(message);
 
-      // Obtener predicción real del servicio de cálculo
+      // Obtener predicción real del backend
       const timeframeDays = timeframe === 'intraday' ? 1 : timeframe === 'swing' ? 7 : 30;
-      const assetType = asset.type === 'crypto' ? 'crypto' : 'stock';
-      const calculatedPrediction = await predictionCalculatorService.calculatePrediction(
+      const calculatedPrediction = await apiClient.calculatePrediction(
         asset.symbol,
-        assetType,
         timeframeDays
       );
 
@@ -385,12 +383,10 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
         await sendMessage(message);
 
-        // Obtener predicción real del servicio de cálculo
+        // Obtener predicción real del backend
         const timeframeDays = selectedTimeframe === 'intraday' ? 1 : selectedTimeframe === 'swing' ? 7 : 30;
-        const assetType = asset.type === 'crypto' ? 'crypto' : 'stock';
-        const calculatedPrediction = await predictionCalculatorService.calculatePrediction(
+        const calculatedPrediction = await apiClient.calculatePrediction(
           asset.symbol,
-          assetType,
           timeframeDays
         );
 

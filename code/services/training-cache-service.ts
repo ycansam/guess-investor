@@ -4,7 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { CalculatedPrediction } from './prediction-calculator';
+import type { CalculatedPrediction } from './api-client';
 
 export type TrainingTimeframe = 'intraday' | 'swing' | 'longterm';
 

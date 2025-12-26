@@ -18,11 +18,10 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
+import { apiClient, CalculatedPrediction } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
-import { CalculatedPrediction, predictionCalculatorService } from '../../services/prediction-calculator';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
-import { yahooV8Service } from '../../services/yahoo-v8-service';
-import { InvestmentPrediction } from '../../types';
+import { AssetType, InvestmentPrediction } from '../../types';
 
 // Tipos de timeframe para el gráfico
 type ChartTimeframe = 'intraday' | 'swing' | 'longterm';
@@ -93,7 +92,7 @@ function toInvestmentPrediction(
       id: `${symbol}-${Date.now()}`,
       asset: calc.asset,
       symbol: calc.symbol,
-      assetType: calc.assetType,
+      assetType: calc.assetType as AssetType,
       currentPrice: calc.currentPrice,
       predictedPrice: calc.predictedPriceMax,
       predictedPriceMin: calc.predictedPriceMin,
@@ -133,7 +132,7 @@ function toInvestmentPrediction(
       id: `${symbol}-${Date.now()}`,
       asset: ad.asset,
       symbol: ad.symbol,
-      assetType: ad.assetType,
+      assetType: ad.assetType as AssetType,
       currentPrice: ad.currentPrice,
       predictedPrice: ad.predictedPriceMax,
       predictedPriceMin: ad.predictedPriceMin,
@@ -197,23 +196,23 @@ export default function AssetDetailScreen() {
 
     setLoading(true);
     try {
-      const v8Data = await yahooV8Service.getQuote(symbol);
-      if (v8Data) {
+      const quote = await apiClient.getQuote(symbol);
+      if (quote) {
         setAssetData({
-          symbol: v8Data.symbol,
-          name: v8Data.longName || v8Data.shortName || symbol,
-          price: v8Data.regularMarketPrice,
-          currency: v8Data.currency,
-          change: v8Data.priceChange,
-          changePercent: v8Data.priceChangePercent,
+          symbol: quote.symbol,
+          name: quote.name || symbol,
+          price: quote.price,
+          currency: quote.currency,
+          change: quote.change,
+          changePercent: quote.changePercent,
         });
         
         // Convertir a EUR
-        if (v8Data.currency && v8Data.currency !== 'EUR') {
-          const eurPrice = await currencyService.convertToEUR(v8Data.regularMarketPrice, v8Data.currency);
+        if (quote.currency && quote.currency !== 'EUR') {
+          const eurPrice = await currencyService.convertToEUR(quote.price, quote.currency);
           setPriceInEur(eurPrice);
         } else {
-          setPriceInEur(v8Data.regularMarketPrice);
+          setPriceInEur(quote.price);
         }
       }
     } catch (error) {
@@ -244,9 +243,9 @@ export default function AssetDetailScreen() {
       setPredictionData([]);
 
       // Obtener datos históricos
-      const historical = await yahooV8Service.getHistorical(symbol, range as any, config.historyInterval);
+      const historical = await apiClient.getHistory(symbol, range);
 
-      if (historical?.historicalPrices && historical.historicalPrices.length > 0) {
+      if (historical && historical.length > 0) {
         // Obtener la tasa de cambio a EUR
         const currency = assetData?.currency || 'USD';
         let rate = 1;
@@ -255,8 +254,8 @@ export default function AssetDetailScreen() {
         }
         setEurExchangeRate(rate);
 
-        // Filtrar y formatear datos
-        let prices = historical.historicalPrices;
+        // Filtrar y formatear datos - historical ya es un array
+        let prices = historical;
 
         // Limitar puntos según timeframe
         if (selectedTimeframe === 'intraday') {
@@ -323,9 +322,8 @@ export default function AssetDetailScreen() {
         ? 'crypto'
         : 'stock';
 
-      const pred = await predictionCalculatorService.calculatePrediction(
+      const pred = await apiClient.calculatePrediction(
         symbol,
-        assetType,
         predictionDays
       );
 

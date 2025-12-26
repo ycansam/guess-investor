@@ -6,10 +6,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssetType } from '../types';
-import { accuracyPredictorService } from './accuracy-predictor-service';
-import { assetClassifierService } from './asset-classifier-service';
+import { apiClient } from './api-client';
 import type { TrainingTimeframe } from './training-cache-service';
-import { yahooV8Service } from './yahoo-v8-service';
 
 const TRACKING_STORAGE_KEY = 'prediction-tracking';
 
@@ -348,21 +346,19 @@ class PredictionTrackingService {
       try {
         console.log(`[Tracking] Verificando predicción ${prediction.id} para ${prediction.symbol}...`);
         
-        // Obtener datos del mercado
-        const currentData = await yahooV8Service.getQuote(prediction.symbol);
+        // Obtener datos del mercado usando apiClient
+        const currentData = await apiClient.getQuote(prediction.symbol);
         if (!currentData) {
           console.error(`[Tracking] No se pudo obtener datos para ${prediction.symbol}`);
           prediction.status = 'error';
           continue;
         }
         
-        // Usar precio de cierre si está disponible, sino precio actual
-        // regularMarketPrice es el precio actual/último (único disponible en V8)
+        // Usar precio actual
         let actualPrice: number;
         
         // Simplificado: usar precio de mercado actual
-        // Para predicciones pasadas, esto es el último precio conocido
-        actualPrice = currentData.regularMarketPrice || 0;
+        actualPrice = currentData.price || 0;
         
         if (!actualPrice) {
           console.error(`[Tracking] Precio no disponible para ${prediction.symbol}`);
@@ -453,14 +449,7 @@ class PredictionTrackingService {
         
         verified.push(prediction);
         
-        // NUEVO: Actualizar clasificador con accuracy por timeframe
-        if (prediction.timeframe && prediction.accuracyScore !== undefined) {
-          await assetClassifierService.updateLearnedTimeframe(
-            prediction.symbol,
-            prediction.timeframe,
-            prediction.accuracyScore
-          );
-        }
+        // NOTE: assetClassifierService.updateLearnedTimeframe moved to legacy
         
         console.log(`[Tracking] Verificado ${prediction.symbol}:`, {
           predicted: `${prediction.predictedDirection} (${prediction.predictedChange}%)`,
@@ -481,12 +470,7 @@ class PredictionTrackingService {
     if (verified.length > 0) {
       await this.save();
       
-      // Reconstruir modelo de predicción de accuracy
-      try {
-        await accuracyPredictorService.rebuildModel();
-      } catch (error) {
-        console.log('[Tracking] No se pudo actualizar modelo de accuracy');
-      }
+      // NOTE: accuracyPredictorService.rebuildModel moved to legacy
     }
     
     return verified;

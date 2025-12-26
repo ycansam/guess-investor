@@ -1,12 +1,7 @@
 /**
  * Servicio para conversión de monedas a EUR
- * Usa Yahoo Finance para obtener tipos de cambio en tiempo real
+ * Usa fallback rates (React Native no tiene CORS issues, pero Yahoo bloquea)
  */
-
-import apiConfig from '../data/api-config.json';
-import { fetchWithCorsProxy } from './cors-proxy';
-
-const config = apiConfig.yahoo;
 
 // Caché de tipos de cambio (válido por 1 hora)
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hora
@@ -56,42 +51,17 @@ class CurrencyService {
       return cached.rate;
     }
 
-    try {
-      // Yahoo Finance usa el formato XXXEUR=X para tipos de cambio
-      const symbol = `${currencyUpper}EUR=X`;
-      console.log(`[Currency] Obteniendo tipo de cambio ${currencyUpper} -> EUR`);
-
-      const yahooUrl = `${config.baseUrl}/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
-
-      const response = await fetchWithCorsProxy(yahooUrl, {
-        signal: AbortSignal.timeout(8000),
-      });
-
-      const data = await response.json();
-      const result = data.chart?.result?.[0];
-      const rate = result?.meta?.regularMarketPrice;
-
-      if (rate && rate > 0) {
-        console.log(`[Currency] ${currencyUpper}/EUR = ${rate}`);
-        exchangeRateCache.set(currencyUpper, { rate, timestamp: Date.now() });
-        return rate;
-      }
-
-      throw new Error('No se encontró el tipo de cambio');
-    } catch (error: any) {
-      console.warn(`[Currency] Error obteniendo ${currencyUpper}/EUR: ${error.message}`);
-      
-      // Usar fallback
-      const fallback = FALLBACK_RATES[currencyUpper];
-      if (fallback) {
-        console.log(`[Currency] Usando fallback para ${currencyUpper}: ${fallback}`);
-        return fallback;
-      }
-
-      // Si no tenemos fallback, asumir USD
-      console.warn(`[Currency] Moneda ${currencyUpper} desconocida, asumiendo USD`);
-      return FALLBACK_RATES.USD;
+    // Usar fallback rates directamente (Yahoo bloquea desde mobile)
+    const fallback = FALLBACK_RATES[currencyUpper];
+    if (fallback) {
+      console.log(`[Currency] Usando rate para ${currencyUpper}: ${fallback}`);
+      exchangeRateCache.set(currencyUpper, { rate: fallback, timestamp: Date.now() });
+      return fallback;
     }
+
+    // Si no tenemos fallback, asumir USD
+    console.warn(`[Currency] Moneda ${currencyUpper} desconocida, asumiendo USD`);
+    return FALLBACK_RATES.USD;
   }
 
   /**
