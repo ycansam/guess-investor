@@ -297,7 +297,7 @@ export default function AssetDetailScreen() {
             isPrediction: false,
           };
         });
-
+        
         setChartData(giftedData);
       }
     } catch (error) {
@@ -700,35 +700,22 @@ export default function AssetDetailScreen() {
                     pointerVanishDelay: 500,
                     pointerLabelComponent: (items: any[]) => {
                       const item = items[0];
-                      // Debug: ver estructura del item
-                      console.log('[Chart Tooltip] item:', JSON.stringify(item, null, 2));
-                      
-                      // Buscar el punto en combinedChartData por valor más cercano
-                      let pointData: ChartDataPoint | undefined;
                       let dateStr = '';
                       let timeStr = '';
                       let isPred = false;
                       
-                      // Intentar obtener por índice si existe
-                      if (typeof item?.index === 'number') {
-                        pointData = combinedChartData[item.index];
-                      } else {
-                        // Buscar por valor más cercano
-                        const targetValue = item?.value;
-                        if (targetValue !== undefined) {
-                          pointData = combinedChartData.find(p => Math.abs(p.value - targetValue) < 0.01);
-                        }
-                      }
+                      // gifted-charts pasa las propiedades custom directamente en el item
+                      const timestamp = item?.timestamp;
+                      isPred = item?.isPrediction || false;
                       
-                      if (pointData?.timestamp) {
-                        const date = new Date(pointData.timestamp);
+                      if (timestamp) {
+                        const date = new Date(timestamp);
                         const day = date.getDate().toString().padStart(2, '0');
                         const month = (date.getMonth() + 1).toString().padStart(2, '0');
                         const hours = date.getHours().toString().padStart(2, '0');
                         const minutes = date.getMinutes().toString().padStart(2, '0');
                         dateStr = `${day}/${month}`;
                         timeStr = `${hours}:${minutes}`;
-                        isPred = pointData.isPrediction || false;
                       }
                       
                       return (
