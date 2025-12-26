@@ -32,6 +32,8 @@ interface ChartDataPoint {
   value: number;
   label?: string;
   dataPointText?: string;
+  timestamp?: number; // Unix timestamp para el tooltip
+  isPrediction?: boolean; // Para diferenciar datos históricos de predicción
 }
 
 interface AssetData {
@@ -291,6 +293,8 @@ export default function AssetDetailScreen() {
           return {
             value: p.close * rate, // Convertir a EUR
             label,
+            timestamp: p.timestamp, // Guardar timestamp para tooltip
+            isPrediction: false,
           };
         });
 
@@ -372,6 +376,8 @@ export default function AssetDetailScreen() {
           predPoints.push({
             value: interpolatedValue,
             label,
+            timestamp,
+            isPrediction: true,
           });
         }
 
@@ -435,6 +441,8 @@ export default function AssetDetailScreen() {
           predPoints.push({
             value: interpolatedValue,
             label,
+            timestamp,
+            isPrediction: true,
           });
         }
         
@@ -684,14 +692,45 @@ export default function AssetDetailScreen() {
                     pointerStripWidth: 2,
                     pointerColor: '#6366f1',
                     radius: 5,
-                    pointerLabelWidth: 120,
-                    pointerLabelHeight: 50,
+                    pointerLabelWidth: 140,
+                    pointerLabelHeight: 70,
                     activatePointersOnLongPress: false,
                     autoAdjustPointerLabelPosition: true,
-                    shiftPointerLabelY: -40,
+                    shiftPointerLabelY: -50,
                     pointerVanishDelay: 500,
                     pointerLabelComponent: (items: any[]) => {
                       const item = items[0];
+                      // Debug: ver estructura del item
+                      console.log('[Chart Tooltip] item:', JSON.stringify(item, null, 2));
+                      
+                      // Buscar el punto en combinedChartData por valor más cercano
+                      let pointData: ChartDataPoint | undefined;
+                      let dateStr = '';
+                      let timeStr = '';
+                      let isPred = false;
+                      
+                      // Intentar obtener por índice si existe
+                      if (typeof item?.index === 'number') {
+                        pointData = combinedChartData[item.index];
+                      } else {
+                        // Buscar por valor más cercano
+                        const targetValue = item?.value;
+                        if (targetValue !== undefined) {
+                          pointData = combinedChartData.find(p => Math.abs(p.value - targetValue) < 0.01);
+                        }
+                      }
+                      
+                      if (pointData?.timestamp) {
+                        const date = new Date(pointData.timestamp);
+                        const day = date.getDate().toString().padStart(2, '0');
+                        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                        const hours = date.getHours().toString().padStart(2, '0');
+                        const minutes = date.getMinutes().toString().padStart(2, '0');
+                        dateStr = `${day}/${month}`;
+                        timeStr = `${hours}:${minutes}`;
+                        isPred = pointData.isPrediction || false;
+                      }
+                      
                       return (
                         <View style={{
                           backgroundColor: '#1e1e2e',
@@ -699,8 +738,15 @@ export default function AssetDetailScreen() {
                           paddingVertical: 8,
                           borderRadius: 8,
                           borderWidth: 1,
-                          borderColor: '#6366f1',
+                          borderColor: isPred ? '#818cf8' : '#6366f1',
+                          minWidth: 100,
+                          alignItems: 'center',
                         }}>
+                          {dateStr ? (
+                            <Text style={{ color: '#9ca3af', fontSize: 11, marginBottom: 2 }}>
+                              {dateStr} {timeStr}{isPred ? ' (Pred)' : ''}
+                            </Text>
+                          ) : null}
                           <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
                             {formatPrice(item.value)} €
                           </Text>
