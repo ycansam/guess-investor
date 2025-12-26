@@ -151,6 +151,9 @@ export interface QuoteSummaryData {
   currentRatio?: number;
   earningsGrowth?: number;
   freeCashflow?: number;
+  operatingCashflow?: number;
+  totalCash?: number;
+  totalDebt?: number;
 
   // Key Statistics
   beta?: number;
@@ -346,6 +349,9 @@ function parseQuoteSummary(symbol: string, data: any): QuoteSummaryData {
     currentRatio: fd.currentRatio?.raw,
     earningsGrowth: fd.earningsGrowth?.raw,
     freeCashflow: fd.freeCashflow?.raw,
+    operatingCashflow: fd.operatingCashflow?.raw,
+    totalCash: fd.totalCash?.raw,
+    totalDebt: fd.totalDebt?.raw,
 
     // Key Statistics
     beta: ks.beta?.raw,

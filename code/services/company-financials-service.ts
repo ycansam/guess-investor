@@ -63,6 +63,14 @@ export interface CompanyFinancials {
   currentRatio: number; // Ratio corriente
   debtToEquity: number; // Deuda/Capital
   
+  // Balance y Cash Flow (NUEVO)
+  totalCash: number; // Efectivo total
+  totalDebt: number; // Deuda total
+  freeCashFlow: number; // Flujo de caja libre
+  operatingCashFlow: number; // Flujo de caja operativo
+  fcfMargin: number; // FCF/Revenue (%)
+  netDebt: number; // Deuda neta (totalDebt - totalCash)
+  
   // Rentabilidad
   returnOnEquity: number; // ROE (%)
   returnOnAssets: number; // ROA (%)
@@ -203,17 +211,6 @@ class CompanyFinancialsService {
       
       console.log(`[Financials] No se pudieron obtener datos para ${symbol}`);
       return null;
-      const result = data.quoteSummary?.result?.[0];
-      
-      if (!result) {
-        console.log(`[Financials] No hay datos para ${symbol}`);
-        return null;
-      }
-      
-      const financials = this.parseFinancials(symbol, result);
-      financialsCache.set(symbol, { data: financials, timestamp: Date.now() });
-      
-      return financials;
       
     } catch (error: any) {
       console.error(`[Financials] Error para ${symbol}:`, error.message);
@@ -312,6 +309,14 @@ class CompanyFinancialsService {
       // Liquidez y deuda (no disponible)
       currentRatio: 0,
       debtToEquity: 0,
+      
+      // Cash Flow y Balance (no disponible sin fundamentales)
+      totalCash: 0,
+      totalDebt: 0,
+      freeCashFlow: 0,
+      operatingCashFlow: 0,
+      fcfMargin: 0,
+      netDebt: 0,
       
       // Rentabilidad (no disponible)
       returnOnEquity: 0,
@@ -455,6 +460,16 @@ class CompanyFinancialsService {
       currentRatio: getValue(financial.currentRatio),
       debtToEquity: getValue(financial.debtToEquity),
       
+      // Cash Flow y Balance
+      totalCash: getValue(financial.totalCash),
+      totalDebt: getValue(financial.totalDebt),
+      freeCashFlow: getValue(financial.freeCashflow),
+      operatingCashFlow: getValue(financial.operatingCashflow),
+      fcfMargin: getValue(financial.totalRevenue) && getValue(financial.freeCashflow)
+        ? (getValue(financial.freeCashflow) / getValue(financial.totalRevenue)) * 100
+        : 0,
+      netDebt: getValue(financial.totalDebt) - getValue(financial.totalCash),
+      
       returnOnEquity: getPercent(financial.returnOnEquity),
       returnOnAssets: getPercent(financial.returnOnAssets),
       
@@ -535,7 +550,7 @@ class CompanyFinancialsService {
     
     // Usar datos de V8 si están disponibles
     const price = v8Data?.regularMarketPrice || 0;
-    const marketCap = v8Data?.marketCap || data.marketCap || 0;
+    const marketCap = data.marketCap || 0;
     
     return {
       name: data.longName || data.shortName || symbol,
@@ -570,6 +585,16 @@ class CompanyFinancialsService {
       currentRatio: data.currentRatio || 0,
       debtToEquity: data.debtToEquity || 0,
       
+      // Cash Flow y Balance
+      totalCash: data.totalCash || 0,
+      totalDebt: data.totalDebt || 0,
+      freeCashFlow: data.freeCashflow || 0,
+      operatingCashFlow: data.operatingCashflow || 0,
+      fcfMargin: data.totalRevenue && data.freeCashflow 
+        ? (data.freeCashflow / data.totalRevenue) * 100 
+        : 0,
+      netDebt: (data.totalDebt || 0) - (data.totalCash || 0),
+      
       returnOnEquity: toPercent(data.returnOnEquity),
       returnOnAssets: toPercent(data.returnOnAssets),
       
@@ -579,7 +604,6 @@ class CompanyFinancialsService {
       targetPriceLow: data.targetLowPrice || 0,
       numberOfAnalysts: data.numberOfAnalystOpinions || 0,
       
-      earningsHistory,
       lastEarningsSurprise,
       avgEarningsSurprise,
       nextEarningsEstimate: 0,
@@ -678,6 +702,16 @@ class CompanyFinancialsService {
       
       currentRatio: data.currentRatio || 0,
       debtToEquity: data.debtToEquity || 0,
+      
+      // Cash Flow y Balance
+      totalCash: data.totalCash || 0,
+      totalDebt: data.totalDebt || 0,
+      freeCashFlow: data.freeCashflow || 0,
+      operatingCashFlow: data.operatingCashflow || 0,
+      fcfMargin: data.totalRevenue && data.freeCashflow 
+        ? (data.freeCashflow / data.totalRevenue) * 100 
+        : 0,
+      netDebt: (data.totalDebt || 0) - (data.totalCash || 0),
       
       returnOnEquity: toPercent(data.returnOnEquity),
       returnOnAssets: toPercent(data.returnOnAssets),

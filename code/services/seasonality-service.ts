@@ -16,6 +16,13 @@ export interface SeasonalityAnalysis {
   seasonalScore: number; // -100 a +100
   hasData: boolean;
   summary: string;
+  // Patrón histórico del stock específico
+  historicalPattern?: {
+    lastYear: number; // % cambio mismo período año pasado
+    avg3Years: number; // % cambio promedio últimos 3 años en este período
+    consistency: number; // 0-100 qué tan consistente es el patrón
+    direction: 'bullish' | 'bearish' | 'neutral';
+  };
 }
 
 export interface SeasonalEvent {
@@ -2052,7 +2059,170 @@ class SeasonalityService {
       seasonalScore: Math.round(seasonalScore),
       hasData: events.length > 0,
       summary,
+      historicalPattern: undefined, // Se llena con analyzeSeasonalityWithHistory
     };
+  }
+  
+  /**
+   * Versión asíncrona que incluye patrones históricos del stock específico
+   */
+  async analyzeSeasonalityWithHistory(symbol: string): Promise<SeasonalityAnalysis> {
+    // Obtener análisis base síncrono
+    const baseAnalysis = this.analyzeSeasonality(symbol);
+    
+    // Intentar obtener patrón histórico
+    try {
+      const historicalPattern = await this.getHistoricalPattern(symbol);
+      
+      if (historicalPattern) {
+        // Ajustar score basándose en patrón histórico
+        let adjustedScore = baseAnalysis.seasonalScore;
+        
+        // El patrón histórico aporta hasta ±15 puntos
+        if (historicalPattern.consistency > 60) {
+          if (historicalPattern.direction === 'bullish') {
+            adjustedScore += Math.min(15, historicalPattern.avg3Years * 0.5);
+          } else if (historicalPattern.direction === 'bearish') {
+            adjustedScore -= Math.min(15, Math.abs(historicalPattern.avg3Years) * 0.5);
+          }
+        }
+        
+        adjustedScore = Math.max(-100, Math.min(100, adjustedScore));
+        
+        // Actualizar summary con info histórica
+        let updatedSummary = baseAnalysis.summary;
+        if (historicalPattern.consistency > 50) {
+          const patternDesc = historicalPattern.direction === 'bullish' 
+            ? `📊 Históricamente positivo en este período (+${historicalPattern.avg3Years.toFixed(1)}% avg 3Y)`
+            : historicalPattern.direction === 'bearish'
+            ? `📊 Históricamente negativo en este período (${historicalPattern.avg3Years.toFixed(1)}% avg 3Y)`
+            : '';
+          if (patternDesc) {
+            updatedSummary = `${updatedSummary} ${patternDesc}`;
+          }
+        }
+        
+        return {
+          ...baseAnalysis,
+          seasonalScore: Math.round(adjustedScore),
+          summary: updatedSummary,
+          historicalPattern,
+        };
+      }
+    } catch (error) {
+      console.warn(`[Seasonality] No se pudo obtener patrón histórico para ${symbol}:`, error);
+    }
+    
+    return baseAnalysis;
+  }
+  
+  /**
+   * Obtiene el patrón histórico de un stock para el período actual del año
+   * Analiza los últimos 3 años para el mismo período de 30 días
+   */
+  private async getHistoricalPattern(symbol: string): Promise<SeasonalityAnalysis['historicalPattern']> {
+    try {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentDay = now.getDate();
+      
+      // Obtener datos de los últimos 4 años
+      const endDate = Math.floor(Date.now() / 1000);
+      const startDate = endDate - (4 * 365 * 24 * 60 * 60); // 4 años atrás
+      
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${startDate}&period2=${endDate}&interval=1d`;
+      
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      const data = await response.json();
+      
+      if (!data.chart?.result?.[0]) {
+        return undefined;
+      }
+      
+      const result = data.chart.result[0];
+      const timestamps = result.timestamp || [];
+      const closes = result.indicators?.quote?.[0]?.close || [];
+      
+      if (timestamps.length < 250) { // Mínimo ~1 año de datos
+        return undefined;
+      }
+      
+      // Calcular cambios para el mismo período en años anteriores
+      const periodChanges: number[] = [];
+      
+      for (let yearsAgo = 1; yearsAgo <= 3; yearsAgo++) {
+        const targetDate = new Date(now);
+        targetDate.setFullYear(targetDate.getFullYear() - yearsAgo);
+        
+        // Buscar el precio al inicio del período (15 días antes) y al final
+        const periodStart = new Date(targetDate);
+        periodStart.setDate(periodStart.getDate() - 15);
+        
+        const periodEnd = new Date(targetDate);
+        periodEnd.setDate(periodEnd.getDate() + 15);
+        
+        let startPrice: number | null = null;
+        let endPrice: number | null = null;
+        
+        for (let i = 0; i < timestamps.length; i++) {
+          const date = new Date(timestamps[i] * 1000);
+          const price = closes[i];
+          
+          if (price === null || price === undefined) continue;
+          
+          // Buscar precio cercano al inicio del período
+          if (!startPrice && Math.abs(date.getTime() - periodStart.getTime()) < 5 * 24 * 60 * 60 * 1000) {
+            startPrice = price;
+          }
+          
+          // Buscar precio cercano al final del período
+          if (Math.abs(date.getTime() - periodEnd.getTime()) < 5 * 24 * 60 * 60 * 1000) {
+            endPrice = price;
+          }
+        }
+        
+        if (startPrice && endPrice && startPrice > 0) {
+          const change = ((endPrice - startPrice) / startPrice) * 100;
+          periodChanges.push(change);
+        }
+      }
+      
+      if (periodChanges.length === 0) {
+        return undefined;
+      }
+      
+      const lastYear = periodChanges[0] || 0;
+      const avg3Years = periodChanges.reduce((a, b) => a + b, 0) / periodChanges.length;
+      
+      // Calcular consistencia (qué tan seguido el patrón va en la misma dirección)
+      const positiveCount = periodChanges.filter(c => c > 0).length;
+      const negativeCount = periodChanges.filter(c => c < 0).length;
+      const dominantDirection = positiveCount > negativeCount ? 'positive' : 'negative';
+      const consistency = Math.max(positiveCount, negativeCount) / periodChanges.length * 100;
+      
+      // Determinar dirección solo si hay consistencia
+      let direction: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+      if (consistency >= 66 && avg3Years > 2) {
+        direction = 'bullish';
+      } else if (consistency >= 66 && avg3Years < -2) {
+        direction = 'bearish';
+      }
+      
+      console.log(`[Seasonality] ${symbol} patrón histórico: lastYear=${lastYear.toFixed(1)}%, avg3Y=${avg3Years.toFixed(1)}%, consistency=${consistency.toFixed(0)}%, direction=${direction}`);
+      
+      return {
+        lastYear,
+        avg3Years,
+        consistency,
+        direction,
+      };
+      
+    } catch (error) {
+      console.warn(`[Seasonality] Error obteniendo patrón histórico:`, error);
+      return undefined;
+    }
   }
   
   /**

@@ -266,8 +266,8 @@ Loss = α·DirectionLoss + β·MagnitudeLoss + γ·RangeLoss
 | **Competitors** | Rendimiento vs 50+ empresas mapeadas, **P/E ratio vs sector**, **Market Cap ranking**, valoración relativa | Cuota de mercado | ~65% |
 | **Forex** | Exposición por empresa, cambios de pares, conversión automática EUR | Hedging, volatilidad FX | ~65% |
 | **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades, volumen inusual) | 13F filings SEC detallados | ~85% |
-| **Seasonality** | 50+ eventos para 20+ países, patrones globales | Patrones históricos por acción específica | ~60% |
-| **Financials** | Ingresos, márgenes, EPS, P/E, deuda, ROE, rating analistas | FCF, CAPEX, balance completo | ~65% |
+| **Seasonality** | 50+ eventos para 20+ países, patrones globales, **patrones históricos por acción específica** (performance mismo período 3 años), **ajuste score por consistencia histórica** | - | ~70% |
+| **Financials** | Ingresos, márgenes, EPS, P/E, deuda, ROE, rating analistas, **FCF (Free Cash Flow)**, **Operating Cash Flow**, **Total Cash/Debt**, **Net Debt**, **FCF Margin** | CAPEX detallado, balance trimestral | ~75% |
 | **Expectations** | EPS surprise histórico, **Revenue surprise**, **Revisiones analistas** (7d/30d/90d), EPS/Revenue estimados, **Fecha próx. earnings**, **Beat rate**, **Riesgo earnings**, **Whisper numbers** | Guidance management | ~80% |
 
 ### Empresas con Competidores Mapeados (v1.2)
