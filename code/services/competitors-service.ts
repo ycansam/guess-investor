@@ -16,6 +16,13 @@
  * - Detección DINÁMICA de competidores usando Yahoo Finance
  * - Auto-descubre empresas del mismo sector/industria
  * - No requiere mapeos manuales para nuevas empresas
+ * 
+ * MEJORADO v1.4 (Cobertura ~85%):
+ * - Market Share Analysis: Cuota de mercado estimada por revenue
+ * - Profitability Analysis: Profit Margin y ROE vs sector
+ * - Growth Analysis: Revenue Growth comparativo
+ * - Relative Strength: Fuerza relativa y momentum vs sector
+ * - 9 métricas por competidor: Revenue, Margins, ROE/ROA, Debt/Equity, Beta
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
@@ -117,10 +124,20 @@ export interface CompetitorData {
   change1w: number; // Cambio % 1 semana
   change1m: number; // Cambio % 1 mes
   trend: 'up' | 'down' | 'neutral';
-  // NUEVO: Fundamentales para comparación
+  // Fundamentales para comparación
   peRatio?: number;
   marketCap?: number;
   forwardPE?: number;
+  // NUEVO v1.4: Métricas avanzadas
+  revenue?: number;           // Ingresos totales (TTM)
+  revenueGrowth?: number;     // Crecimiento de ingresos YoY %
+  profitMargin?: number;      // Margen de beneficio neto %
+  grossMargin?: number;       // Margen bruto %
+  operatingMargin?: number;   // Margen operativo %
+  roe?: number;               // Return on Equity %
+  roa?: number;               // Return on Assets %
+  debtToEquity?: number;      // Ratio deuda/equity
+  beta?: number;              // Beta (volatilidad vs mercado)
 }
 
 export interface CompetitorAnalysis {
@@ -142,7 +159,7 @@ export interface CompetitorAnalysis {
   companyVsSector1m: number;
   outperforming: boolean; // ¿La empresa supera al sector?
   
-  // NUEVO: Análisis de valoración
+  // Análisis de valoración
   valuationAnalysis?: {
     companyPE: number;
     sectorAvgPE: number;
@@ -151,6 +168,39 @@ export interface CompetitorAnalysis {
     companyMarketCap: number;
     sectorAvgMarketCap: number;
     marketCapRank: number; // Posición por tamaño (1 = mayor)
+  };
+  
+  // NUEVO v1.4: Análisis de cuota de mercado y rentabilidad
+  marketShareAnalysis?: {
+    companyRevenue: number;
+    sectorTotalRevenue: number;
+    estimatedMarketShare: number;     // % del total de ingresos del sector
+    marketShareRank: number;          // Posición por ingresos (1 = mayor)
+    revenueVsSectorAvg: number;       // % diferencia vs promedio
+  };
+  
+  profitabilityAnalysis?: {
+    companyProfitMargin: number;
+    sectorAvgProfitMargin: number;
+    marginVsSector: number;           // Diferencia en puntos %
+    isMoreProfitable: boolean;
+    companyROE: number;
+    sectorAvgROE: number;
+    roeVsSector: number;
+  };
+  
+  growthAnalysis?: {
+    companyRevenueGrowth: number;
+    sectorAvgRevenueGrowth: number;
+    growthVsSector: number;           // Diferencia en puntos %
+    isGrowingFaster: boolean;
+  };
+  
+  relativeStrength?: {
+    rs1w: number;                     // Fuerza relativa 1 semana vs sector
+    rs1m: number;                     // Fuerza relativa 1 mes vs sector
+    rsRating: 'strong' | 'average' | 'weak';
+    momentum: 'accelerating' | 'decelerating' | 'stable';
   };
   
   // Score final (-100 a +100)
@@ -874,13 +924,23 @@ class CompetitorsService {
       if (change1w > 1 && change1m > 2) trend = 'up';
       else if (change1w < -1 && change1m < -2) trend = 'down';
       
-      // Obtener P/E ratio y market cap
+      // Obtener P/E ratio, market cap y métricas avanzadas
       let peRatio: number | undefined;
       let marketCap: number | undefined;
       let forwardPE: number | undefined;
+      // Métricas avanzadas v1.4
+      let revenue: number | undefined;
+      let revenueGrowth: number | undefined;
+      let profitMargin: number | undefined;
+      let grossMargin: number | undefined;
+      let operatingMargin: number | undefined;
+      let roe: number | undefined;
+      let roa: number | undefined;
+      let debtToEquity: number | undefined;
+      let beta: number | undefined;
       
       try {
-        const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=summaryDetail,defaultKeyStatistics,price`;
+        const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=summaryDetail,defaultKeyStatistics,price,financialData`;
         const summaryResponse = await fetchWithCorsProxy(summaryUrl);
         const summaryData = await summaryResponse.json();
         
@@ -903,6 +963,61 @@ class CompetitorsService {
           if (mktCap && mktCap > 0) {
             marketCap = mktCap;
           }
+          
+          // Beta
+          const betaVal = summaryResult.defaultKeyStatistics?.beta?.raw;
+          if (betaVal && betaVal > 0) {
+            beta = betaVal;
+          }
+          
+          // NUEVAS MÉTRICAS de financialData
+          const financialData = summaryResult.financialData;
+          if (financialData) {
+            // Revenue (Total Revenue)
+            const totalRevenue = financialData.totalRevenue?.raw;
+            if (totalRevenue && totalRevenue > 0) {
+              revenue = totalRevenue;
+            }
+            
+            // Revenue Growth
+            const revGrowth = financialData.revenueGrowth?.raw;
+            if (revGrowth !== undefined) {
+              revenueGrowth = revGrowth * 100; // Convertir a %
+            }
+            
+            // Profit Margins
+            const profitMarg = financialData.profitMargins?.raw;
+            if (profitMarg !== undefined) {
+              profitMargin = profitMarg * 100;
+            }
+            
+            const grossMarg = financialData.grossMargins?.raw;
+            if (grossMarg !== undefined) {
+              grossMargin = grossMarg * 100;
+            }
+            
+            const opMarg = financialData.operatingMargins?.raw;
+            if (opMarg !== undefined) {
+              operatingMargin = opMarg * 100;
+            }
+            
+            // ROE y ROA
+            const returnOnEquity = financialData.returnOnEquity?.raw;
+            if (returnOnEquity !== undefined) {
+              roe = returnOnEquity * 100;
+            }
+            
+            const returnOnAssets = financialData.returnOnAssets?.raw;
+            if (returnOnAssets !== undefined) {
+              roa = returnOnAssets * 100;
+            }
+            
+            // Debt to Equity
+            const debtEquity = financialData.debtToEquity?.raw;
+            if (debtEquity !== undefined) {
+              debtToEquity = debtEquity;
+            }
+          }
         }
       } catch (valuationError) {
         console.warn(`[Competitors] No se pudo obtener valoración para ${symbol}`);
@@ -919,6 +1034,16 @@ class CompetitorsService {
         peRatio,
         marketCap,
         forwardPE,
+        // Métricas avanzadas
+        revenue,
+        revenueGrowth,
+        profitMargin,
+        grossMargin,
+        operatingMargin,
+        roe,
+        roa,
+        debtToEquity,
+        beta,
       };
       
       // Guardar en caché
@@ -936,6 +1061,7 @@ class CompetitorsService {
   
   /**
    * Analiza competidores para un símbolo
+   * v1.4: Añade market share, profitability, growth y relative strength
    */
   async analyzeCompetitors(
     symbol: string,
@@ -943,7 +1069,12 @@ class CompetitorsService {
     companyChange1w: number,
     companyChange1m: number,
     companyPE?: number,
-    companyMarketCap?: number
+    companyMarketCap?: number,
+    // NUEVO v1.4: métricas adicionales de la empresa
+    companyRevenue?: number,
+    companyRevenueGrowth?: number,
+    companyProfitMargin?: number,
+    companyROE?: number
   ): Promise<CompetitorAnalysis> {
     console.log(`[Competitors] Analizando competidores para ${symbol}`);
     
@@ -1121,6 +1252,162 @@ class CompetitorsService {
       };
     }
     
+    // 4. NUEVO v1.4: Análisis de Market Share (cuota de mercado)
+    let marketShareAnalysis: CompetitorAnalysis['marketShareAnalysis'] = undefined;
+    const competitorsWithRevenue = validCompetitors.filter(c => c.revenue && c.revenue > 0);
+    
+    if (competitorsWithRevenue.length > 0 && companyRevenue && companyRevenue > 0) {
+      const sectorTotalRevenue = competitorsWithRevenue.reduce((sum, c) => sum + (c.revenue || 0), 0) + companyRevenue;
+      const estimatedMarketShare = (companyRevenue / sectorTotalRevenue) * 100;
+      const sectorAvgRevenue = competitorsWithRevenue.reduce((sum, c) => sum + (c.revenue || 0), 0) / competitorsWithRevenue.length;
+      const revenueVsSectorAvg = ((companyRevenue - sectorAvgRevenue) / sectorAvgRevenue) * 100;
+      
+      // Calcular ranking por revenue
+      const sortedByRevenue = [...competitorsWithRevenue].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+      let marketShareRank = 1;
+      for (const comp of sortedByRevenue) {
+        if ((comp.revenue || 0) > companyRevenue) {
+          marketShareRank++;
+        } else {
+          break;
+        }
+      }
+      
+      marketShareAnalysis = {
+        companyRevenue,
+        sectorTotalRevenue,
+        estimatedMarketShare,
+        marketShareRank,
+        revenueVsSectorAvg,
+      };
+      
+      // Bonus por ser líder en revenue (+5)
+      if (marketShareRank === 1) {
+        competitorScore += 5;
+        console.log(`[Competitors] ${symbol} es líder del sector por revenue (+5)`);
+      }
+      
+      // Bonus/penalización por market share significativo
+      if (estimatedMarketShare > 30) {
+        competitorScore += 5;
+        console.log(`[Competitors] ${symbol} tiene alta cuota de mercado: ${estimatedMarketShare.toFixed(1)}% (+5)`);
+      } else if (estimatedMarketShare < 10 && competitorsWithRevenue.length >= 3) {
+        competitorScore -= 3;
+      }
+    }
+    
+    // 5. NUEVO v1.4: Análisis de Profitability (rentabilidad)
+    let profitabilityAnalysis: CompetitorAnalysis['profitabilityAnalysis'] = undefined;
+    const competitorsWithMargin = validCompetitors.filter(c => c.profitMargin !== undefined);
+    const competitorsWithROE = validCompetitors.filter(c => c.roe !== undefined);
+    
+    if ((competitorsWithMargin.length > 0 && companyProfitMargin !== undefined) ||
+        (competitorsWithROE.length > 0 && companyROE !== undefined)) {
+      
+      const sectorAvgProfitMargin = competitorsWithMargin.length > 0
+        ? competitorsWithMargin.reduce((sum, c) => sum + (c.profitMargin || 0), 0) / competitorsWithMargin.length
+        : 0;
+      
+      const sectorAvgROE = competitorsWithROE.length > 0
+        ? competitorsWithROE.reduce((sum, c) => sum + (c.roe || 0), 0) / competitorsWithROE.length
+        : 0;
+      
+      const marginVsSector = (companyProfitMargin ?? 0) - sectorAvgProfitMargin;
+      const roeVsSector = (companyROE ?? 0) - sectorAvgROE;
+      const isMoreProfitable = marginVsSector > 2 || roeVsSector > 3;
+      
+      profitabilityAnalysis = {
+        companyProfitMargin: companyProfitMargin ?? 0,
+        sectorAvgProfitMargin,
+        marginVsSector,
+        isMoreProfitable,
+        companyROE: companyROE ?? 0,
+        sectorAvgROE,
+        roeVsSector,
+      };
+      
+      // Bonus por ser más rentable (+8 max)
+      if (isMoreProfitable) {
+        competitorScore += Math.min(8, marginVsSector + roeVsSector / 2);
+        console.log(`[Competitors] ${symbol} es más rentable que el sector (+bonus)`);
+      } else if (marginVsSector < -5 || roeVsSector < -5) {
+        competitorScore -= 5;
+        console.log(`[Competitors] ${symbol} tiene menor rentabilidad que el sector (-5)`);
+      }
+    }
+    
+    // 6. NUEVO v1.4: Análisis de Growth (crecimiento)
+    let growthAnalysis: CompetitorAnalysis['growthAnalysis'] = undefined;
+    const competitorsWithGrowth = validCompetitors.filter(c => c.revenueGrowth !== undefined);
+    
+    if (competitorsWithGrowth.length > 0 && companyRevenueGrowth !== undefined) {
+      const sectorAvgRevenueGrowth = competitorsWithGrowth.reduce((sum, c) => sum + (c.revenueGrowth || 0), 0) / competitorsWithGrowth.length;
+      const growthVsSector = companyRevenueGrowth - sectorAvgRevenueGrowth;
+      const isGrowingFaster = growthVsSector > 5;
+      
+      growthAnalysis = {
+        companyRevenueGrowth,
+        sectorAvgRevenueGrowth,
+        growthVsSector,
+        isGrowingFaster,
+      };
+      
+      // Bonus por crecer más rápido (+7 max)
+      if (isGrowingFaster) {
+        competitorScore += Math.min(7, growthVsSector / 2);
+        console.log(`[Competitors] ${symbol} crece más rápido que el sector: +${growthVsSector.toFixed(1)}pp (+bonus)`);
+      } else if (growthVsSector < -10) {
+        competitorScore -= 5;
+        console.log(`[Competitors] ${symbol} crece menos que el sector (-5)`);
+      }
+    }
+    
+    // 7. NUEVO v1.4: Relative Strength (fuerza relativa)
+    let relativeStrength: CompetitorAnalysis['relativeStrength'] = undefined;
+    
+    // Calcular RS (fuerza relativa vs sector)
+    const rs1w = companyVsSector1w;
+    const rs1m = companyVsSector1m;
+    
+    let rsRating: 'strong' | 'average' | 'weak' = 'average';
+    if (rs1w > 3 && rs1m > 5) {
+      rsRating = 'strong';
+    } else if (rs1w < -3 && rs1m < -5) {
+      rsRating = 'weak';
+    }
+    
+    // Detectar momentum (aceleración/desaceleración)
+    // Si el RS de la semana es mejor que el RS del mes (proporcionalmente), está acelerando
+    let momentum: 'accelerating' | 'decelerating' | 'stable' = 'stable';
+    const weeklyRSNormalized = rs1w * 4; // Normalizar a escala mensual
+    if (weeklyRSNormalized > rs1m + 2) {
+      momentum = 'accelerating';
+    } else if (weeklyRSNormalized < rs1m - 2) {
+      momentum = 'decelerating';
+    }
+    
+    relativeStrength = {
+      rs1w,
+      rs1m,
+      rsRating,
+      momentum,
+    };
+    
+    // Bonus/penalización por fuerza relativa
+    if (rsRating === 'strong') {
+      competitorScore += 5;
+      if (momentum === 'accelerating') {
+        competitorScore += 3;
+        console.log(`[Competitors] ${symbol} tiene RS fuerte y acelerando (+8)`);
+      }
+    } else if (rsRating === 'weak') {
+      competitorScore -= 5;
+      if (momentum === 'decelerating') {
+        competitorScore -= 3;
+        console.log(`[Competitors] ${symbol} tiene RS débil y desacelerando (-8)`);
+      }
+    }
+    
     // Limitar a -100 a +100
     competitorScore = Math.max(-100, Math.min(100, competitorScore));
     
@@ -1178,6 +1465,11 @@ class CompetitorsService {
       hasData: true,
       summary,
       valuationAnalysis,
+      // NUEVO v1.4
+      marketShareAnalysis,
+      profitabilityAnalysis,
+      growthAnalysis,
+      relativeStrength,
     };
   }
 }

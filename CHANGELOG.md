@@ -1,8 +1,42 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 25 de diciembre de 2025  
-**Versión:** `1.3.0`  
+**Última actualización:** 26 de diciembre de 2025  
+**Versión:** `1.4.0`  
 **Commit actual:** `d54cad0`
+
+---
+
+## [1.4.0] - 26 de diciembre de 2025
+
+### Competitors Avanzado (Cobertura: 65% → 85%)
+
+#### Nuevas Métricas por Competidor
+- **Revenue (Ingresos)** - Total Revenue TTM para calcular cuota de mercado
+- **Revenue Growth** - Crecimiento de ingresos YoY %
+- **Profit Margins** - Margen neto, bruto y operativo
+- **ROE/ROA** - Return on Equity y Return on Assets
+- **Debt to Equity** - Ratio de apalancamiento
+- **Beta** - Volatilidad vs mercado
+
+#### Market Share Analysis (NUEVO)
+- **Cuota de mercado estimada** basada en revenue del grupo de competidores
+- **Ranking por ingresos** - Posición de la empresa vs peers
+- **Revenue vs Sector Average** - Comparación con el promedio
+
+#### Profitability Analysis (NUEVO)
+- **Profit Margin vs Sector** - Comparación de márgenes
+- **ROE vs Sector** - Rentabilidad sobre equity comparativa
+- **Bonus por alta rentabilidad** (+8 puntos al score)
+
+#### Growth Analysis (NUEVO)
+- **Revenue Growth vs Sector** - Diferencia en puntos porcentuales
+- **Identificación de fast-growers** - Empresas que crecen más rápido
+- **Bonus por alto crecimiento** (+7 puntos al score)
+
+#### Relative Strength (NUEVO)
+- **RS Rating** - Fuerza relativa: strong/average/weak
+- **Momentum Detection** - Acelerando/Desacelerando/Estable
+- **RS semanal y mensual** vs promedio del sector
 
 ---
 
