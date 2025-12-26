@@ -1,12 +1,12 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 26 de diciembre de 2025  
-**Versión:** `1.1.0`  
-**Commit actual:** `d54cad0`
+**Versión:** `1.2.0`  
+**Commit actual:** `pending`
 
 ---
 
-## [Unreleased] - Mejoras en Desarrollo
+## [1.2.0] - 26 de diciembre de 2025
 
 ### Competitors Avanzado (Cobertura: 65% → 85%)
 
@@ -105,9 +105,23 @@
 - Total Cash, Total Debt, Net Debt
 - FCF Margin calculado
 
+### Mejoras de UI/UX
+
+#### Tooltip del Gráfico Mejorado
+- **Fecha y hora** en el tooltip al mantener pulsado sobre el gráfico
+- **Indicador (Pred)** para distinguir puntos de predicción vs históricos
+- **Borde de color diferenciado** - Morado para predicción, índigo para histórico
+- Propiedades `timestamp` e `isPrediction` en datos del gráfico
+
 ---
 
-## [1.2.0] - 25 de diciembre de 2025
+## [Unreleased]
+
+_Próximas mejoras pendientes de release_
+
+---
+
+## [1.1.0] - 25 de diciembre de 2025
 
 ### Nueva Navegación y UI
 - **Sistema de 3 pestañas** (`a115d41`) - Favoritos, Explorar y Predicciones como pestañas principales
