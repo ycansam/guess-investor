@@ -31,9 +31,9 @@ type VolatilityWeights = Record<VolatilityCategory, AllWeights>;
 // Pesos por defecto (base, sin considerar volatilidad)
 const DEFAULT_WEIGHTS: AllWeights = {
   intraday: {
-    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
+    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.16,
     macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
-    seasonality: 0.02, financials: 0.02, expectations: 0.01
+    seasonality: 0.04, financials: 0.02, expectations: 0.03
   },
   swing: {
     trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
@@ -41,9 +41,9 @@ const DEFAULT_WEIGHTS: AllWeights = {
     seasonality: 0.04, financials: 0.05, expectations: 0.05
   },
   long: {
-    trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08,
+    trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.07,
     macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
-    seasonality: 0.08, financials: 0.13, expectations: 0.12
+    seasonality: 0.08, financials: 0.12, expectations: 0.12
   }
 };
 
@@ -73,9 +73,9 @@ const DEFAULT_VOLATILITY_WEIGHTS: VolatilityWeights = {
   // Pesos balanceados (similar a defaults)
   medium: {
     intraday: {
-      trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
+      trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.16,
       macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
-      seasonality: 0.02, financials: 0.02, expectations: 0.01
+      seasonality: 0.04, financials: 0.02, expectations: 0.03
     },
     swing: {
       trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
@@ -83,9 +83,9 @@ const DEFAULT_VOLATILITY_WEIGHTS: VolatilityWeights = {
       seasonality: 0.04, financials: 0.05, expectations: 0.05
     },
     long: {
-      trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08,
+      trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.07,
       macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
-      seasonality: 0.08, financials: 0.13, expectations: 0.12
+      seasonality: 0.08, financials: 0.12, expectations: 0.12
     }
   },
   // Activos de alta volatilidad (>50%): crypto, growth stocks, small caps

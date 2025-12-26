@@ -289,8 +289,8 @@ const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
     description: 'ETFs e índices bursátiles',
   },
   commodity: {
-    relevantFactors: ['trend', 'macro', 'seasonality', 'forex'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    minFactorsForHighConfidence: 3,
     description: 'Materias primas (oro, petróleo, etc.)',
   },
   reit: {
@@ -924,9 +924,9 @@ class PredictionCalculatorService {
     // Pesos por defecto (se usan si no hay pesos aprendidos)
     const DEFAULT_WEIGHTS = {
       intraday: {
-        trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
+        trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.16,
         macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
-        seasonality: 0.02, financials: 0.02, expectations: 0.01
+        seasonality: 0.04, financials: 0.02, expectations: 0.03
       },
       swing: {
         trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
@@ -934,9 +934,9 @@ class PredictionCalculatorService {
         seasonality: 0.04, financials: 0.05, expectations: 0.05
       },
       long: {
-        trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08,
+        trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.07,
         macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
-        seasonality: 0.08, financials: 0.13, expectations: 0.12
+        seasonality: 0.08, financials: 0.12, expectations: 0.12
       }
     };
     
