@@ -11,9 +11,103 @@
  * - Comparación de ratios P/E
  * - Market Cap comparativo
  * - Más empresas mapeadas
+ * 
+ * MEJORADO v1.3:
+ * - Detección DINÁMICA de competidores usando Yahoo Finance
+ * - Auto-descubre empresas del mismo sector/industria
+ * - No requiere mapeos manuales para nuevas empresas
  */
 
 import { fetchWithCorsProxy } from './cors-proxy';
+
+// Interfaz para el resultado del perfil de Yahoo
+interface YahooAssetProfile {
+  sector: string;
+  industry: string;
+  fullTimeEmployees?: number;
+  country?: string;
+}
+
+// Caché para perfiles de empresas
+interface ProfileCache {
+  profile: YahooAssetProfile;
+  timestamp: number;
+}
+const profileCache = new Map<string, ProfileCache>();
+const PROFILE_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 horas (perfiles cambian poco)
+
+// Mapeo industria → símbolos principales (para detectar peers dinámicamente)
+const INDUSTRY_MAJOR_PLAYERS: Record<string, string[]> = {
+  // Tecnología
+  'Software—Infrastructure': ['MSFT', 'ORCL', 'IBM', 'CSCO', 'VMW'],
+  'Software—Application': ['CRM', 'ADBE', 'NOW', 'INTU', 'WDAY'],
+  'Consumer Electronics': ['AAPL', 'SONY', '005930.KS', '1810.HK'],
+  'Semiconductors': ['NVDA', 'AMD', 'INTC', 'TSM', 'AVGO', 'QCOM'],
+  'Internet Content & Information': ['GOOGL', 'META', 'SNAP', 'PINS', 'TWTR'],
+  'Internet Retail': ['AMZN', 'BABA', 'JD', 'EBAY', 'ETSY'],
+  
+  // Finanzas
+  'Banks—Diversified': ['JPM', 'BAC', 'C', 'WFC', 'USB'],
+  'Banks—Regional': ['PNC', 'TFC', 'FITB', 'KEY', 'RF'],
+  'Credit Services': ['V', 'MA', 'AXP', 'DFS', 'COF'],
+  'Insurance—Diversified': ['BRK-B', 'MET', 'PRU', 'AIG', 'ALL'],
+  'Asset Management': ['BLK', 'BX', 'KKR', 'APO', 'TROW'],
+  
+  // Salud
+  'Drug Manufacturers—General': ['JNJ', 'PFE', 'MRK', 'ABBV', 'LLY'],
+  'Drug Manufacturers—Specialty & Generic': ['TEVA', 'MYL', 'VTRS', 'ZTS'],
+  'Biotechnology': ['AMGN', 'GILD', 'BIIB', 'REGN', 'VRTX'],
+  'Medical Devices': ['MDT', 'ABT', 'SYK', 'BSX', 'ISRG'],
+  
+  // Consumo
+  'Restaurants': ['MCD', 'SBUX', 'YUM', 'CMG', 'DRI'],
+  'Apparel Manufacturing': ['NKE', 'LULU', 'VFC', 'PVH', 'RL'],
+  'Apparel Retail': ['TJX', 'ROST', 'GPS', 'ANF'],
+  'Discount Stores': ['WMT', 'COST', 'TGT', 'DG', 'DLTR'],
+  'Grocery Stores': ['KR', 'WMT', 'COST', 'SFM'],
+  'Beverages—Non-Alcoholic': ['KO', 'PEP', 'MNST', 'CELH'],
+  'Household & Personal Products': ['PG', 'CL', 'KMB', 'CHD'],
+  
+  // Energía
+  'Oil & Gas Integrated': ['XOM', 'CVX', 'SHEL', 'BP', 'TTE'],
+  'Oil & Gas E&P': ['COP', 'EOG', 'PXD', 'DVN', 'OXY'],
+  'Oil & Gas Refining & Marketing': ['VLO', 'MPC', 'PSX'],
+  'Utilities—Regulated Electric': ['NEE', 'DUK', 'SO', 'D', 'AEP'],
+  'Utilities—Renewable': ['ENPH', 'SEDG', 'RUN', 'FSLR'],
+  
+  // Industrial
+  'Aerospace & Defense': ['BA', 'LMT', 'RTX', 'NOC', 'GD'],
+  'Industrial Conglomerates': ['GE', 'MMM', 'HON', 'EMR'],
+  'Farm & Heavy Construction Machinery': ['DE', 'CAT', 'AGCO', 'CNHI'],
+  'Auto Manufacturers': ['TSLA', 'F', 'GM', 'TM', 'HMC'],
+  'Auto Parts': ['APTV', 'BWA', 'ALV', 'LEA'],
+  
+  // Telecomunicaciones
+  'Telecom Services': ['T', 'VZ', 'TMUS', 'VOD.L', 'ORAN.PA'],
+  
+  // Retail Europeo / Moda
+  'Specialty Retail': ['ITX.MC', 'HM-B.ST', 'LULU', 'GPS'],
+  'Luxury Goods': ['MC.PA', 'KER.PA', 'RMS.PA', 'RL', 'CPRI'],
+  
+  // Minería
+  'Gold': ['NEM', 'GOLD', 'FNV', 'AEM', 'WPM'],
+  'Other Precious Metals & Mining': ['FCX', 'SCCO', 'VALE', 'BHP'],
+};
+
+// ETFs sectoriales como fallback
+const SECTOR_ETFS: Record<string, { symbol: string; name: string }> = {
+  'Technology': { symbol: 'XLK', name: 'Tech Select ETF' },
+  'Financial Services': { symbol: 'XLF', name: 'Financials ETF' },
+  'Healthcare': { symbol: 'XLV', name: 'Health Care ETF' },
+  'Consumer Cyclical': { symbol: 'XLY', name: 'Consumer Discretionary ETF' },
+  'Consumer Defensive': { symbol: 'XLP', name: 'Consumer Staples ETF' },
+  'Energy': { symbol: 'XLE', name: 'Energy ETF' },
+  'Industrials': { symbol: 'XLI', name: 'Industrials ETF' },
+  'Communication Services': { symbol: 'XLC', name: 'Communication Services ETF' },
+  'Basic Materials': { symbol: 'XLB', name: 'Materials ETF' },
+  'Real Estate': { symbol: 'XLRE', name: 'Real Estate ETF' },
+  'Utilities': { symbol: 'XLU', name: 'Utilities ETF' },
+};
 
 export interface CompetitorData {
   symbol: string;
@@ -570,7 +664,166 @@ interface CacheEntry {
 const competitorCache = new Map<string, CacheEntry>();
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutos
 
+// Caché para competidores dinámicos descubiertos
+interface DynamicCompetitorCache {
+  competitors: Array<{ symbol: string; name: string }>;
+  sector: string;
+  sectorName: string;
+  timestamp: number;
+}
+const dynamicCompetitorCache = new Map<string, DynamicCompetitorCache>();
+const DYNAMIC_CACHE_DURATION = 60 * 60 * 1000; // 1 hora
+
 class CompetitorsService {
+  
+  /**
+   * NUEVO: Obtiene el perfil del activo (sector, industria) desde Yahoo Finance
+   */
+  private async getAssetProfile(symbol: string): Promise<YahooAssetProfile | null> {
+    // Verificar caché
+    const cached = profileCache.get(symbol);
+    if (cached && Date.now() - cached.timestamp < PROFILE_CACHE_DURATION) {
+      console.log(`[Competitors] Profile cache hit: ${symbol}`);
+      return cached.profile;
+    }
+    
+    try {
+      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=assetProfile`;
+      const response = await fetchWithCorsProxy(url, { signal: AbortSignal.timeout(10000) });
+      const data = await response.json();
+      
+      const profile = data.quoteSummary?.result?.[0]?.assetProfile;
+      if (!profile || !profile.sector || !profile.industry) {
+        console.log(`[Competitors] No profile data for ${symbol}`);
+        return null;
+      }
+      
+      const assetProfile: YahooAssetProfile = {
+        sector: profile.sector,
+        industry: profile.industry,
+        fullTimeEmployees: profile.fullTimeEmployees,
+        country: profile.country,
+      };
+      
+      // Guardar en caché
+      profileCache.set(symbol, { profile: assetProfile, timestamp: Date.now() });
+      
+      console.log(`[Competitors] ${symbol} profile: ${assetProfile.sector} / ${assetProfile.industry}`);
+      
+      return assetProfile;
+    } catch (error) {
+      console.warn(`[Competitors] Error getting profile for ${symbol}:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * NUEVO: Descubre competidores dinámicamente basándose en sector/industria
+   */
+  private async discoverCompetitors(symbol: string): Promise<{ 
+    sector: string; 
+    sectorName: string; 
+    competitors: Array<{ symbol: string; name: string }> 
+  } | null> {
+    // Verificar caché
+    const cached = dynamicCompetitorCache.get(symbol);
+    if (cached && Date.now() - cached.timestamp < DYNAMIC_CACHE_DURATION) {
+      console.log(`[Competitors] Dynamic cache hit: ${symbol}`);
+      return cached;
+    }
+    
+    // Obtener perfil del activo
+    const profile = await this.getAssetProfile(symbol);
+    if (!profile) {
+      return null;
+    }
+    
+    const { sector, industry } = profile;
+    console.log(`[Competitors] Discovering peers for ${symbol}: ${sector} / ${industry}`);
+    
+    // 1. Buscar por industria específica primero
+    let peerSymbols = INDUSTRY_MAJOR_PLAYERS[industry];
+    
+    // 2. Si no hay industria exacta, buscar industria similar
+    if (!peerSymbols) {
+      for (const [ind, symbols] of Object.entries(INDUSTRY_MAJOR_PLAYERS)) {
+        if (industry.toLowerCase().includes(ind.split('—')[0].toLowerCase()) ||
+            ind.toLowerCase().includes(industry.split(' ')[0].toLowerCase())) {
+          peerSymbols = symbols;
+          console.log(`[Competitors] Matched industry ${ind} for ${industry}`);
+          break;
+        }
+      }
+    }
+    
+    // 3. Fallback: usar ETF del sector
+    if (!peerSymbols || peerSymbols.length === 0) {
+      const sectorETF = SECTOR_ETFS[sector];
+      if (sectorETF) {
+        console.log(`[Competitors] Using sector ETF as fallback: ${sectorETF.symbol}`);
+        const result = {
+          sector: sector.toLowerCase().replace(/\s+/g, '_'),
+          sectorName: sector,
+          competitors: [sectorETF],
+          timestamp: Date.now(),
+        };
+        dynamicCompetitorCache.set(symbol, result);
+        return result;
+      }
+    }
+    
+    if (!peerSymbols || peerSymbols.length === 0) {
+      console.log(`[Competitors] No peers found for ${symbol}`);
+      return null;
+    }
+    
+    // Filtrar el propio símbolo y limitar a 3 competidores
+    const filteredPeers = peerSymbols
+      .filter(s => s.toUpperCase() !== symbol.toUpperCase())
+      .slice(0, 3);
+    
+    // Obtener nombres de las empresas
+    const peersWithNames = await this.getPeerNames(filteredPeers);
+    
+    const result = {
+      sector: sector.toLowerCase().replace(/\s+/g, '_'),
+      sectorName: industry,
+      competitors: peersWithNames,
+      timestamp: Date.now(),
+    };
+    
+    // Guardar en caché
+    dynamicCompetitorCache.set(symbol, result);
+    
+    console.log(`[Competitors] Discovered ${peersWithNames.length} peers for ${symbol}:`, peersWithNames.map(p => p.symbol));
+    
+    return result;
+  }
+  
+  /**
+   * NUEVO: Obtiene nombres de empresas desde Yahoo
+   */
+  private async getPeerNames(symbols: string[]): Promise<Array<{ symbol: string; name: string }>> {
+    const results: Array<{ symbol: string; name: string }> = [];
+    
+    for (const symbol of symbols) {
+      try {
+        const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=price`;
+        const response = await fetchWithCorsProxy(url, { signal: AbortSignal.timeout(5000) });
+        const data = await response.json();
+        
+        const price = data.quoteSummary?.result?.[0]?.price;
+        const name = price?.shortName || price?.longName || symbol;
+        
+        results.push({ symbol, name });
+      } catch {
+        // Si falla, usar el símbolo como nombre
+        results.push({ symbol, name: symbol });
+      }
+    }
+    
+    return results;
+  }
   
   /**
    * Obtiene datos de un competidor
@@ -694,11 +947,24 @@ class CompetitorsService {
   ): Promise<CompetitorAnalysis> {
     console.log(`[Competitors] Analizando competidores para ${symbol}`);
     
-    // Obtener competidores mapeados
-    const competitorConfig = COMPANY_COMPETITORS[symbol];
+    // 1. Primero buscar en mapeo manual (más preciso)
+    let competitorConfig = COMPANY_COMPETITORS[symbol];
+    let isDynamic = false;
+    
+    // 2. Si no hay mapeo, intentar descubrir competidores dinámicamente
+    if (!competitorConfig) {
+      console.log(`[Competitors] No hay mapeo manual, intentando descubrimiento dinámico...`);
+      const discovered = await this.discoverCompetitors(symbol);
+      
+      if (discovered && discovered.competitors.length > 0) {
+        competitorConfig = discovered;
+        isDynamic = true;
+        console.log(`[Competitors] ✓ Descubiertos ${discovered.competitors.length} competidores dinámicamente para ${symbol}`);
+      }
+    }
     
     if (!competitorConfig) {
-      console.log(`[Competitors] Sin competidores mapeados para ${symbol}`);
+      console.log(`[Competitors] Sin competidores mapeados ni dinámicos para ${symbol}`);
       return {
         sector: 'unknown',
         sectorName: 'Desconocido',
@@ -716,6 +982,8 @@ class CompetitorsService {
         summary: 'Sin datos de competidores disponibles',
       };
     }
+    
+    console.log(`[Competitors] Usando ${isDynamic ? 'peers dinámicos' : 'mapeo manual'}: ${competitorConfig.competitors.map(c => c.symbol).join(', ')}`);
     
     // Obtener datos de cada competidor en paralelo
     const competitorPromises = competitorConfig.competitors.map(comp => 

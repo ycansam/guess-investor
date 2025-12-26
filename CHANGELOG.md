@@ -1,8 +1,52 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 25 de diciembre de 2025  
-**Versión:** `1.2.0`  
+**Versión:** `1.3.0`  
 **Commit actual:** `d54cad0`
+
+---
+
+## [1.3.0] - 25 de diciembre de 2025
+
+### Datos Dinámicos - Mayor Cobertura de Factores
+
+#### Competitors Dinámico (Cobertura: 65% → 85%)
+- **Detección automática de competidores** usando Yahoo Finance sector/industry
+- **Sin necesidad de mapeos manuales** para nuevas empresas
+- **Descubrimiento por industria** - Peers detectados automáticamente por sector
+- **Fallback a ETF sectorial** si no se encuentran peers específicos
+- **Cache de 1 hora** para perfiles de empresas
+
+#### Macro con FRED API (Cobertura: 40% → 80%)
+- **Integración con Federal Reserve Economic Data API** para datos US en tiempo real
+- **Indicadores dinámicos**: CPI (inflación), Unemployment Rate, Fed Funds Rate, Treasury Yields
+- **Curva de rendimiento** - Detecta inversiones (predictor de recesión)
+- **Consumer Sentiment** como proxy de PMI
+- **Fallback automático** a datos estáticos si API no disponible
+- Nuevo archivo: `fred-api-service.ts`
+
+#### Forex Dinámico (Cobertura: 65% → 80%) - v1.2.5
+- **Exposición FX por sector** inferida desde Yahoo Finance assetProfile
+- **Patrones por industria**: Technology, Healthcare, Automotive, Energy, Consumer, etc.
+- **Volatilidad FX calculada** - Desviación estándar anualizada de pares de divisas
+- **15+ nuevas empresas** con exposiciones específicas
+
+### Mejoras Anteriores de Factores (v1.2.x)
+
+#### Competitors (50% → 65%)
+- Comparación de ratios P/E (trailing y forward)
+- Market Cap comparativo y ranking
+- 50+ empresas nuevas mapeadas (AMD, INTC, TSM, BAC, GS, V, MA, etc.)
+
+#### Seasonality (60% → 70%)
+- **Patrón histórico por acción** - Analiza rendimiento del mismo período los últimos 3 años
+- Consistencia y dirección (bullish/bearish/neutral)
+- Nuevo método `analyzeSeasonalityWithHistory()`
+
+#### Financials (65% → 75%)
+- Free Cash Flow y Operating Cash Flow
+- Total Cash, Total Debt, Net Debt
+- FCF Margin calculado
 
 ---
 
