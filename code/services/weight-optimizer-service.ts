@@ -109,9 +109,12 @@ const DEFAULT_VOLATILITY_WEIGHTS: VolatilityWeights = {
   }
 };
 
-// Hiperparámetros
-const LEARNING_RATE = 0.01;
-const MOMENTUM = 0.9;
+// Hiperparámetros - Adam Optimizer
+// Adam combina las ventajas de AdaGrad y RMSProp
+const LEARNING_RATE = 0.001;  // Reducido para Adam (típico: 0.001)
+const BETA1 = 0.9;            // Decaimiento del primer momento (momentum)
+const BETA2 = 0.999;          // Decaimiento del segundo momento (RMSProp)
+const EPSILON_ADAM = 1e-8;    // Para evitar división por cero
 const EPOCHS = 100;
 const EARLY_STOPPING_PATIENCE = 10;
 const MIN_SAMPLES = 10;
@@ -277,7 +280,10 @@ function computeBatchLoss(predictions: TrainingPrediction[]): number {
 class WeightOptimizerService {
   private weights: AllWeights;
   private volatilityWeights: VolatilityWeights; // NUEVO: pesos por volatilidad
-  private velocity: AllWeights;
+  // Adam optimizer state
+  private m: AllWeights;  // Primer momento (media de gradientes)
+  private v: AllWeights;  // Segundo momento (varianza de gradientes)
+  private t: number = 0;  // Timestep para bias correction
   private volatilityVelocity: VolatilityWeights; // NUEVO: velocity por volatilidad
   private isTraining = false;
   
@@ -285,11 +291,12 @@ class WeightOptimizerService {
     // Inicializar con pesos por defecto
     this.weights = JSON.parse(JSON.stringify(DEFAULT_WEIGHTS));
     this.volatilityWeights = JSON.parse(JSON.stringify(DEFAULT_VOLATILITY_WEIGHTS));
-    this.velocity = this.initVelocity();
+    this.m = this.initMoment();
+    this.v = this.initMoment();
     this.volatilityVelocity = this.initVolatilityVelocity();
   }
   
-  private initVelocity(): AllWeights {
+  private initMoment(): AllWeights {
     const v: Partial<AllWeights> = {};
     for (const tf of ['intraday', 'swing', 'long'] as Timeframe[]) {
       v[tf] = {} as WeightsMap;
@@ -303,7 +310,7 @@ class WeightOptimizerService {
   private initVolatilityVelocity(): VolatilityWeights {
     const v: Partial<VolatilityWeights> = {};
     for (const vol of ['low', 'medium', 'high'] as VolatilityCategory[]) {
-      v[vol] = this.initVelocity();
+      v[vol] = this.initMoment();
     }
     return v as VolatilityWeights;
   }
@@ -398,20 +405,31 @@ class WeightOptimizerService {
   }
   
   /**
-   * Ejecuta un paso de entrenamiento
+   * Ejecuta un paso de entrenamiento usando Adam optimizer
+   * Adam = Adaptive Moment Estimation
+   * Combina momentum (primer momento) con RMSProp (segundo momento)
+   * Ventajas: converge más rápido, menos sensible a learning rate
    */
   private trainStep(predictions: TrainingPrediction[]): number {
     const gradients = this.computeGradients(predictions);
+    this.t += 1; // Incrementar timestep
     
     for (const tf of ['intraday', 'swing', 'long'] as Timeframe[]) {
       for (const factor of FACTORS) {
-        // Actualizar velocidad (momentum)
-        this.velocity[tf][factor] = 
-          MOMENTUM * this.velocity[tf][factor] - 
-          LEARNING_RATE * gradients[tf][factor];
+        const g = gradients[tf][factor];
         
-        // Actualizar peso
-        this.weights[tf][factor] += this.velocity[tf][factor];
+        // Actualizar primer momento (media móvil de gradientes)
+        this.m[tf][factor] = BETA1 * this.m[tf][factor] + (1 - BETA1) * g;
+        
+        // Actualizar segundo momento (media móvil de gradientes al cuadrado)
+        this.v[tf][factor] = BETA2 * this.v[tf][factor] + (1 - BETA2) * g * g;
+        
+        // Bias correction (importante en las primeras iteraciones)
+        const mHat = this.m[tf][factor] / (1 - Math.pow(BETA1, this.t));
+        const vHat = this.v[tf][factor] / (1 - Math.pow(BETA2, this.t));
+        
+        // Actualizar peso usando Adam
+        this.weights[tf][factor] -= LEARNING_RATE * mHat / (Math.sqrt(vHat) + EPSILON_ADAM);
       }
       
       // Normalizar y aplicar límites

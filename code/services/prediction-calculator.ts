@@ -11,8 +11,12 @@ import { accuracyPredictorService, ExpectedAccuracy } from './accuracy-predictor
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { CorporateEvents, corporateEventsService } from './corporate-events-service';
+import { COTData, cotReportService } from './cot-report-service';
 import { currencyService } from './currency-service';
+import { DarkPoolData, darkPoolsService } from './dark-pools-service';
+import { ETFFlowData, etfFlowsService } from './etf-flows-service';
 import { ExpectationsData, expectationsService } from './expectations-service';
+import { fearGreedService } from './fear-greed-service';
 import { forexAnalysisService, ForexImpact } from './forex-analysis-service';
 import { InstitutionalActivity, institutionalInvestorsService } from './institutional-investors-service';
 import { macroEconomicService, MacroIndicators } from './macro-economic-service';
@@ -264,28 +268,28 @@ interface AssetGroupConfig {
 
 const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
   large_cap_stock: {
-    relevantFactors: ['trend', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
     minFactorsForHighConfidence: 5,
     description: 'Acciones de gran capitalización',
   },
   small_cap_stock: {
-    relevantFactors: ['trend', 'news', 'competitors', 'seasonality', 'financials'],
+    relevantFactors: ['trend', 'technical', 'news', 'competitors', 'seasonality', 'financials'],
     minFactorsForHighConfidence: 3,
     description: 'Acciones pequeñas/medianas (menos cobertura de analistas)',
   },
   crypto_major: {
-    relevantFactors: ['trend', 'sentiment', 'news', 'macro'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro'],
+    minFactorsForHighConfidence: 3,
     description: 'Criptomonedas principales (BTC, ETH)',
   },
   crypto_alt: {
-    relevantFactors: ['trend', 'sentiment', 'news'],
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news'],
     minFactorsForHighConfidence: 2,
     description: 'Altcoins (alta volatilidad, menos datos)',
   },
   etf_index: {
-    relevantFactors: ['trend', 'macro', 'seasonality', 'forex'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    minFactorsForHighConfidence: 3,
     description: 'ETFs e índices bursátiles',
   },
   commodity: {
@@ -294,23 +298,23 @@ const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
     description: 'Materias primas (oro, petróleo, etc.)',
   },
   reit: {
-    relevantFactors: ['trend', 'macro', 'financials', 'seasonality'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'financials', 'seasonality'],
+    minFactorsForHighConfidence: 3,
     description: 'REITs inmobiliarios',
   },
   forex: {
-    relevantFactors: ['trend', 'macro', 'news'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'news'],
+    minFactorsForHighConfidence: 3,
     description: 'Pares de divisas',
   },
   adr: {
-    relevantFactors: ['trend', 'news', 'forex', 'macro', 'competitors', 'financials'],
-    minFactorsForHighConfidence: 3,
+    relevantFactors: ['trend', 'technical', 'news', 'forex', 'macro', 'competitors', 'financials'],
+    minFactorsForHighConfidence: 4,
     description: 'ADRs (acciones extranjeras)',
   },
   default: {
-    relevantFactors: ['trend', 'sentiment', 'news', 'macro'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro'],
+    minFactorsForHighConfidence: 3,
     description: 'Activo genérico',
   },
 };
@@ -346,14 +350,49 @@ const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
   '^IXIC': 'etf_index',
   '^IBEX': 'etf_index',
   
-  // Commodities
-  'GC=F': 'commodity',
-  'SI=F': 'commodity',
-  'CL=F': 'commodity',
-  'NG=F': 'commodity',
-  'GLD': 'commodity',
-  'SLV': 'commodity',
-  'USO': 'commodity',
+  // Commodities - Futuros
+  'GC=F': 'commodity',  // Gold Futures
+  'SI=F': 'commodity',  // Silver Futures
+  'CL=F': 'commodity',  // Crude Oil WTI
+  'NG=F': 'commodity',  // Natural Gas
+  'PL=F': 'commodity',  // Platinum Futures
+  'PA=F': 'commodity',  // Palladium Futures
+  'HG=F': 'commodity',  // Copper Futures
+  'ZC=F': 'commodity',  // Corn Futures
+  'ZW=F': 'commodity',  // Wheat Futures
+  'ZS=F': 'commodity',  // Soybean Futures
+  
+  // Commodities - ETFs
+  'GLD': 'commodity',   // SPDR Gold Trust
+  'SLV': 'commodity',   // iShares Silver Trust
+  'USO': 'commodity',   // United States Oil Fund
+  'UNG': 'commodity',   // United States Natural Gas Fund
+  'DBA': 'commodity',   // Invesco Agriculture ETF
+  'DBC': 'commodity',   // Invesco Commodity Index
+  'PDBC': 'commodity',  // Invesco Optimum Yield
+  'GSG': 'commodity',   // iShares S&P GSCI Commodity
+  'COMT': 'commodity',  // iShares Commodities Select
+  
+  // Gold & Silver Miners
+  'NEM': 'commodity',   // Newmont Mining
+  'GOLD': 'commodity',  // Barrick Gold
+  'FNV': 'commodity',   // Franco-Nevada
+  'WPM': 'commodity',   // Wheaton Precious Metals
+  'AEM': 'commodity',   // Agnico Eagle Mines
+  'KGC': 'commodity',   // Kinross Gold
+  'AU': 'commodity',    // AngloGold Ashanti
+  'GDX': 'commodity',   // Gold Miners ETF
+  'GDXJ': 'commodity',  // Junior Gold Miners ETF
+  'SIL': 'commodity',   // Silver Miners ETF
+  'SILJ': 'commodity',  // Junior Silver Miners ETF
+  
+  // Oil & Energy Producers
+  'XOM': 'large_cap_stock',   // ExxonMobil
+  'CVX': 'large_cap_stock',   // Chevron
+  'COP': 'large_cap_stock',   // ConocoPhillips
+  'OXY': 'large_cap_stock',   // Occidental Petroleum
+  'SLB': 'large_cap_stock',   // Schlumberger
+  'HAL': 'large_cap_stock',   // Halliburton
   
   // REITs
   'O': 'reit',
@@ -558,13 +597,20 @@ class PredictionCalculatorService {
       let putCallData: { ratio: number; sentiment: 'extreme_fear' | 'bearish' | 'neutral' | 'bullish' | 'extreme_greed'; score: number } | undefined;
       let corporateEventsData: CorporateEvents | null = null;
       let expectationsData: ExpectationsData | null = null;
+      let darkPoolData: DarkPoolData | null = null;
+      let cotData: COTData | null = null;
+      let etfFlowData: ETFFlowData | null = null;
+      let fearGreedData: { value: number; classification: string } | null = null;
       
       if (type === 'stock') {
-        const [vixResult, pcResult, corpEventsResult, expectationsResult] = await Promise.allSettled([
+        const [vixResult, pcResult, corpEventsResult, expectationsResult, darkPoolResult, cotResult, etfFlowResult] = await Promise.allSettled([
           vixService.getCurrentVIX(),
           optionsService.getMarketPutCallRatio(),
           corporateEventsService.getCorporateEvents(symbol),
           expectationsService.getExpectations(symbol),
+          darkPoolsService.getDarkPoolData(symbol),
+          cotReportService.getCOTData(symbol),
+          etfFlowsService.getETFFlows(symbol),
         ]);
 
         if (vixResult.status === 'fulfilled' && vixResult.value) {
@@ -594,6 +640,38 @@ class PredictionCalculatorService {
           expectationsData = expectationsResult.value;
           console.log(`[PredictionCalc] Expectations mejoradas: score=${expectationsData.expectationsScore}, quality=${expectationsData.dataQuality}`);
         }
+
+        // Nuevos servicios de flujo institucional
+        if (darkPoolResult.status === 'fulfilled' && darkPoolResult.value?.hasData) {
+          darkPoolData = darkPoolResult.value;
+          console.log(`[PredictionCalc] 🏦 Dark Pool: score=${darkPoolData.darkPoolScore} (${darkPoolData.darkPoolActivity.sentiment})`);
+        }
+
+        if (cotResult.status === 'fulfilled' && cotResult.value?.hasData) {
+          cotData = cotResult.value;
+          console.log(`[PredictionCalc] 📊 COT Report: score=${cotData.cotScore} (spec: ${cotData.analysis.speculatorSentiment})`);
+        }
+
+        if (etfFlowResult.status === 'fulfilled' && etfFlowResult.value?.hasData) {
+          etfFlowData = etfFlowResult.value;
+          console.log(`[PredictionCalc] 📈 ETF Flows: score=${etfFlowData.etfFlowScore} (${etfFlowData.sectorFlow.direction})`);
+        }
+      }
+
+      // 11b. Obtener Fear & Greed Index (para crypto)
+      if (type === 'crypto') {
+        try {
+          const fgData = await fearGreedService.getIndex();
+          if (fgData?.current) {
+            fearGreedData = {
+              value: fgData.current.value,
+              classification: fgData.current.classification,
+            };
+            console.log(`[PredictionCalc] 😱 Fear & Greed: ${fearGreedData.value} (${fearGreedData.classification})`);
+          }
+        } catch (e) {
+          // Ignorar errores de Fear & Greed
+        }
       }
 
       // 12. Calcular predicción de forma determinística
@@ -613,7 +691,12 @@ class PredictionCalculatorService {
         seasonalityData,
         technicalData,
         timeframeDays,
-        expectationsData
+        expectationsData,
+        // Nuevos datos de flujo institucional
+        darkPoolData,
+        cotData,
+        etfFlowData,
+        fearGreedData
       );
 
       // 12. Convertir precios a EUR si es necesario
@@ -789,14 +872,19 @@ class PredictionCalculatorService {
     seasonality: SeasonalityAnalysis,
     technical: TechnicalAnalysis,
     timeframeDays: number,
-    expectationsEnhanced: ExpectationsData | null = null
+    expectationsEnhanced: ExpectationsData | null = null,
+    // Nuevos parámetros de flujo institucional avanzado
+    darkPool: DarkPoolData | null = null,
+    cot: COTData | null = null,
+    etfFlow: ETFFlowData | null = null,
+    fearGreed: { value: number; classification: string } | null = null
   ): Promise<CalculatedPrediction> {
     // --- FLAGS DE DATOS DISPONIBLES ---
     const hasHistoricalData = historical !== null && (historical.change30d !== 0 || historical.change90d !== 0);
-    const hasSentimentData = sentiment.hasData;
+    let hasSentimentData = sentiment.hasData;
     const hasCompetitorsData = competitors.hasData;
     const hasForexData = forex.hasData;
-    const hasInstitutionalData = institutional.hasData;
+    let hasInstitutionalData = institutional.hasData;
     const hasSeasonalityData = seasonality.hasData;
     const hasTechnicalData = technical.hasData;
     const hasVolatilityData = historical !== null && historical.volatility > 0;
@@ -823,7 +911,7 @@ class PredictionCalculatorService {
     }
     
     // Score de sentimiento (-100 a +100) - SOLO si hay datos
-    const sentimentScore = hasSentimentData ? (sentiment.bullishPercent - 50) * 2 : 0;
+    let sentimentScore = hasSentimentData ? (sentiment.bullishPercent - 50) * 2 : 0;
     
     // Score de noticias (-100 a +100) - SOLO si hay noticias
     // Las noticias tienen impacto directo y rápido en el precio
@@ -861,10 +949,75 @@ class PredictionCalculatorService {
     // Score de inversores institucionales (-100 a +100) - SOLO si hay datos
     // Mide si los grandes fondos y ejecutivos están comprando o vendiendo
     // Las compras de insiders son especialmente significativas
+    // MEJORADO: Incorpora Dark Pools, COT Report y ETF Flows
     let institutionalScore = 0;
+    let institutionalSources: string[] = [];
+    
     if (hasInstitutionalData) {
       institutionalScore = institutional.institutionalScore; // Ya está en rango -100 a +100
-      console.log(`[PredictionCalc] Institutional score: ${institutionalScore} (insider: ${institutional.insiderTransactions?.trend || 'N/A'})`);
+      institutionalSources.push('insider');
+      console.log(`[PredictionCalc] Institutional base: ${institutionalScore} (insider: ${institutional.insiderTransactions?.trend || 'N/A'})`);
+    }
+    
+    // Enriquecer con Dark Pool data (acumulación/distribución oculta)
+    if (darkPool?.hasData) {
+      const dpScore = darkPool.darkPoolScore; // -100 a +100
+      if (hasInstitutionalData) {
+        // Combinar: dar 30% peso a dark pools
+        institutionalScore = Math.round(institutionalScore * 0.7 + dpScore * 0.3);
+      } else {
+        institutionalScore = dpScore;
+        hasInstitutionalData = true;
+      }
+      institutionalSources.push('darkPool');
+      console.log(`[PredictionCalc] 🏦 +Dark Pool: score ajustado=${institutionalScore}`);
+    }
+    
+    // Enriquecer con COT Report (posiciones de especuladores vs comerciales)
+    if (cot?.hasData) {
+      const cotScore = cot.cotScore; // -100 a +100
+      if (hasInstitutionalData) {
+        // Combinar: dar 20% peso a COT
+        institutionalScore = Math.round(institutionalScore * 0.8 + cotScore * 0.2);
+      } else {
+        institutionalScore = cotScore;
+        hasInstitutionalData = true;
+      }
+      institutionalSources.push('cot');
+      console.log(`[PredictionCalc] 📊 +COT Report: score ajustado=${institutionalScore}`);
+    }
+    
+    // Enriquecer con ETF Flows (flujos de dinero a ETFs del sector)
+    if (etfFlow?.hasData) {
+      const etfScore = etfFlow.etfFlowScore; // -100 a +100
+      if (hasInstitutionalData) {
+        // Combinar: dar 15% peso a ETF flows
+        institutionalScore = Math.round(institutionalScore * 0.85 + etfScore * 0.15);
+      } else {
+        institutionalScore = etfScore;
+        hasInstitutionalData = true;
+      }
+      institutionalSources.push('etfFlows');
+      console.log(`[PredictionCalc] 📈 +ETF Flows: score ajustado=${institutionalScore}`);
+    }
+    
+    if (institutionalSources.length > 0) {
+      console.log(`[PredictionCalc] Institutional FINAL: ${institutionalScore} (fuentes: ${institutionalSources.join(', ')})`);
+    }
+    
+    // Enriquecer sentimiento con Fear & Greed Index (solo crypto)
+    if (fearGreed && hasSentimentData) {
+      // Fear & Greed: 0-100, donde 0=extreme fear, 100=extreme greed
+      // Convertir a -100/+100: (value - 50) * 2
+      const fgScore = (fearGreed.value - 50) * 2;
+      // Combinar: dar 25% peso a Fear & Greed
+      sentimentScore = Math.round(sentimentScore * 0.75 + fgScore * 0.25);
+      console.log(`[PredictionCalc] 😱 +Fear&Greed(${fearGreed.value}): sentiment ajustado=${sentimentScore}`);
+    } else if (fearGreed && !hasSentimentData) {
+      // Sin otro dato de sentimiento, usar Fear & Greed como principal
+      sentimentScore = (fearGreed.value - 50) * 2;
+      hasSentimentData = true;
+      console.log(`[PredictionCalc] 😱 Fear&Greed como sentimiento principal: ${sentimentScore}`);
     }
     
     // Score de estacionalidad (-100 a +100) - SOLO si hay datos del sector
