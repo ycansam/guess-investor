@@ -108,8 +108,11 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
         debouncedSearchQuery
       );
       
-      setAllAssets(result.assets);
-      setDisplayedAssets(result.assets);
+      // Aplicar ordenamiento inicial
+      const sorted = applySorting(result.assets, sortBy, predictedSymbols);
+      
+      setAllAssets(sorted);
+      setDisplayedAssets(sorted);
       setHasMore(result.hasMore);
       setLastUpdate(new Date());
       setPage(1);
@@ -118,74 +121,17 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, debouncedSearchQuery]);
+  }, [selectedCategory, debouncedSearchQuery, sortBy, predictedSymbols]);
 
-  // Cargar más datos (infinite scroll)
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+  // Función para aplicar ordenamiento
+  const applySorting = useCallback((assets: MarketAsset[], sortType: SortType, predSymbols: Set<string>) => {
+    let sorted = [...assets];
     
-    setLoadingMore(true);
-    try {
-      const nextPage = page + 1;
-      const result = await marketDataService.getAssetsPaginated(
-        nextPage,
-        selectedCategory || undefined,
-        debouncedSearchQuery
-      );
-      
-      setDisplayedAssets(prev => [...prev, ...result.assets]);
-      setHasMore(result.hasMore);
-      setPage(nextPage);
-    } catch (error) {
-      console.error('Error loading more:', error);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [loadingMore, hasMore, page, selectedCategory, debouncedSearchQuery]);
-
-  useEffect(() => {
-    loadFavoritesAndPredictions();
-    loadData();
-  }, []);
-
-  // Debounce para la búsqueda (evita perder foco)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Recargar cuando cambian filtros (usa debouncedSearchQuery)
-  useEffect(() => {
-    // No mostrar loading al buscar para evitar perder foco
-    loadData();
-  }, [selectedCategory, debouncedSearchQuery]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadFavoritesAndPredictions();
-    await loadData(true);
-    setRefreshing(false);
-  }, [loadData, loadFavoritesAndPredictions]);
-
-  // Toggle favorito
-  const toggleFavorite = useCallback(async (symbol: string) => {
-    await favoritesService.toggle(symbol);
-    setFavorites(new Set(favoritesService.getAll()));
-    onFavoritesChange?.();
-  }, [onFavoritesChange]);
-
-  // Filtrar y ordenar activos
-  const sortedAssets = useMemo(() => {
-    let sorted = [...displayedAssets];
-    
-    switch (sortBy) {
+    switch (sortType) {
       case 'predicted':
-        // Predicciones primero
         sorted.sort((a, b) => {
-          const aHasPred = predictedSymbols.has(a.symbol) ? 1 : 0;
-          const bHasPred = predictedSymbols.has(b.symbol) ? 1 : 0;
+          const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
+          const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
           if (aHasPred !== bHasPred) return bHasPred - aHasPred;
           return (b.changePercent ?? -999) - (a.changePercent ?? -999);
         });
@@ -210,7 +156,74 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
     }
     
     return sorted;
-  }, [displayedAssets, sortBy, predictedSymbols]);
+  }, []);
+
+  // Cargar más datos (infinite scroll)
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const result = await marketDataService.getAssetsPaginated(
+        nextPage,
+        selectedCategory || undefined,
+        debouncedSearchQuery
+      );
+      
+      // Aplicar el mismo ordenamiento a los nuevos datos
+      const sortedNew = applySorting(result.assets, sortBy, predictedSymbols);
+      
+      setDisplayedAssets(prev => [...prev, ...sortedNew]);
+      setHasMore(result.hasMore);
+      setPage(nextPage);
+    } catch (error) {
+      console.error('Error loading more:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, page, selectedCategory, debouncedSearchQuery, sortBy, predictedSymbols, applySorting]);
+
+  useEffect(() => {
+    loadFavoritesAndPredictions();
+    loadData();
+  }, []);
+
+  // Debounce para la búsqueda (evita perder foco)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Recargar cuando cambian filtros (usa debouncedSearchQuery)
+  useEffect(() => {
+    // No mostrar loading al buscar para evitar perder foco
+    loadData();
+  }, [selectedCategory, debouncedSearchQuery]);
+
+  // Reordenar cuando cambia el sortBy (sin recargar datos)
+  useEffect(() => {
+    if (displayedAssets.length > 0) {
+      const sorted = applySorting(displayedAssets, sortBy, predictedSymbols);
+      setDisplayedAssets(sorted);
+    }
+  }, [sortBy]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadFavoritesAndPredictions();
+    await loadData(true);
+    setRefreshing(false);
+  }, [loadData, loadFavoritesAndPredictions]);
+
+  // Toggle favorito
+  const toggleFavorite = useCallback(async (symbol: string) => {
+    await favoritesService.toggle(symbol);
+    setFavorites(new Set(favoritesService.getAll()));
+    onFavoritesChange?.();
+  }, [onFavoritesChange]);
 
   // Categorías disponibles
   const categories = useMemo(() => marketDataService.getCategories(), []);
@@ -341,7 +354,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
       {/* Info */}
       <View style={styles.infoBar}>
         <Text style={styles.resultCount}>
-          {sortedAssets.length} activos
+          {displayedAssets.length} activos
         </Text>
         {lastUpdate && (
           <Text style={styles.lastUpdate}>
@@ -403,7 +416,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
       </View>
 
       <FlatList
-        data={sortedAssets}
+        data={displayedAssets}
         renderItem={({ item }) => (
           <View style={isDesktop && styles.assetRowDesktop}>
             {renderAsset({ item } as any)}
