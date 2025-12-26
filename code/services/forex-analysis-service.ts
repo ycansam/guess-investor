@@ -22,11 +22,14 @@ export interface ForexImpact {
     trend: 'strengthening' | 'weakening' | 'stable'; // Del EUR
     impact: 'positive' | 'negative' | 'neutral'; // Impacto en la empresa
     relevance: string; // Por qué es relevante
+    volatility?: number; // Volatilidad del par (ATR %)
   }>;
   
   // Resumen
   overallTrend: 'eur_strong' | 'eur_weak' | 'stable';
   forexScore: number; // -100 a +100 (positivo = favorable para la empresa)
+  avgVolatility: number; // Volatilidad media de los pares (mayor = más riesgo FX)
+  volatilityRisk: 'low' | 'medium' | 'high'; // Nivel de riesgo por volatilidad
   hasData: boolean;
   summary: string;
 }
@@ -141,6 +144,140 @@ const COMPANY_FOREX_EXPOSURE: Record<string, {
       { currency: 'USD', relevance: 'Avangrid (USA)', weight: 0.35 },
       { currency: 'GBP', relevance: 'ScottishPower', weight: 0.35 },
       { currency: 'BRL', relevance: 'Neoenergia (Brasil)', weight: 0.30 },
+    ]
+  },
+  
+  // Google/Alphabet - Global
+  'GOOGL': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'EUR', relevance: 'Europa (publicidad)', weight: 0.30 },
+      { currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.25 },
+      { currency: 'CNY', relevance: 'Inversiones Asia', weight: 0.25 },
+    ]
+  },
+  
+  // Meta - Global advertising
+  'META': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'EUR', relevance: 'Europa (publicidad)', weight: 0.35 },
+      { currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.20 },
+      { currency: 'BRL', relevance: 'Brasil/LatAm', weight: 0.25 },
+    ]
+  },
+  
+  // NVIDIA - Semiconductores
+  'NVDA': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'TWD', relevance: 'TSMC (Taiwán) fabricación', weight: 0.35 },
+      { currency: 'CNY', relevance: 'Ventas China', weight: 0.30 },
+      { currency: 'EUR', relevance: 'Europa', weight: 0.20 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.15 },
+    ]
+  },
+  
+  // JP Morgan - Banca global
+  'JPM': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'EUR', relevance: 'Banca inversión Europa', weight: 0.30 },
+      { currency: 'GBP', relevance: 'Londres (hub financiero)', weight: 0.30 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.20 },
+      { currency: 'HKD', relevance: 'Asia/HK', weight: 0.20 },
+    ]
+  },
+  
+  // Visa - Pagos globales
+  'V': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'EUR', relevance: 'Europa', weight: 0.30 },
+      { currency: 'GBP', relevance: 'Reino Unido', weight: 0.15 },
+      { currency: 'BRL', relevance: 'Brasil/LatAm', weight: 0.20 },
+      { currency: 'CNY', relevance: 'Asia/China', weight: 0.20 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.15 },
+    ]
+  },
+  
+  // Coca-Cola - Consumo global
+  'KO': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'EUR', relevance: 'Europa', weight: 0.25 },
+      { currency: 'MXN', relevance: 'México (gran mercado)', weight: 0.20 },
+      { currency: 'BRL', relevance: 'Brasil', weight: 0.20 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.15 },
+      { currency: 'CNY', relevance: 'China', weight: 0.20 },
+    ]
+  },
+  
+  // McDonald's - Restaurantes globales
+  'MCD': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'EUR', relevance: 'Europa', weight: 0.35 },
+      { currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.20 },
+      { currency: 'CAD', relevance: 'Canadá', weight: 0.25 },
+    ]
+  },
+  
+  // LVMH - Lujo global
+  'MC.PA': {
+    baseCurrency: 'EUR',
+    exposures: [
+      { currency: 'USD', relevance: 'USA (principal mercado lujo)', weight: 0.35 },
+      { currency: 'CNY', relevance: 'China (lujo)', weight: 0.30 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.20 },
+      { currency: 'GBP', relevance: 'Reino Unido', weight: 0.15 },
+    ]
+  },
+  
+  // SAP - Software empresarial
+  'SAP.DE': {
+    baseCurrency: 'EUR',
+    exposures: [
+      { currency: 'USD', relevance: 'USA (principal mercado)', weight: 0.45 },
+      { currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.20 },
+      { currency: 'CNY', relevance: 'China', weight: 0.15 },
+    ]
+  },
+  
+  // Siemens - Industrial global
+  'SIE.DE': {
+    baseCurrency: 'EUR',
+    exposures: [
+      { currency: 'USD', relevance: 'USA', weight: 0.30 },
+      { currency: 'CNY', relevance: 'China (producción/ventas)', weight: 0.30 },
+      { currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 },
+      { currency: 'INR', relevance: 'India (crecimiento)', weight: 0.20 },
+    ]
+  },
+  
+  // Novo Nordisk - Pharma danés
+  'NVO': {
+    baseCurrency: 'DKK',
+    exposures: [
+      { currency: 'USD', relevance: 'USA (principal mercado pharma)', weight: 0.50 },
+      { currency: 'EUR', relevance: 'Europa', weight: 0.25 },
+      { currency: 'CNY', relevance: 'China', weight: 0.15 },
+      { currency: 'JPY', relevance: 'Japón', weight: 0.10 },
+    ]
+  },
+  
+  // ExxonMobil - Petróleo
+  'XOM': {
+    baseCurrency: 'USD',
+    exposures: [
+      { currency: 'EUR', relevance: 'Operaciones Europa', weight: 0.25 },
+      { currency: 'GBP', relevance: 'Mar del Norte', weight: 0.25 },
+      { currency: 'CAD', relevance: 'Canadá (oil sands)', weight: 0.25 },
+      { currency: 'NOK', relevance: 'Noruega', weight: 0.25 },
     ]
   },
   
@@ -273,7 +410,7 @@ const FOREX_PAIRS: Record<string, string> = {
 
 // Caché
 interface CacheEntry {
-  data: { currentRate: number; change1w: number; change1m: number };
+  data: { currentRate: number; change1w: number; change1m: number; volatility: number };
   timestamp: number;
 }
 const forexCache = new Map<string, CacheEntry>();
@@ -282,9 +419,9 @@ const CACHE_DURATION = 30 * 60 * 1000; // 30 minutos
 class ForexAnalysisService {
   
   /**
-   * Obtiene datos históricos de un par de forex
+   * Obtiene datos históricos de un par de forex incluyendo volatilidad
    */
-  private async getForexData(currency: string): Promise<{ currentRate: number; change1w: number; change1m: number } | null> {
+  private async getForexData(currency: string): Promise<{ currentRate: number; change1w: number; change1m: number; volatility: number } | null> {
     const pairSymbol = FOREX_PAIRS[currency];
     if (!pairSymbol) {
       console.warn(`[Forex] Par no configurado para ${currency}`);
@@ -327,12 +464,29 @@ class ForexAnalysisService {
       const change1w = ((currentRate - weekAgoRate) / weekAgoRate) * 100;
       const change1m = ((currentRate - monthAgoRate) / monthAgoRate) * 100;
       
-      const forexData = { currentRate, change1w, change1m };
+      // Calcular volatilidad (desviación estándar de cambios diarios %)
+      const dailyChanges: number[] = [];
+      for (let i = 1; i < closes.length; i++) {
+        if (closes[i] && closes[i - 1]) {
+          const dailyChange = ((closes[i] - closes[i - 1]) / closes[i - 1]) * 100;
+          dailyChanges.push(dailyChange);
+        }
+      }
+      
+      let volatility = 0;
+      if (dailyChanges.length > 5) {
+        const mean = dailyChanges.reduce((a, b) => a + b, 0) / dailyChanges.length;
+        const squaredDiffs = dailyChanges.map(c => Math.pow(c - mean, 2));
+        const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / squaredDiffs.length;
+        volatility = Math.sqrt(avgSquaredDiff) * Math.sqrt(252); // Anualizada
+      }
+      
+      const forexData = { currentRate, change1w, change1m, volatility };
       
       // Guardar en caché
       forexCache.set(currency, { data: forexData, timestamp: Date.now() });
       
-      console.log(`[Forex] EUR/${currency}: ${currentRate.toFixed(4)}, 1w: ${change1w.toFixed(2)}%, 1m: ${change1m.toFixed(2)}%`);
+      console.log(`[Forex] EUR/${currency}: ${currentRate.toFixed(4)}, 1w: ${change1w.toFixed(2)}%, 1m: ${change1m.toFixed(2)}%, vol: ${volatility.toFixed(1)}%`);
       
       return forexData;
       
@@ -344,10 +498,10 @@ class ForexAnalysisService {
   
   /**
    * Detecta la moneda base y exposiciones para un símbolo
-   * Usa el mapeo específico si existe, o infiere de la bolsa
+   * Usa el mapeo específico si existe, o infiere de la bolsa y sector
    */
   private getExposureForSymbol(symbol: string): { baseCurrency: string; exposures: Array<{ currency: string; relevance: string; weight: number }> } {
-    // 1. Primero buscar en el mapeo específico
+    // 1. Primero buscar en el mapeo específico (para empresas conocidas)
     if (COMPANY_FOREX_EXPOSURE[symbol]) {
       console.log(`[Forex] Usando mapeo específico para ${symbol}`);
       return COMPANY_FOREX_EXPOSURE[symbol];
@@ -402,12 +556,200 @@ class ForexAnalysisService {
   }
   
   /**
+   * Obtiene exposición dinámica basada en sector/industria de Yahoo Finance
+   * Infiere las divisas relevantes según patrones típicos de cada industria
+   */
+  private async getDynamicExposure(symbol: string, baseCurrency: string): Promise<Array<{ currency: string; relevance: string; weight: number }> | null> {
+    try {
+      // Obtener sector e industria de Yahoo Finance
+      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=assetProfile`;
+      
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      const data = await response.json();
+      
+      const profile = data.quoteSummary?.result?.[0]?.assetProfile;
+      if (!profile) {
+        console.log(`[Forex] No se pudo obtener perfil para ${symbol}`);
+        return null;
+      }
+      
+      const sector = profile.sector?.toLowerCase() || '';
+      const industry = profile.industry?.toLowerCase() || '';
+      const country = profile.country?.toLowerCase() || '';
+      
+      console.log(`[Forex] ${symbol} - Sector: ${sector}, Industry: ${industry}, Country: ${country}`);
+      
+      // Generar exposición dinámica basada en industria
+      return this.inferExposureFromIndustry(sector, industry, country, baseCurrency);
+      
+    } catch (error) {
+      console.warn(`[Forex] Error obteniendo perfil dinámico:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Infiere exposición FX basada en sector/industria
+   */
+  private inferExposureFromIndustry(
+    sector: string, 
+    industry: string, 
+    country: string,
+    baseCurrency: string
+  ): Array<{ currency: string; relevance: string; weight: number }> {
+    const exposures: Array<{ currency: string; relevance: string; weight: number }> = [];
+    
+    // Patrones por industria (las industrias más expuestas a FX)
+    
+    // TECNOLOGÍA - muy global
+    if (sector.includes('technology') || industry.includes('software') || industry.includes('semiconductor')) {
+      if (baseCurrency === 'USD') {
+        exposures.push({ currency: 'EUR', relevance: 'Ventas Europa', weight: 0.25 });
+        exposures.push({ currency: 'CNY', relevance: 'China (ventas/producción)', weight: 0.30 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.20 });
+        exposures.push({ currency: 'GBP', relevance: 'Reino Unido', weight: 0.15 });
+        exposures.push({ currency: 'TWD', relevance: 'Taiwán (chips)', weight: 0.10 });
+      } else if (baseCurrency === 'EUR') {
+        exposures.push({ currency: 'USD', relevance: 'USA (principal mercado tech)', weight: 0.45 });
+        exposures.push({ currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 });
+        exposures.push({ currency: 'CNY', relevance: 'Asia', weight: 0.20 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.15 });
+      }
+    }
+    
+    // FARMACÉUTICA/SALUD - muy global
+    else if (sector.includes('healthcare') || industry.includes('pharma') || industry.includes('biotech')) {
+      if (baseCurrency === 'USD') {
+        exposures.push({ currency: 'EUR', relevance: 'Europa (regulación EMA)', weight: 0.30 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.25 });
+        exposures.push({ currency: 'CNY', relevance: 'China', weight: 0.25 });
+        exposures.push({ currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 });
+      } else if (baseCurrency === 'EUR') {
+        exposures.push({ currency: 'USD', relevance: 'USA (mercado pharma principal)', weight: 0.50 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.25 });
+        exposures.push({ currency: 'CNY', relevance: 'China', weight: 0.25 });
+      }
+    }
+    
+    // AUTOMOTRIZ - supply chain global
+    else if (industry.includes('auto') || industry.includes('vehicle')) {
+      if (baseCurrency === 'USD') {
+        exposures.push({ currency: 'CNY', relevance: 'China (producción/ventas)', weight: 0.30 });
+        exposures.push({ currency: 'EUR', relevance: 'Europa', weight: 0.25 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón (competencia)', weight: 0.20 });
+        exposures.push({ currency: 'MXN', relevance: 'México (producción)', weight: 0.15 });
+        exposures.push({ currency: 'CAD', relevance: 'Canadá', weight: 0.10 });
+      } else if (baseCurrency === 'EUR') {
+        exposures.push({ currency: 'USD', relevance: 'USA', weight: 0.30 });
+        exposures.push({ currency: 'CNY', relevance: 'China', weight: 0.30 });
+        exposures.push({ currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.20 });
+      }
+    }
+    
+    // PETRÓLEO/ENERGÍA - cotiza en USD
+    else if (sector.includes('energy') || industry.includes('oil') || industry.includes('gas')) {
+      if (baseCurrency === 'USD') {
+        exposures.push({ currency: 'EUR', relevance: 'Europa', weight: 0.30 });
+        exposures.push({ currency: 'GBP', relevance: 'Mar del Norte', weight: 0.25 });
+        exposures.push({ currency: 'CAD', relevance: 'Canadá (oil sands)', weight: 0.25 });
+        exposures.push({ currency: 'NOK', relevance: 'Noruega', weight: 0.20 });
+      } else {
+        // Empresas no-USD de energía muy expuestas al USD
+        exposures.push({ currency: 'USD', relevance: 'Petróleo cotiza en USD', weight: 0.60 });
+        exposures.push({ currency: 'GBP', relevance: 'Mar del Norte', weight: 0.20 });
+        exposures.push({ currency: 'NOK', relevance: 'Noruega', weight: 0.20 });
+      }
+    }
+    
+    // RETAIL/CONSUMO - depende del país origen
+    else if (sector.includes('consumer') || industry.includes('retail') || industry.includes('apparel')) {
+      if (baseCurrency === 'USD') {
+        exposures.push({ currency: 'CNY', relevance: 'China (producción)', weight: 0.35 });
+        exposures.push({ currency: 'EUR', relevance: 'Europa', weight: 0.25 });
+        exposures.push({ currency: 'GBP', relevance: 'Reino Unido', weight: 0.20 });
+        exposures.push({ currency: 'MXN', relevance: 'México', weight: 0.20 });
+      } else if (baseCurrency === 'EUR') {
+        exposures.push({ currency: 'USD', relevance: 'USA y LatAm', weight: 0.35 });
+        exposures.push({ currency: 'GBP', relevance: 'Reino Unido', weight: 0.25 });
+        exposures.push({ currency: 'CNY', relevance: 'Producción Asia', weight: 0.25 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.15 });
+      }
+    }
+    
+    // FINANCIERO/BANCA - muy expuesto
+    else if (sector.includes('financial') || industry.includes('bank') || industry.includes('insurance')) {
+      if (baseCurrency === 'USD') {
+        exposures.push({ currency: 'EUR', relevance: 'Europa', weight: 0.30 });
+        exposures.push({ currency: 'GBP', relevance: 'Londres (hub financiero)', weight: 0.30 });
+        exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.20 });
+        exposures.push({ currency: 'HKD', relevance: 'Asia/HK', weight: 0.20 });
+      } else if (baseCurrency === 'EUR') {
+        exposures.push({ currency: 'USD', relevance: 'USA', weight: 0.30 });
+        exposures.push({ currency: 'GBP', relevance: 'Londres', weight: 0.25 });
+        exposures.push({ currency: 'BRL', relevance: 'LatAm (Brasil)', weight: 0.25 });
+        exposures.push({ currency: 'MXN', relevance: 'México', weight: 0.20 });
+      }
+    }
+    
+    // LUJO - muy dependiente de China y USA
+    else if (industry.includes('luxury') || industry.includes('fashion')) {
+      exposures.push({ currency: 'USD', relevance: 'USA (mercado lujo)', weight: 0.30 });
+      exposures.push({ currency: 'CNY', relevance: 'China (principal crecimiento)', weight: 0.35 });
+      exposures.push({ currency: 'JPY', relevance: 'Japón', weight: 0.20 });
+      exposures.push({ currency: 'GBP', relevance: 'Reino Unido', weight: 0.15 });
+    }
+    
+    // MINERÍA/MATERIALES - cotiza en USD
+    else if (sector.includes('basic materials') || industry.includes('mining') || industry.includes('steel')) {
+      if (baseCurrency !== 'USD') {
+        exposures.push({ currency: 'USD', relevance: 'Commodities cotizan en USD', weight: 0.50 });
+      }
+      exposures.push({ currency: 'CNY', relevance: 'China (demanda)', weight: 0.30 });
+      exposures.push({ currency: 'AUD', relevance: 'Australia (minería)', weight: 0.20 });
+    }
+    
+    // Si no hay exposures definidas, usar genéricas por moneda base
+    if (exposures.length === 0) {
+      const genericKey = baseCurrency.toLowerCase();
+      const genericExposures = GENERIC_EXPOSURES[genericKey] || GENERIC_EXPOSURES['default'];
+      return genericExposures;
+    }
+    
+    // Normalizar pesos para que sumen 1
+    const totalWeight = exposures.reduce((sum, e) => sum + e.weight, 0);
+    if (totalWeight > 0 && totalWeight !== 1) {
+      exposures.forEach(e => e.weight = e.weight / totalWeight);
+    }
+    
+    console.log(`[Forex] Exposición dinámica generada: ${exposures.map(e => `${e.currency}:${(e.weight * 100).toFixed(0)}%`).join(', ')}`);
+    
+    return exposures;
+  }
+  
+  /**
    * Analiza el impacto de tipos de cambio para una empresa
+   * Versión mejorada que puede usar exposición dinámica
    */
   async analyzeForexImpact(symbol: string): Promise<ForexImpact> {
     console.log(`[Forex] Analizando impacto forex para ${symbol}`);
     
-    const exposure = this.getExposureForSymbol(symbol);
+    let exposure = this.getExposureForSymbol(symbol);
+    
+    // Si no tiene mapeo específico, intentar obtener exposición dinámica
+    const isGenericExposure = !COMPANY_FOREX_EXPOSURE[symbol];
+    if (isGenericExposure && exposure.baseCurrency) {
+      const dynamicExposures = await this.getDynamicExposure(symbol, exposure.baseCurrency);
+      if (dynamicExposures && dynamicExposures.length > 0) {
+        console.log(`[Forex] Usando exposición dinámica para ${symbol}`);
+        exposure = {
+          baseCurrency: exposure.baseCurrency,
+          exposures: dynamicExposures,
+        };
+      }
+    }
     
     // Si no hay exposures (ej: crypto), devolver sin datos
     if (exposure.exposures.length === 0) {
@@ -417,6 +759,8 @@ class ForexAnalysisService {
         currencyPairs: [],
         overallTrend: 'stable',
         forexScore: 0,
+        avgVolatility: 0,
+        volatilityRisk: 'low' as const,
         hasData: false,
         summary: 'Tipo de activo sin exposición forex significativa',
       };
@@ -437,6 +781,8 @@ class ForexAnalysisService {
         currencyPairs: [],
         overallTrend: 'stable',
         forexScore: 0,
+        avgVolatility: 0,
+        volatilityRisk: 'low' as const,
         hasData: false,
         summary: 'Error obteniendo datos de divisas',
       };
@@ -478,8 +824,28 @@ class ForexAnalysisService {
         trend,
         impact,
         relevance: exp.relevance,
+        volatility: data!.volatility,
       };
     });
+    
+    // Calcular volatilidad media ponderada
+    let avgVolatility = 0;
+    let volWeightSum = 0;
+    for (const result of validResults) {
+      const { exposure: exp, data } = result;
+      if (data!.volatility > 0) {
+        avgVolatility += data!.volatility * exp.weight;
+        volWeightSum += exp.weight;
+      }
+    }
+    if (volWeightSum > 0) {
+      avgVolatility = avgVolatility / volWeightSum;
+    }
+    
+    // Determinar nivel de riesgo por volatilidad
+    let volatilityRisk: 'low' | 'medium' | 'high' = 'low';
+    if (avgVolatility > 15) volatilityRisk = 'high';      // >15% anual = alto
+    else if (avgVolatility > 8) volatilityRisk = 'medium'; // 8-15% = medio
     
     // Calcular score ponderado (-100 a +100)
     let forexScore = 0;
@@ -541,7 +907,14 @@ class ForexAnalysisService {
       }
     }
     
-    console.log(`[Forex] Score: ${forexScore.toFixed(0)}, Trend: ${overallTrend}`);
+    // Añadir info de volatilidad al summary si es significativa
+    if (volatilityRisk === 'high') {
+      summary += ` ⚠️ Alta volatilidad FX (${avgVolatility.toFixed(1)}% anual) = mayor riesgo cambiario.`;
+    } else if (volatilityRisk === 'medium') {
+      summary += ` Volatilidad FX moderada (${avgVolatility.toFixed(1)}%).`;
+    }
+    
+    console.log(`[Forex] Score: ${forexScore.toFixed(0)}, Trend: ${overallTrend}, VolRisk: ${volatilityRisk} (${avgVolatility.toFixed(1)}%)`);
     console.log(`[Forex] ${summary}`);
     
     return {
@@ -549,6 +922,8 @@ class ForexAnalysisService {
       currencyPairs,
       overallTrend,
       forexScore: Math.round(forexScore),
+      avgVolatility: Math.round(avgVolatility * 10) / 10,
+      volatilityRisk,
       hasData: true,
       summary,
     };

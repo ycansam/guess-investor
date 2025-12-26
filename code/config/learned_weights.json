@@ -1,53 +1,50 @@
 {
-  "version": "1.2",
-  "updated_at": "2025-12-26T16:00:00.000000",
+  "version": "1.0",
+  "updated_at": "2025-12-26T14:39:17.093265",
   "training_samples": 83,
   "weights": {
     "intraday": {
-      "trend": 0.20,
+      "trend": 0.2,
       "technical": 0.25,
       "sentiment": 0.15,
-      "news": 0.16,
+      "news": 0.18,
       "macro": 0.04,
       "competitors": 0.04,
       "forex": 0.04,
       "institutional": 0.05,
-      "seasonality": 0.04,
+      "seasonality": 0.02,
       "financials": 0.02,
-      "expectations": 0.03
+      "expectations": 0.01
     },
     "swing": {
       "trend": 0.12,
       "technical": 0.18,
-      "sentiment": 0.10,
+      "sentiment": 0.1,
       "news": 0.15,
       "macro": 0.08,
       "competitors": 0.07,
       "forex": 0.06,
-      "institutional": 0.10,
+      "institutional": 0.1,
       "seasonality": 0.04,
       "financials": 0.05,
       "expectations": 0.05
     },
     "long": {
       "trend": 0.05,
-      "technical": 0.10,
+      "technical": 0.08,
       "sentiment": 0.04,
-      "news": 0.07,
+      "news": 0.08,
       "macro": 0.12,
-      "competitors": 0.10,
+      "competitors": 0.1,
       "forex": 0.08,
       "institutional": 0.12,
       "seasonality": 0.08,
-      "financials": 0.12,
+      "financials": 0.13,
       "expectations": 0.12
     }
   },
   "metadata": {
-    "optimizer": "adam",
-    "learning_rate": 0.001,
-    "beta1": 0.9,
-    "beta2": 0.999,
-    "epsilon": 1e-8
+    "learning_rate": 0.01,
+    "momentum": 0.9
   }
 }
