@@ -1,12 +1,12 @@
 # Changelog - Guess Investor
 
 **Última actualización:** 26 de diciembre de 2025  
-**Versión:** `1.4.0`  
+**Versión:** `1.1.0`  
 **Commit actual:** `d54cad0`
 
 ---
 
-## [1.4.0] - 26 de diciembre de 2025
+## [Unreleased] - Mejoras en Desarrollo
 
 ### Competitors Avanzado (Cobertura: 65% → 85%)
 
@@ -38,13 +38,9 @@
 - **Momentum Detection** - Acelerando/Desacelerando/Estable
 - **RS semanal y mensual** vs promedio del sector
 
----
-
-## [1.3.0] - 25 de diciembre de 2025
-
 ### Datos Dinámicos - Mayor Cobertura de Factores
 
-#### Competitors Dinámico (Cobertura: 65% → 85%)
+#### Competitors Dinámico
 - **Detección automática de competidores** usando Yahoo Finance sector/industry
 - **Sin necesidad de mapeos manuales** para nuevas empresas
 - **Descubrimiento por industria** - Peers detectados automáticamente por sector
@@ -59,13 +55,11 @@
 - **Fallback automático** a datos estáticos si API no disponible
 - Nuevo archivo: `fred-api-service.ts`
 
-#### Forex Dinámico (Cobertura: 65% → 80%) - v1.2.5
+#### Forex Dinámico (Cobertura: 65% → 80%)
 - **Exposición FX por sector** inferida desde Yahoo Finance assetProfile
 - **Patrones por industria**: Technology, Healthcare, Automotive, Energy, Consumer, etc.
 - **Volatilidad FX calculada** - Desviación estándar anualizada de pares de divisas
 - **15+ nuevas empresas** con exposiciones específicas
-
-### Mejoras Anteriores de Factores (v1.2.x)
 
 #### Competitors (50% → 65%)
 - Comparación de ratios P/E (trailing y forward)
@@ -340,8 +334,8 @@ Loss = α·DirectionLoss + β·MagnitudeLoss + γ·RangeLoss
 | **Technical** | SMA 20/50/200, EMA 12/26, RSI 14, MACD, Bollinger, Volumen, Golden/Death Cross | Patrones chartistas, soportes/resistencias | ~85% |
 | **Sentiment** | StockTwits, Reddit, **Fear & Greed Index** (crypto con histórico), **VIX Index**, **Put/Call Ratio (CBOE SPX)** | Short interest (requiere API FINRA pagada), Twitter/X (requiere API pagada) | ~75% |
 | **News** | Yahoo News + análisis keywords, **Earnings calendar**, **Dividendos**, **Acciones de analistas** (upgrades/downgrades), **Detección de eventos regulatorios** (SEC, FDA, FTC, DOJ, EU, antitrust) | Splits históricos, M&A rumores | ~70% |
-| **Macro** | Índices regionales, bonos 10Y, VIX, commodities, **CPI (Inflación)**, **GDP (PIB)**, **NFP (Empleo)**, **Tasas Fed/BCE/BoE/BoJ/PBOC**, **PMI (Manufacturing/Services)**, **Ciclo económico**, **Eventos económicos próximos** | - | ~80% |
-| **Competitors** | Rendimiento vs 50+ empresas mapeadas, **P/E ratio vs sector**, **Market Cap ranking**, valoración relativa | Cuota de mercado | ~65% |
+| **Macro** | Índices regionales, bonos 10Y, VIX, commodities, **CPI (Inflación)**, **GDP (PIB)**, **NFP (Empleo)**, **Tasas Fed/BCE/BoE/BoJ/PBOC**, **PMI (Manufacturing/Services)**, **Ciclo económico**, **Eventos económicos próximos**, **FRED API (datos US en tiempo real)** | - | ~80% |
+| **Competitors** | Rendimiento vs 50+ empresas mapeadas, **P/E ratio vs sector**, **Market Cap ranking**, valoración relativa, **Detección dinámica de peers**, **Market Share Analysis**, **Profitability Analysis (Margins/ROE)**, **Growth Analysis**, **Relative Strength** | - | ~85% |
 | **Forex** | **Exposición dinámica por sector/industria** (obtiene perfil de Yahoo Finance y genera exposiciones automáticas), 25+ empresas con mapeo específico, volatilidad FX anualizada, nivel de riesgo cambiario | Correlación histórica stock-forex | ~80% |
 | **Institutional** | % ownership, tendencia, insiders, top 5 fondos, **COT Report** (especuladores vs comerciales), **Flujos ETFs** (sector vs mercado), **Dark Pools** (short volume, acumulación/distribución, block trades, volumen inusual) | 13F filings SEC detallados | ~85% |
 | **Seasonality** | 50+ eventos para 20+ países, patrones globales, **patrones históricos por acción específica** (performance mismo período 3 años), **ajuste score por consistencia histórica** | - | ~70% |
