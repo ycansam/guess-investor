@@ -176,6 +176,14 @@ class AdaptiveWeightsService {
       prediction.actualChange = actualChange;
       prediction.accuracyScore = accuracyScore;
       prediction.directionCorrect = directionCorrect;
+      
+      // Actualizar el asset-adjustment-service para aprendizaje por activo
+      await assetAdjustmentService.updateFromVerification(
+        prediction.symbol,
+        prediction.predictedChange,
+        actualChange,
+        directionCorrect
+      );
     }
 
     // Recalcular ajustes adaptativos

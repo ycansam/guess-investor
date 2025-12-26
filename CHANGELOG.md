@@ -38,6 +38,35 @@
 - **Momentum Detection** - Acelerando/Desacelerando/Estable
 - **RS semanal y mensual** vs promedio del sector
 
+### Asset-Specific Adjustments (NUEVO)
+
+#### Servicio de Ajustes por Activo
+- **Nuevo archivo**: `asset-adjustment-service.ts`
+- **Ajustes predefinidos** para activos problemáticos (TSLA, NVDA, AMD, crypto, meme stocks)
+- **Escalado de magnitud** - Reduce predicciones exageradas (ej: TSLA al 55%)
+- **Sesgo direccional** - Corrección de tendencia sistemática (ej: -0.5% para TSLA)
+- **Escalado de confianza** - Reduce confianza para activos volátiles
+
+#### Ajustes Predefinidos
+| Activo | Magnitud | Sesgo | Confianza | Razón |
+|--------|----------|-------|-----------|-------|
+| TSLA | 55% | -0.5% | 85% | Alta volatilidad, predicciones exageradas |
+| NVDA | 60% | -0.3% | 88% | Volatilidad por IA/chips |
+| AMD | 65% | -0.2% | 90% | Similar a NVDA |
+| BTC-USD | 70% | 0% | 80% | Crypto altamente volátil |
+| ETH-USD | 70% | 0% | 82% | Crypto |
+| GME | 50% | 0% | 70% | Meme stock extremo |
+| AMC | 50% | 0% | 70% | Meme stock |
+| PLTR | 60% | -0.2% | 85% | Alto momentum/retail |
+| COIN | 60% | -0.2% | 80% | Exposición crypto |
+| MSTR | 55% | 0% | 75% | Bitcoin treasury |
+
+#### Auto-Learning
+- **EMA con α=0.2** - Suaviza estadísticas aprendidas
+- **Mínimo 5 muestras** antes de aplicar ajustes aprendidos
+- **Persistencia** en AsyncStorage
+- **Integración con verificación** - Aprende de cada predicción verificada
+
 ### Datos Dinámicos - Mayor Cobertura de Factores
 
 #### Competitors Dinámico

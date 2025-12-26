@@ -8,6 +8,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { accuracyPredictorService, ExpectedAccuracy } from './accuracy-predictor-service';
+import { assetAdjustmentService } from './asset-adjustment-service';
 import { companyFinancialsService, FinancialSummary } from './company-financials-service';
 import { CompetitorAnalysis, competitorsService } from './competitors-service';
 import { CorporateEvents, corporateEventsService } from './corporate-events-service';
@@ -1449,6 +1450,16 @@ class PredictionCalculatorService {
     // Aplicar límites según timeframe
     const maxChange = Math.min(periodVolatility * 1.5, timeframeDays === 1 ? 8 : 15);
     expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
+    
+    // --- AJUSTE POR ACTIVO ---
+    // Algunos activos (TSLA, NVDA, crypto) tienden a tener predicciones exageradas
+    // Aplicar correcciones basadas en historial de errores
+    const assetAdjustment = assetAdjustmentService.applyAdjustment(symbol, expectedChange, confidence);
+    if (assetAdjustment.wasAdjusted) {
+      expectedChange = assetAdjustment.adjustedChange;
+      confidence = assetAdjustment.adjustedConfidence;
+      console.log(`[PredictionCalc] ⚠️ Ajuste por activo aplicado: ${symbol} (scale: ${assetAdjustment.adjustment?.magnitudeScale.toFixed(2)})`);
+    }
     
     console.log(`[PredictionCalc] Cambio esperado final: ${expectedChange.toFixed(2)}% (score: ${combinedScore.toFixed(1)}, volatilidad periodo: ${periodVolatility.toFixed(2)}%)`);
 
