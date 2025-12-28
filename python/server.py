@@ -27,11 +27,15 @@ from src.config import (
     DEFAULT_LEARNING_RATE, DEFAULT_MOMENTUM, DEFAULT_EPOCHS,
     EARLY_STOPPING_PATIENCE
 )
-from src.models import WeightOptimizer, LossFunction, VerifiedPrediction
+from src.models import WeightOptimizer, LossFunction, VerifiedPrediction, AssetClassifier, get_classifier
 from src.utils import save_weights, append_training_result
 
 # Archivo donde guardar las predicciones recibidas
 PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
+ASSET_PROFILES_FILE = DATA_DIR / "asset_profiles.json"
+
+# Inicializar clasificador de activos
+asset_classifier = get_classifier(ASSET_PROFILES_FILE)
 
 
 class TrainingHandler(BaseHTTPRequestHandler):
@@ -58,6 +62,7 @@ class TrainingHandler(BaseHTTPRequestHandler):
                 'predictions_file': str(PREDICTIONS_FILE),
                 'predictions_count': self._get_predictions_count(),
                 'weights_file': str(WEIGHTS_FILE),
+                'asset_profiles_count': len(asset_classifier.profiles),
             }
             self._set_headers(200)
             self.wfile.write(json.dumps(status).encode())
@@ -72,6 +77,23 @@ class TrainingHandler(BaseHTTPRequestHandler):
             else:
                 self._set_headers(404)
                 self.wfile.write(json.dumps({'error': 'No hay pesos entrenados'}).encode())
+        
+        elif self.path.startswith('/classify/'):
+            # Clasificar un activo: GET /classify/AAPL
+            symbol = self.path.split('/classify/')[1].upper()
+            try:
+                profile = asset_classifier.classify(symbol)
+                self._set_headers(200)
+                self.wfile.write(json.dumps(profile.to_dict()).encode())
+            except Exception as e:
+                self._set_headers(500)
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        elif self.path == '/profiles':
+            # Listar todos los perfiles clasificados
+            profiles = {s: p.to_dict() for s, p in asset_classifier.profiles.items()}
+            self._set_headers(200)
+            self.wfile.write(json.dumps(profiles).encode())
         
         else:
             self._set_headers(404)
@@ -102,6 +124,72 @@ class TrainingHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"[Server] ❌ Error: {e}")
                 self._set_headers(400)
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        elif self.path == '/classify':
+            # Clasificar activo con datos históricos
+            # POST /classify { symbol: "AAPL", asset_type: "stock", historical_data: [...] }
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                symbol = data.get('symbol', '').upper()
+                asset_type = data.get('asset_type', 'stock')
+                historical_data = data.get('historical_data', [])
+                force = data.get('force', False)
+                
+                if not symbol:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({'error': 'Symbol requerido'}).encode())
+                    return
+                
+                profile = asset_classifier.classify(
+                    symbol=symbol,
+                    historical_data=historical_data if historical_data else None,
+                    asset_type=asset_type,
+                    force_recalculate=force
+                )
+                
+                print(f"[Server] 🏷️ Clasificado {symbol}: {profile.recommended_timeframe} (confianza: {profile.confidence}%)")
+                
+                self._set_headers(200)
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'profile': profile.to_dict(),
+                }).encode())
+                
+            except Exception as e:
+                print(f"[Server] ❌ Error clasificando: {e}")
+                self._set_headers(500)
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        elif self.path == '/classify-batch':
+            # Clasificar múltiples activos
+            # POST /classify-batch { symbols: ["AAPL", "BTC-USD"], historical_data: { "AAPL": [...] } }
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                symbols = data.get('symbols', [])
+                historical_data_map = data.get('historical_data', {})
+                
+                if not symbols:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({'error': 'Symbols requerido'}).encode())
+                    return
+                
+                results = asset_classifier.batch_classify(
+                    symbols=[s.upper() for s in symbols],
+                    historical_data_map=historical_data_map
+                )
+                
+                print(f"[Server] 🏷️ Clasificados {len(results)} activos")
+                
+                self._set_headers(200)
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'profiles': {s: p.to_dict() for s, p in results.items()},
+                }).encode())
+                
+            except Exception as e:
+                print(f"[Server] ❌ Error en batch: {e}")
+                self._set_headers(500)
                 self.wfile.write(json.dumps({'error': str(e)}).encode())
         
         elif self.path == '/train':
@@ -248,10 +336,14 @@ def run_server(port: int = 8765):
     print("=" * 60)
     print(f"\n🚀 Servidor corriendo en http://localhost:{port}")
     print(f"\nEndpoints:")
-    print(f"  GET  /status       - Estado del servidor")
-    print(f"  GET  /weights      - Obtener pesos actuales")
-    print(f"  POST /predictions  - Enviar predicciones verificadas")
-    print(f"  POST /train        - Forzar entrenamiento")
+    print(f"  GET  /status          - Estado del servidor")
+    print(f"  GET  /weights         - Obtener pesos actuales")
+    print(f"  GET  /classify/SYMBOL - Clasificar un activo")
+    print(f"  GET  /profiles        - Listar perfiles clasificados")
+    print(f"  POST /predictions     - Enviar predicciones verificadas")
+    print(f"  POST /train           - Forzar entrenamiento")
+    print(f"  POST /classify        - Clasificar con datos históricos")
+    print(f"  POST /classify-batch  - Clasificar múltiples activos")
     print(f"\nPresiona Ctrl+C para detener\n")
     
     try:

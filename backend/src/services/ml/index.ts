@@ -39,6 +39,11 @@ export {
     type DerivedFeatures
 } from './feature-engineering.service.js';
 
+export {
+    pythonMlService,
+    type AssetProfile
+} from './python-ml.service.js';
+
 /**
  * Inicializa todos los servicios ML que requieren carga de estado
  */

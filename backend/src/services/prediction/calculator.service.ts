@@ -2,6 +2,12 @@
  * Prediction Calculator Service
  * Calcula predicciones de forma DETERMINÍSTICA basándose en datos reales
  * Migrado completamente del frontend
+ * 
+ * SELECCIÓN DINÁMICA DE MODELOS:
+ * El sistema usa diferentes modelos según los datos disponibles:
+ * - Si hay datos fundamentales → activa modelo fundamental
+ * - Si hay datos de sentiment/news → activa modelo sentiment_driven
+ * - Si solo hay datos técnicos → usa modelos momentum/mean_reversion
  */
 
 import { logger } from '../../middleware/logger.js';
@@ -24,6 +30,7 @@ import {
     reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
+import { DataAvailability, ensembleService } from './ensemble.service.js';
 import { trackRecordService } from './track-record.service.js';
 
 // ============================================================================
@@ -55,6 +62,10 @@ export interface CalculatedPrediction {
     assetAdjustmentApplied?: boolean;
     trackRecordAdjustment?: number;
     correlationAdjustment?: number;
+    // Información de selección dinámica de modelos
+    activeModels?: string[];
+    modelSelectionReason?: string;
+    dataAvailability?: DataAvailability;
   };
   
   // Modelo probabilístico
@@ -433,6 +444,25 @@ export const predictionCalculatorService = {
     const hasInstitutionalData = institutional.hasData;
     const hasFinancialsData = financials?.hasData || false;
 
+    // Objeto de disponibilidad de datos para el ensemble
+    const dataAvailability: DataAvailability = {
+      trend: hasHistoricalData,
+      technical: hasTechnicalData,
+      sentiment: hasSentimentData,
+      news: hasNewsData,
+      macro: hasMacroData,
+      competitors: hasCompetitorsData,
+      forex: hasForexData,
+      institutional: hasInstitutionalData,
+      seasonality: hasSeasonalityData,
+      financials: hasFinancialsData,
+      expectations: hasExpectationsData,
+    };
+
+    // Log de disponibilidad de datos
+    const availableCount = Object.values(dataAvailability).filter(Boolean).length;
+    logger.info(`[PredictionCalc] Data availability: ${availableCount}/11 factors`);
+
     // Scores de cada factor (-100 a +100)
     const trendScore = hasHistoricalData ? this.calculateTrendScore(historical.change30d, historical.change90d) : 0;
     const technicalScore = hasTechnicalData ? technical.technicalScore : 0;
@@ -498,6 +528,28 @@ export const predictionCalculatorService = {
         return sum + (f.score * normalizedWeight);
       }, 0);
     }
+
+    // --- ENSEMBLE: Selección dinámica de modelos según datos disponibles ---
+    const factorScoresForEnsemble: Record<string, number> = {};
+    factors.forEach(f => { factorScoresForEnsemble[f.name] = f.score; });
+    
+    const timeframeKeyEnsemble = timeframeDays <= 1 ? 'intraday' : timeframeDays <= 7 ? 'swing' : 'long';
+    const regimeIndicators = {
+      vix: sentiment.vix?.value,
+      trend: trendScore,
+      volatility: historical.volatility,
+    };
+    
+    const ensembleResult = await ensembleService.predict(
+      symbol,
+      timeframeKeyEnsemble as 'intraday' | 'swing' | 'long',
+      factorScoresForEnsemble,
+      dataAvailability,
+      regimeIndicators
+    );
+    
+    logger.info(`[PredictionCalc] Ensemble: ${ensembleResult.activeModels.length} active models (${ensembleResult.activeModels.join(', ')})`);
+    logger.info(`[PredictionCalc] Ensemble dominant model: ${ensembleResult.dominantModel}, agreement: ${ensembleResult.agreementLevel}`);
 
     logger.info(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)} (${availableFactors.length}/${factors.length} factors)`);
 
@@ -628,6 +680,10 @@ export const predictionCalculatorService = {
         assetAdjustmentApplied: assetAdjustment.wasAdjusted,
         trackRecordAdjustment,
         correlationAdjustment: correlationAdjustment.adjustedConfidence - correlationAdjustment.originalConfidence,
+        // Información de selección dinámica de modelos
+        activeModels: ensembleResult.activeModels,
+        modelSelectionReason: ensembleResult.modelSelectionReason,
+        dataAvailability,
       },
       probabilistic: {
         mean: probabilisticResult.pointEstimate,
