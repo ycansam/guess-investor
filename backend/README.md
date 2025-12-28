@@ -1,8 +1,8 @@
 # Guess Investor Backend
 
-**Última actualización:** 28 de diciembre de 2025
+**Última actualización:** 29 de diciembre de 2025
 
-API REST para el servicio de predicción de inversiones con ML avanzado.
+API REST para el servicio de predicción de inversiones con ML avanzado y ensemble de 7 modelos dinámicos.
 
 ## 🚀 Quick Start
 
@@ -38,8 +38,8 @@ backend/
 │   ├── routes/              # Definición de rutas
 │   ├── services/            # Lógica de negocio
 │   │   ├── external/        # APIs externas (Yahoo, Finviz, etc.)
-│   │   ├── prediction/      # Cálculo y ajuste de predicciones
-│   │   └── ml/              # Machine Learning avanzado
+│   │   ├── prediction/      # Cálculo y predicciones (7 servicios)
+│   │   └── ml/              # Machine Learning avanzado (7 servicios)
 │   └── app.ts               # Entry point
 ├── prisma/
 │   └── schema.prisma        # Schema de base de datos
@@ -131,6 +131,35 @@ GET    /api/health                   # Estado del servidor
 | `meta-learning.service.ts` | Few-shot learning para nuevos símbolos |
 | `probabilistic-model.service.ts` | Distribuciones de probabilidad |
 | `feature-engineering.service.ts` | Features derivados automáticos |
+| `python-ml.service.ts` | Cliente para clasificador Python (NEW) |
+
+## 🎯 Ensemble de 7 Modelos
+
+El sistema usa un **ensemble dinámico** que activa/desactiva modelos según datos disponibles:
+
+| Modelo | Propósito | Se activa cuando... |
+|--------|-----------|---------------------|
+| **Global** | Base por timeframe | Siempre (con trend o technical) |
+| **Symbol** | Historial específico | Hay datos de trend |
+| **Regime** | Régimen de mercado | Hay datos técnicos |
+| **Momentum** | Tendencias fuertes | Hay trend + technical |
+| **Mean Reversion** | Modelo contrarian | Hay technical |
+| **Fundamental** | Análisis fundamental | Hay financials |
+| **Sentiment** | Noticias y sentimiento | Hay sentiment |
+
+### Requisitos de Datos por Modelo
+
+```typescript
+MODEL_DATA_REQUIREMENTS = {
+  global: { required: ['trend', 'technical'], minRequired: 2 },
+  symbol: { required: ['trend'], minRequired: 1 },
+  regime: { required: ['technical'], minRequired: 1 },
+  momentum: { required: ['trend', 'technical'], minRequired: 2 },
+  mean_reversion: { required: ['technical'], minRequired: 1 },
+  fundamental: { required: ['financials'], minRequired: 2 },
+  sentiment_driven: { required: ['sentiment'], minRequired: 1 },
+}
+```
 
 ### External Services (`services/external/`)
 | Servicio | Fuente de datos |
@@ -175,7 +204,9 @@ GET    /api/health                   # Estado del servidor
 
 ## 🐍 Python ML Server
 
-El backend incluye un servidor Python para gradient descent training:
+El backend se comunica con un servidor Python para:
+1. **Gradient Descent Training**: Optimiza pesos de factores
+2. **Clasificación de Activos**: Recomienda timeframe y modelos según volatilidad
 
 ```bash
 cd python
@@ -183,6 +214,25 @@ python server.py
 ```
 
 Puerto: `8765`
+
+### Endpoints Python ML
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /status` | Estado del servidor |
+| `GET /weights` | Pesos aprendidos |
+| `POST /train` | Entrenar con datos |
+| `GET /classify/{symbol}` | Clasificar un activo |
+| `GET /profiles` | Listar perfiles de activos |
+| `POST /classify` | Clasificar con datos históricos |
+| `POST /classify-batch` | Clasificar múltiples activos |
+
+### Clasificador de Activos
+
+El clasificador Python analiza la volatilidad para recomendar:
+- **Timeframe óptimo**: intraday, swing, long
+- **Modelos prioritarios**: qué modelos del ensemble usar
+- **Pesos personalizados**: ajustes específicos para el activo
 
 ## 🔐 Variables de Entorno
 

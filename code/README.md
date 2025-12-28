@@ -1,50 +1,95 @@
-# Welcome to your Expo app 👋
+# Guess Investor - App React Native
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Última actualización:** 29 de diciembre de 2025
 
-## Get started
+Aplicación móvil de predicción de inversiones construida con [Expo](https://expo.dev) y React Native.
 
-1. Install dependencies
+## 🚀 Get Started
+
+1. Instalar dependencias
 
    ```bash
    npm install
    ```
 
-2. Start the app
+2. Iniciar el backend primero
 
    ```bash
-   npx expo start
+   cd ../backend
+   npm run dev
    ```
 
-In the output, you'll find options to open the app in a
+3. (Opcional) Iniciar Python ML Server
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+   ```bash
+   cd ../python
+   python server.py
+   ```
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+4. Iniciar la app
 
-## Get a fresh project
+   ```bash
+   npm start
+   ```
 
-When you're ready, run:
+## 📁 Estructura
 
-```bash
-npm run reset-project
+```
+code/
+├── app/                     # Pantallas (file-based routing)
+│   ├── _layout.tsx          # Layout principal con tabs
+│   ├── index.tsx            # Tab de predicciones
+│   ├── explore.tsx          # Explorar activos
+│   ├── favorites.tsx        # Gestión de favoritos
+│   └── profile.tsx          # Perfil y estadísticas
+├── components/              # Componentes reutilizables
+│   ├── AddInvestmentForm.tsx
+│   ├── PredictionCard.tsx
+│   └── ...
+├── services/                # Servicios y lógica
+│   ├── api.service.ts       # Cliente API del backend
+│   ├── yahoo.service.ts     # Yahoo Finance
+│   └── ...
+├── store/                   # Estado global (Zustand)
+│   └── investmentStore.ts
+├── types/                   # Tipos TypeScript
+└── utils/                   # Utilidades
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 📱 Pantallas
 
-## Learn more
+| Tab | Descripción |
+|-----|-------------|
+| **Predicciones** | Lista de predicciones activas con favoritos primero |
+| **Explorar** | Buscar y explorar +120 activos |
+| **Favoritos** | Gestionar activos favoritos |
+| **Perfil** | Estadísticas y configuración |
 
-To learn more about developing your project with Expo, look at the following resources:
+## 🔗 Conexión con Backend
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+La app se conecta al backend en `http://localhost:3001` para:
+- Obtener predicciones con ensemble de 7 modelos
+- Buscar activos y cotizaciones
+- Gestionar favoritos
+- Verificar predicciones
+- Obtener estadísticas de ML
 
-## Join the community
+## 🛠️ Desarrollo
 
-Join our community of developers creating universal apps.
+```bash
+# Iniciar en modo desarrollo
+npm start
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+# Build para Android
+npx expo build:android
+
+# Build para iOS
+npx expo build:ios
+```
+
+## 📚 Más Información
+
+- [Expo documentation](https://docs.expo.dev/)
+- [Backend README](../backend/README.md)
+- [Python ML README](../python/README.md)
+- [Proyecto principal](../README.md)

@@ -1,8 +1,73 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 28 de diciembre de 2025  
-**Versión:** `1.3.0`  
-**Commit actual:** `590e536`
+**Última actualización:** 29 de diciembre de 2025  
+**Versión:** `1.4.0`  
+**Commit actual:** `develop`
+
+---
+
+## [1.4.0] - 29 de diciembre de 2025
+
+### 🎯 Ensemble de 7 Modelos Dinámicos
+
+#### Nuevos Modelos
+- **Global**: Base por timeframe/volatilidad
+- **Symbol**: Pesos específicos del símbolo (historial)
+- **Regime**: Ajustado al régimen de mercado actual
+- **Momentum**: Prioriza trend y análisis técnico
+- **Mean Reversion**: Contrarian, busca reversiones
+- **Fundamental** (NEW): Prioriza financials, macro, expectations
+- **Sentiment Driven** (NEW): Prioriza sentiment y noticias
+
+#### Selección Dinámica de Modelos
+- Los modelos se activan/desactivan según datos disponibles
+- `MODEL_DATA_REQUIREMENTS` define qué necesita cada modelo
+- Ej: Sin datos financials → modelo fundamental desactivado
+- Ej: Solo sentiment/news → modelo sentiment_driven tiene mayor peso
+
+### 🐍 Clasificador de Activos (Python ML)
+
+#### Nuevo Módulo `asset_classifier.py`
+- Clasifica activos por volatilidad (daily, weekly, ATR)
+- Recomienda timeframe óptimo: intraday, swing, long
+- Sugiere modelos prioritarios según tipo de activo
+- Genera pesos personalizados para el ensemble
+
+#### Nuevos Endpoints Python
+- `GET /classify/{symbol}` - Clasificar un activo
+- `GET /profiles` - Listar perfiles de activos
+- `POST /classify` - Clasificar con datos históricos
+- `POST /classify-batch` - Clasificar múltiples activos
+
+#### Perfiles de Activos Conocidos
+| Símbolo | Volatilidad | Timeframe | Modelos Recomendados |
+|---------|-------------|-----------|---------------------|
+| BTC-USD | 65% | Swing | momentum, sentiment, regime |
+| ETH-USD | 75% | Intraday | momentum, sentiment, regime |
+| TSLA | 55% | Intraday | momentum, sentiment, symbol |
+| AAPL | 25% | Swing | global, fundamental, symbol |
+| SPY | 15% | Long | fundamental, mean_reversion, global |
+
+### 🔗 Integración Backend ↔ Python ML
+
+#### Nuevo Servicio `python-ml.service.ts`
+- Cliente HTTP para comunicarse con Python server
+- Cache de perfiles con TTL de 24 horas
+- Fallback a perfiles por defecto si Python no disponible
+- Métodos: `classifyAsset()`, `classifyBatch()`, `getModelWeights()`
+
+#### Integración con Ensemble
+- `ensemble.service.ts` ahora importa `pythonMlService`
+- Nuevo método `predictWithAssetClassification()`
+- Ajusta pesos del ensemble según perfil del activo
+- Alta volatilidad → más peso a momentum/sentiment
+- Baja volatilidad → más peso a fundamental/mean_reversion
+
+### 📚 READMEs Actualizados
+- `README.md` principal con nueva arquitectura
+- `python/README.md` con clasificador de activos
+- `backend/README.md` con ensemble y ML services
+- `code/README.md` con estructura del frontend
 
 ---
 

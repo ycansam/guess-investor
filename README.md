@@ -1,7 +1,7 @@
 # 🎯 Guess Investor
 
-**Última actualización:** 28 de diciembre de 2025  
-**Versión:** 1.3.0
+**Última actualización:** 29 de diciembre de 2025  
+**Versión:** 1.4.0
 
 **Aplicación de predicción de inversiones con IA híbrida** que combina análisis cuantitativo en tiempo real con machine learning para generar predicciones de precios de activos financieros.
 
@@ -9,7 +9,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-Backend-green?logo=node.js)
 ![Python](https://img.shields.io/badge/Python-ML_Server-green?logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Version](https://img.shields.io/badge/version-1.3.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.4.0-brightgreen)
 
 ---
 
@@ -21,8 +21,11 @@ Guess Investor analiza **11 factores** diferentes para cada activo financiero y 
 
 - 📊 **11 Factores de análisis**: Tendencia, Técnico, Sentimiento, Noticias, Macro, Competidores, Forex, Institucional, Estacionalidad, Financieros, Expectativas
 - 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo + **Red Neuronal con Gradient Descent**
+- 🎯 **Ensemble de 7 Modelos**: Global, Symbol, Regime, Momentum, Mean Reversion, Fundamental, Sentiment
+- 🔄 **Selección Dinámica**: Activa/desactiva modelos según datos disponibles
+- 🐍 **Clasificador Python**: Clasifica activos por volatilidad para recomendar timeframe óptimo
 - 🖥️ **Backend completo**: API REST con Express + Prisma + SQLite/PostgreSQL
-- 🧠 **ML Avanzado**: 6 servicios ML (Reinforcement Learning, Meta-Learning, Probabilistic, etc.)
+- 🧠 **ML Avanzado**: 7 servicios ML (Reinforcement Learning, Meta-Learning, Probabilistic, etc.)
 - 📈 **Datos en tiempo real**: Yahoo Finance, Finviz, Dark Pools, COT Report, ETF Flows
 - 📉 **Gráficos interactivos**: Históricos + predicción visual con react-native-gifted-charts
 - 💶 **Precios en EUR**: Conversión automática a euros con tipos de cambio en tiempo real
@@ -50,16 +53,16 @@ guess-investor/
 │   │   ├── controllers/     # Handlers de endpoints
 │   │   ├── services/
 │   │   │   ├── external/    # APIs externas (20+ servicios)
-│   │   │   ├── prediction/  # Cálculo y ajuste de predicciones (7 servicios)
-│   │   │   └── ml/          # Machine Learning avanzado (6 servicios)
+│   │   │   ├── prediction/  # Cálculo y predicciones (7 servicios)
+│   │   │   └── ml/          # Machine Learning avanzado (7 servicios)
 │   │   ├── routes/          # Definición de rutas
 │   │   └── repositories/    # Acceso a datos (Prisma)
 │   ├── prisma/              # Schema de base de datos
 │   └── python/              # Scripts de entrenamiento
-├── python/                  # Servidor ML (Gradient Descent)
+├── python/                  # Servidor ML (Gradient Descent + Clasificador)
 │   ├── src/
 │   │   ├── config/          # Configuración
-│   │   ├── models/          # Optimizador y función de pérdida
+│   │   ├── models/          # Optimizador, pérdida y clasificador de activos
 │   │   └── utils/           # Utilidades
 │   ├── server.py            # Servidor HTTP (puerto 8765)
 │   └── main.py              # CLI de entrenamiento
@@ -135,7 +138,34 @@ cd code
 
 ### Machine Learning
 
-El sistema utiliza **gradiente descendente con momentum** para optimizar los pesos de cada factor:
+El sistema utiliza un **ensemble de 7 modelos dinámicos** que se activan según los datos disponibles:
+
+| Modelo | Propósito | Se activa cuando... |
+|--------|-----------|---------------------|
+| **Global** | Base por timeframe | Siempre (con trend o technical) |
+| **Symbol** | Historial específico del símbolo | Hay datos de trend |
+| **Regime** | Ajuste por régimen de mercado | Hay datos técnicos |
+| **Momentum** | Prioriza tendencias fuertes | Hay trend + technical |
+| **Mean Reversion** | Modelo contrarian | Hay technical |
+| **Fundamental** | Análisis fundamental | Hay financials + (macro/expectations) |
+| **Sentiment** | Noticias y sentimiento | Hay sentiment |
+
+#### Clasificador de Activos (Python ML)
+
+El servidor Python clasifica activos por **volatilidad** para recomendar:
+- **Timeframe óptimo**: intraday, swing o long
+- **Modelos recomendados**: qué modelos usar según el tipo de activo
+- **Pesos ajustados**: pesos personalizados para el ensemble
+
+```
+Activo (ej: TSLA) → Python ML → volatilidad: 45%
+                              → timeframe: intraday
+                              → modelos: [momentum, sentiment, regime]
+```
+
+#### Gradient Descent
+
+Los pesos de cada factor se optimizan con gradient descent:
 
 ```
 Loss = α·DirectionLoss + β·MagnitudeLoss + γ·RangeLoss
@@ -156,6 +186,7 @@ Donde:
 | **Probabilistic Model** | Distribuciones de probabilidad en lugar de puntos |
 | **Temporal Cross-Validation** | Walk-forward validation para detectar overfitting |
 | **Feature Engineering** | Features derivados automáticos |
+| **Python ML Client** | Cliente para clasificador de activos Python |
 
 ---
 
@@ -248,9 +279,10 @@ MIT © 2025
 
 Ver [CHANGELOG.md](./CHANGELOG.md) para el historial completo de cambios.
 
-### Últimas actualizaciones (28/12/2025)
-- 🖥️ **Backend completo**: API REST con Express + Prisma + 33+ servicios
-- 🧠 **ML Avanzado**: 6 nuevos servicios (RL, Meta-Learning, Probabilistic, etc.)
-- 📊 **Migración 100%**: Todos los servicios del frontend migrados al backend
-- 🔗 **Nuevos endpoints**: 11 endpoints ML en `/api/ml/*`
+### Últimas actualizaciones (29/12/2025)
+- 🎯 **Ensemble de 7 modelos**: Global, Symbol, Regime, Momentum, Mean Reversion, Fundamental, Sentiment
+- 🔄 **Selección dinámica**: Los modelos se activan/desactivan según datos disponibles
+- 🐍 **Clasificador Python**: Clasifica activos por volatilidad (intraday/swing/long)
+- 📊 **Pesos por activo**: El clasificador recomienda pesos personalizados por tipo de activo
+- 🧠 **Python ML Client**: Integración completa backend ↔ Python ML server
 
