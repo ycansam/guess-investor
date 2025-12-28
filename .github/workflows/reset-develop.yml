@@ -1,0 +1,29 @@
+name: Reset Develop Branch
+
+on:
+  pull_request:
+    types: [closed]  # Se dispara cuando se cierra un PR
+    branches:
+      - main
+
+jobs:
+  reset-develop:
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'develop'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Necesario para borrar/recrear ramas
+
+      - name: Delete develop branch
+        run: |
+          git push origin --delete develop
+
+      - name: Recreate develop branch from main
+        run: |
+          git checkout main
+          git pull origin main
+          git checkout -b develop
+          git push origin develop
