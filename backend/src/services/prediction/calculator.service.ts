@@ -7,8 +7,14 @@
 import { logger } from '../../middleware/logger.js';
 import { predictionRepository } from '../../repositories/prediction.repository.js';
 import { weightsRepository } from '../../repositories/weights.repository.js';
+import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
+import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
+import { FinancialsData, financialsService } from '../external/financials.service.js';
+import { ForexImpact, forexService } from '../external/forex.service.js';
+import { InstitutionalData, institutionalService } from '../external/institutional.service.js';
 import { MacroIndicators, macroService } from '../external/macro.service.js';
 import { newsService, NewsSummary } from '../external/news.service.js';
+import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality.service.js';
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
 import { yahooService } from '../external/yahoo.service.js';
@@ -86,17 +92,17 @@ interface AssetGroupConfig {
 
 const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
   large_cap_stock: {
-    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro'],
-    minFactorsForHighConfidence: 4,
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
+    minFactorsForHighConfidence: 5,
     description: 'Acciones de gran capitalización',
   },
   small_cap_stock: {
-    relevantFactors: ['trend', 'technical', 'news'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'news', 'competitors', 'seasonality', 'financials'],
+    minFactorsForHighConfidence: 3,
     description: 'Acciones pequeñas/medianas',
   },
   crypto_major: {
-    relevantFactors: ['trend', 'technical', 'sentiment', 'news'],
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro'],
     minFactorsForHighConfidence: 3,
     description: 'Criptomonedas principales (BTC, ETH)',
   },
@@ -106,28 +112,28 @@ const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
     description: 'Altcoins',
   },
   etf_index: {
-    relevantFactors: ['trend', 'technical', 'macro'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    minFactorsForHighConfidence: 3,
     description: 'ETFs e índices',
   },
   commodity: {
-    relevantFactors: ['trend', 'technical', 'macro'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    minFactorsForHighConfidence: 3,
     description: 'Materias primas',
   },
   reit: {
-    relevantFactors: ['trend', 'technical', 'macro'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'financials', 'seasonality'],
+    minFactorsForHighConfidence: 3,
     description: 'REITs',
   },
   forex: {
-    relevantFactors: ['trend', 'technical', 'macro'],
-    minFactorsForHighConfidence: 2,
+    relevantFactors: ['trend', 'technical', 'macro', 'news'],
+    minFactorsForHighConfidence: 3,
     description: 'Pares de divisas',
   },
   adr: {
-    relevantFactors: ['trend', 'technical', 'news', 'macro'],
-    minFactorsForHighConfidence: 3,
+    relevantFactors: ['trend', 'technical', 'news', 'forex', 'macro', 'competitors', 'financials'],
+    minFactorsForHighConfidence: 4,
     description: 'ADRs',
   },
   default: {
@@ -152,11 +158,23 @@ const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
   'BABA': 'adr', 'TSM': 'adr', 'NIO': 'adr',
 };
 
-// Pesos por defecto según timeframe
+// Pesos por defecto según timeframe (11 factores)
 const DEFAULT_WEIGHTS = {
-  intraday: { trend: 0.25, technical: 0.30, sentiment: 0.20, news: 0.15, macro: 0.10 },
-  swing: { trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.20, macro: 0.20 },
-  long: { trend: 0.15, technical: 0.15, sentiment: 0.10, news: 0.25, macro: 0.35 },
+  intraday: {
+    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.16,
+    macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
+    seasonality: 0.04, financials: 0.02, expectations: 0.01
+  },
+  swing: {
+    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
+    macro: 0.08, competitors: 0.07, forex: 0.06, institutional: 0.10,
+    seasonality: 0.04, financials: 0.05, expectations: 0.05
+  },
+  long: {
+    trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.07,
+    macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
+    seasonality: 0.08, financials: 0.12, expectations: 0.12
+  },
 };
 
 // ============================================================================
@@ -186,19 +204,38 @@ export const predictionCalculatorService = {
       const history = await yahooService.getHistory(symbol, '3mo', '1d');
       const historical = this.processHistoricalData(history);
 
-      // 3. Obtener análisis técnico
-      const technical = await technicalService.analyze(symbol);
+      // 3. Obtener todos los datos en paralelo
+      const [
+        technical,
+        sentiment,
+        news,
+        macro,
+        seasonality,
+        expectations,
+        institutional,
+        forex,
+        financials,
+      ] = await Promise.all([
+        technicalService.analyze(symbol),
+        sentimentService.getSentiment(symbol, type),
+        newsService.getNews(symbol, type),
+        macroService.getIndicators(symbol, type),
+        Promise.resolve(seasonalityService.analyze(symbol)),
+        expectationsService.getExpectations(symbol),
+        institutionalService.getInstitutionalActivity(symbol, type),
+        forexService.analyzeForexImpact(symbol),
+        financialsService.getFinancials(symbol, quote.price),
+      ]);
 
-      // 4. Obtener sentimiento
-      const sentiment = await sentimentService.getSentiment(symbol, type);
+      // 4. Obtener análisis de competidores (necesita datos históricos)
+      const companyChange1d = historical.change30d ? historical.change30d / 30 : 0;
+      const companyChange1w = historical.change30d ? historical.change30d / 4 : 0;
+      const companyChange1m = historical.change30d || 0;
+      const competitors = await competitorsService.analyzeCompetitors(
+        symbol, companyChange1d, companyChange1w, companyChange1m
+      );
 
-      // 5. Obtener noticias
-      const news = await newsService.getNews(symbol, type);
-
-      // 6. Obtener datos macro
-      const macro = await macroService.getIndicators(symbol, type);
-
-      // 7. Calcular predicción determinística
+      // 5. Calcular predicción determinística
       const prediction = await this.calculateFromData(
         symbol,
         type,
@@ -209,6 +246,12 @@ export const predictionCalculatorService = {
         sentiment,
         news,
         macro,
+        seasonality,
+        expectations,
+        competitors,
+        forex,
+        institutional,
+        financials,
         timeframeDays
       );
 
@@ -266,6 +309,12 @@ export const predictionCalculatorService = {
     sentiment: SentimentData,
     news: NewsSummary,
     macro: MacroIndicators,
+    seasonality: SeasonalityAnalysis,
+    expectations: ExpectationsData | null,
+    competitors: CompetitorAnalysis,
+    forex: ForexImpact,
+    institutional: InstitutionalData,
+    financials: FinancialsData | null,
     timeframeDays: number
   ): Promise<CalculatedPrediction> {
     // FLAGS de datos disponibles
@@ -274,6 +323,12 @@ export const predictionCalculatorService = {
     const hasSentimentData = sentiment.hasData;
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
+    const hasSeasonalityData = seasonality.hasData;
+    const hasExpectationsData = expectations?.hasData || false;
+    const hasCompetitorsData = competitors.hasData;
+    const hasForexData = forex.hasData;
+    const hasInstitutionalData = institutional.hasData;
+    const hasFinancialsData = financials?.hasData || false;
 
     // Scores de cada factor (-100 a +100)
     const trendScore = hasHistoricalData ? this.calculateTrendScore(historical.change30d, historical.change90d) : 0;
@@ -281,21 +336,27 @@ export const predictionCalculatorService = {
     const sentimentScore = hasSentimentData ? sentiment.overallScore : 0;
     const newsScore = hasNewsData ? news.sentimentScore : 0;
     const macroScore = hasMacroData ? macro.macroScore : 0;
+    const seasonalityScore = hasSeasonalityData ? seasonality.seasonalScore : 0;
+    const expectationsScore = hasExpectationsData ? expectations!.expectationsScore : 0;
+    const competitorsScore = hasCompetitorsData ? competitors.competitorScore : 0;
+    const forexScore = hasForexData ? forex.forexScore : 0;
+    const institutionalScore = hasInstitutionalData ? institutional.institutionalScore : 0;
+    const financialsScore = hasFinancialsData ? financials!.financialsScore : 0;
 
-    logger.info(`[PredictionCalc] Scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}, macro=${macroScore}`);
+    logger.info(`[PredictionCalc] Scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}, macro=${macroScore}, seasonality=${seasonalityScore}, expectations=${expectationsScore}, competitors=${competitorsScore}, forex=${forexScore}, institutional=${institutionalScore}, financials=${financialsScore}`);
 
     // Obtener pesos (aprendidos o por defecto)
     type WeightsType = { trend: number; technical: number; sentiment: number; news: number; macro: number };
     const timeframeKey = timeframeDays <= 1 ? 'intraday' : timeframeDays <= 7 ? 'swing' : 'long';
-    let weights: WeightsType = DEFAULT_WEIGHTS[timeframeKey];
+    let weights = DEFAULT_WEIGHTS[timeframeKey];
     let usingLearnedWeights = false;
 
     try {
       const learnedWeights = await weightsRepository.getCurrent();
       if (learnedWeights?.weights?.[timeframeKey]) {
-        const learned = learnedWeights.weights[timeframeKey] as WeightsType;
+        const learned = learnedWeights.weights[timeframeKey];
         if (learned.trend !== undefined && learned.technical !== undefined) {
-          weights = learned;
+          weights = { ...weights, ...learned };
           usingLearnedWeights = true;
           logger.info(`[PredictionCalc] Using learned weights (${learnedWeights.trainingSamples} samples)`);
         }
@@ -304,13 +365,19 @@ export const predictionCalculatorService = {
       // Usar pesos por defecto
     }
 
-    // Definir factores
+    // Definir los 11 factores
     const factors = [
       { name: 'trend', score: trendScore, hasData: hasHistoricalData, weight: weights.trend },
       { name: 'technical', score: technicalScore, hasData: hasTechnicalData, weight: weights.technical },
       { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, weight: weights.sentiment },
       { name: 'news', score: newsScore, hasData: hasNewsData, weight: weights.news },
       { name: 'macro', score: macroScore, hasData: hasMacroData, weight: weights.macro },
+      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, weight: weights.competitors },
+      { name: 'forex', score: forexScore, hasData: hasForexData, weight: weights.forex },
+      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, weight: weights.institutional },
+      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, weight: weights.seasonality },
+      { name: 'financials', score: financialsScore, hasData: hasFinancialsData, weight: weights.financials },
+      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, weight: weights.expectations },
     ];
 
     const availableFactors = factors.filter(f => f.hasData);
@@ -325,7 +392,7 @@ export const predictionCalculatorService = {
       }, 0);
     }
 
-    logger.info(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)}`);
+    logger.info(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)} (${availableFactors.length}/${factors.length} factors)`);
 
     // Determinar dirección
     let direction: 'up' | 'down' | 'neutral' = 'neutral';
