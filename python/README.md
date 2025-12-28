@@ -1,24 +1,31 @@
 # 🧠 Sistema de Aprendizaje Automático - Guess Investor
 
+**Última actualización:** 28 de diciembre de 2025
+
 Este sistema permite que la app aprenda de sus errores y mejore las predicciones con el tiempo.
-El proceso es **completamente automático** - la app verifica predicciones y exporta datos sin intervención del usuario.
+El proceso es **completamente automático** - el backend sincroniza predicciones y entrena sin intervención del usuario.
 
 ## Arquitectura
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          APP React Native                           │
+│                         BACKEND Node.js (Puerto 3001)               │
 ├─────────────────────────────────────────────────────────────────────┤
-│  1. Hace predicción con 11 factores + pesos                         │
-│  2. Registra predicción en AsyncStorage (tracking)                  │
-│  3. AUTOMÁTICO: Verifica predicciones cuando pasa fecha objetivo    │
-│  4. AUTOMÁTICO: Exporta datos verificados a AsyncStorage            │
+│  1. Hace predicción con 11 factores + pesos + ML avanzado           │
+│  2. Registra predicción en base de datos (Prisma/SQLite)            │
+│  3. Verifica predicciones cuando pasa fecha objetivo                │
+│  4. Sincroniza datos verificados con Python server                  │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
-                                  ▼ (Datos en AsyncStorage)
+                                  ▼ (HTTP API)
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         PYTHON ML System                            │
+│                    PYTHON ML Server (Puerto 8765)                   │
 ├─────────────────────────────────────────────────────────────────────┤
+│  server.py - Servidor HTTP                                          │
+│  ├── POST /train - Entrena con gradient descent                     │
+│  ├── GET /weights - Retorna pesos aprendidos                        │
+│  └── GET /status - Estado del servidor                              │
+│                                                                     │
 │  src/                                                               │
 │  ├── config/settings.py    - Configuración central                  │
 │  ├── models/               - Modelos ML                             │
@@ -32,10 +39,10 @@ El proceso es **completamente automático** - la app verifica predicciones y exp
                                   │
                                   ▼ (learned_weights.json)
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          APP React Native                           │
+│                         BACKEND Node.js                             │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Carga pesos aprendidos AUTOMÁTICAMENTE en próximas predicciones    │
-│  Si no hay pesos aprendidos, usa pesos por defecto                  │
+│  Importa pesos aprendidos a la base de datos (LearnedWeights)       │
+│  Los usa en próximas predicciones                                   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -49,12 +56,37 @@ python --version  # Requiere Python 3.8+
 
 ## Uso
 
-### Flujo Automático (Recomendado)
+### Servidor HTTP (Recomendado)
 
-La app hace todo automáticamente:
-1. **Verificación**: Cada 6 horas, verifica predicciones que llegaron a su fecha objetivo
-2. **Exportación**: Cuando hay ≥10 predicciones verificadas nuevas, exporta datos
-3. **Carga de pesos**: Al hacer nuevas predicciones, carga pesos aprendidos si existen
+Para que el backend pueda comunicarse con Python:
+
+```bash
+cd python
+python server.py
+```
+
+El servidor escucha en `http://localhost:8765`
+
+### Endpoints del Servidor
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/status` | GET | Estado del servidor |
+| `/weights` | GET | Retorna pesos actuales |
+| `/train` | POST | Entrena con datos recibidos |
+
+### Flujo Automático desde Backend
+
+El backend (`python-training.service.ts`) maneja todo:
+
+1. **Sincronizar**: `POST /api/training/python/sync`
+2. **Entrenar**: `POST /api/training/python/train`
+3. **Importar pesos**: `POST /api/training/python/import-weights`
+
+O todo junto:
+```
+POST /api/training/python/sync-and-train
+```
 
 ### Entrenamiento Manual (Opcional)
 

@@ -19,7 +19,7 @@ import {
     useWindowDimensions,
     View,
 } from 'react-native';
-import { favoritesService } from '../../../services/favorites-service';
+import { favoritesService } from '../../../services/favorites-service-v2';
 import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { trainingCacheService } from '../../../services/training-cache-service';
 
@@ -86,7 +86,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
       setFavorites(new Set(favoritesService.getAll()));
       
       await trainingCacheService.init();
-      const predictions = trainingCacheService.getAllActive();
+      const predictions = await trainingCacheService.getAllActive();
       const symbols = new Set(predictions.map(p => p.symbol));
       setPredictedSymbols(symbols);
     } catch (error) {
@@ -219,8 +219,8 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
   }, [loadData, loadFavoritesAndPredictions]);
 
   // Toggle favorito
-  const toggleFavorite = useCallback(async (symbol: string) => {
-    await favoritesService.toggle(symbol);
+  const toggleFavorite = useCallback(async (symbol: string, name?: string, assetType?: string) => {
+    await favoritesService.toggle(symbol, name, assetType);
     setFavorites(new Set(favoritesService.getAll()));
     onFavoritesChange?.();
   }, [onFavoritesChange]);
@@ -282,7 +282,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
         {/* Favorito */}
         <TouchableOpacity 
           style={styles.favoriteButton}
-          onPress={() => toggleFavorite(item.symbol)}
+          onPress={() => toggleFavorite(item.symbol, item.name, item.type)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Ionicons 

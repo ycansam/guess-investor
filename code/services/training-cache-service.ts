@@ -1,14 +1,14 @@
 /**
  * Servicio de cache para predicciones de entrenamiento de IA
- * Cachea las predicciones durante su período de validez con persistencia
+ * Usa el backend para persistencia - cache local solo para rendimiento
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { CalculatedPrediction } from './prediction-calculator';
+import { apiClient, type CalculatedPrediction } from './api-client';
 
 export type TrainingTimeframe = 'intraday' | 'swing' | 'longterm';
 
 export interface TrainingPrediction {
+  id?: number;
   symbol: string;
   name: string;
   icon: string;
@@ -19,26 +19,9 @@ export interface TrainingPrediction {
   currentPrice: number;
   targetPrice: number;
   reasoning: string;
-  analysisData?: CalculatedPrediction; // Datos completos del análisis
+  analysisData?: CalculatedPrediction;
   createdAt: Date;
   expiresAt: Date;
-}
-
-// Interfaz para serialización
-interface SerializedPrediction {
-  symbol: string;
-  name: string;
-  icon: string;
-  timeframe: TrainingTimeframe;
-  direction: 'up' | 'down' | 'neutral';
-  confidence: number;
-  predictedChange: number;
-  currentPrice: number;
-  targetPrice: number;
-  reasoning: string;
-  analysisData?: any; // CalculatedPrediction serializado
-  createdAt: string;
-  expiresAt: string;
 }
 
 // Duraciones de cache según timeframe
@@ -47,9 +30,6 @@ const CACHE_DURATIONS: Record<TrainingTimeframe, number> = {
   swing: 3 * 24 * 60 * 60 * 1000,  // 3 días
   longterm: 14 * 24 * 60 * 60 * 1000, // 14 días
 };
-
-// Clave de storage
-const STORAGE_KEY = 'training-predictions-cache';
 
 // Descripción de timeframes
 export const TIMEFRAME_INFO: Record<TrainingTimeframe, { label: string; description: string; duration: string }> = {
@@ -71,80 +51,75 @@ export const TIMEFRAME_INFO: Record<TrainingTimeframe, { label: string; descript
 };
 
 class TrainingCacheService {
+  // Cache local para rendimiento
   private cache = new Map<string, TrainingPrediction>();
   private initialized = false;
   private initPromise: Promise<void> | null = null;
 
   /**
-   * Inicializa el cache cargando desde storage
+   * Inicializa el cache cargando desde el backend
    */
   async init(): Promise<void> {
     if (this.initialized) return;
     if (this.initPromise) return this.initPromise;
 
-    this.initPromise = this.loadFromStorage();
+    this.initPromise = this.loadFromBackend();
     await this.initPromise;
     this.initialized = true;
   }
 
   /**
-   * Carga predicciones desde AsyncStorage
+   * Carga predicciones desde el backend
    */
-  private async loadFromStorage(): Promise<void> {
+  private async loadFromBackend(): Promise<void> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      if (!data) {
-        console.log('[TrainingCache] No cached data found');
+      const data = await apiClient.getTrainingCache();
+      
+      if (!data || data.length === 0) {
+        console.log('[TrainingCache] No cached data in backend');
         return;
       }
 
-      const parsed: Record<string, SerializedPrediction> = JSON.parse(data);
       const now = new Date();
       let loaded = 0;
-      let expired = 0;
 
-      for (const [key, serialized] of Object.entries(parsed)) {
-        const prediction: TrainingPrediction = {
-          ...serialized,
-          createdAt: new Date(serialized.createdAt),
-          expiresAt: new Date(serialized.expiresAt),
-        };
-
+      for (const item of data) {
+        const prediction = this.parseBackendData(item);
+        
         // Solo cargar si no ha expirado
         if (prediction.expiresAt > now) {
+          const key = this.getKey(prediction.symbol, prediction.timeframe);
           this.cache.set(key, prediction);
           loaded++;
-        } else {
-          expired++;
         }
       }
 
-      console.log(`[TrainingCache] Loaded ${loaded} predictions, ${expired} expired`);
+      console.log(`[TrainingCache] Loaded ${loaded} predictions from backend`);
     } catch (error) {
-      console.error('[TrainingCache] Error loading from storage:', error);
+      console.error('[TrainingCache] Error loading from backend:', error);
     }
   }
 
   /**
-   * Guarda todas las predicciones en AsyncStorage
+   * Parsea datos del backend a TrainingPrediction
    */
-  private async saveToStorage(): Promise<void> {
-    try {
-      const data: Record<string, SerializedPrediction> = {};
-      
-      this.cache.forEach((prediction, key) => {
-        data[key] = {
-          ...prediction,
-          createdAt: prediction.createdAt.toISOString(),
-          expiresAt: prediction.expiresAt.toISOString(),
-        };
-      });
-
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      console.log(`[TrainingCache] Saved ${this.cache.size} predictions to storage`);
-    } catch (error) {
-      console.error('[TrainingCache] Error saving to storage:', error);
-    }
+  private parseBackendData(data: any): TrainingPrediction {
+    return {
+      id: data.id,
+      symbol: data.symbol,
+      name: data.name || data.symbol,
+      icon: data.icon || '📈',
+      timeframe: data.timeframe as TrainingTimeframe,
+      direction: data.direction as 'up' | 'down' | 'neutral',
+      confidence: data.confidence,
+      predictedChange: data.predictedChange,
+      currentPrice: data.currentPrice,
+      targetPrice: data.targetPrice,
+      reasoning: data.reasoning || '',
+      analysisData: data.analysisData,
+      createdAt: new Date(data.createdAt),
+      expiresAt: new Date(data.expiresAt),
+    };
   }
 
   /**
@@ -157,38 +132,77 @@ class TrainingCacheService {
   /**
    * Obtiene una predicción cacheada si es válida
    */
-  get(symbol: string, timeframe: TrainingTimeframe): TrainingPrediction | null {
+  async get(symbol: string, timeframe: TrainingTimeframe): Promise<TrainingPrediction | null> {
+    // Primero verificar cache local
     const key = this.getKey(symbol, timeframe);
     const cached = this.cache.get(key);
 
-    if (!cached) return null;
-
-    // Verificar si ha expirado
-    if (new Date() > cached.expiresAt) {
-      this.cache.delete(key);
-      this.saveToStorage(); // Guardar cambio
-      return null;
+    if (cached) {
+      // Verificar si ha expirado
+      if (new Date() > cached.expiresAt) {
+        this.cache.delete(key);
+        // Eliminar del backend también
+        apiClient.deleteTrainingCache(symbol, timeframe).catch(console.error);
+        return null;
+      }
+      return cached;
     }
 
-    return cached;
+    // Si no está en cache local, buscar en backend
+    try {
+      const data = await apiClient.getTrainingCacheItem(symbol, timeframe);
+      if (data) {
+        const prediction = this.parseBackendData(data);
+        this.cache.set(key, prediction);
+        return prediction;
+      }
+    } catch (error) {
+      console.error('[TrainingCache] Error getting from backend:', error);
+    }
+
+    return null;
   }
 
   /**
-   * Guarda una predicción en cache
+   * Guarda una predicción en cache (backend + local)
    */
-  async set(symbol: string, timeframe: TrainingTimeframe, prediction: Omit<TrainingPrediction, 'expiresAt'>): Promise<TrainingPrediction> {
+  async set(
+    symbol: string, 
+    timeframe: TrainingTimeframe, 
+    prediction: Omit<TrainingPrediction, 'expiresAt'>
+  ): Promise<TrainingPrediction> {
     const key = this.getKey(symbol, timeframe);
     const duration = CACHE_DURATIONS[timeframe];
+    const expiresAt = new Date(Date.now() + duration);
     
     const fullPrediction: TrainingPrediction = {
       ...prediction,
-      expiresAt: new Date(Date.now() + duration),
+      expiresAt,
     };
 
+    // Guardar en backend
+    try {
+      const saved = await apiClient.saveTrainingCache({
+        symbol: prediction.symbol,
+        timeframe,
+        predictedChange: prediction.predictedChange,
+        confidence: prediction.confidence,
+        direction: prediction.direction,
+        currentPrice: prediction.currentPrice,
+        targetPrice: prediction.targetPrice,
+        analysisData: prediction.analysisData,
+        expiresAt: expiresAt.toISOString(),
+      });
+      
+      fullPrediction.id = saved.id;
+    } catch (error) {
+      console.error('[TrainingCache] Error saving to backend:', error);
+    }
+
+    // Guardar en cache local
     this.cache.set(key, fullPrediction);
-    await this.saveToStorage();
     
-    console.log(`[TrainingCache] Stored ${symbol} ${timeframe} until ${fullPrediction.expiresAt.toISOString()}`);
+    console.log(`[TrainingCache] Stored ${symbol} ${timeframe} until ${expiresAt.toISOString()}`);
     
     return fullPrediction;
   }
@@ -197,38 +211,53 @@ class TrainingCacheService {
    * Verifica si hay una predicción válida cacheada
    */
   has(symbol: string, timeframe: TrainingTimeframe): boolean {
-    return this.get(symbol, timeframe) !== null;
+    const key = this.getKey(symbol, timeframe);
+    const cached = this.cache.get(key);
+    
+    if (!cached) return false;
+    
+    if (new Date() > cached.expiresAt) {
+      this.cache.delete(key);
+      return false;
+    }
+    
+    return true;
   }
 
   /**
    * Obtiene todas las predicciones activas
    */
-  getAllActive(): TrainingPrediction[] {
-    const now = new Date();
-    const active: TrainingPrediction[] = [];
-    let needsSave = false;
-
-    this.cache.forEach((prediction, key) => {
-      if (prediction.expiresAt > now) {
-        active.push(prediction);
-      } else {
-        this.cache.delete(key);
-        needsSave = true;
-      }
-    });
-
-    if (needsSave) {
-      this.saveToStorage();
+  async getAllActive(): Promise<TrainingPrediction[]> {
+    try {
+      const data = await apiClient.getTrainingCache();
+      const now = new Date();
+      
+      return data
+        .map((item: any) => this.parseBackendData(item))
+        .filter((p: TrainingPrediction) => p.expiresAt > now);
+    } catch (error) {
+      console.error('[TrainingCache] Error getting all active:', error);
+      
+      // Fallback a cache local
+      const now = new Date();
+      const active: TrainingPrediction[] = [];
+      
+      this.cache.forEach((prediction) => {
+        if (prediction.expiresAt > now) {
+          active.push(prediction);
+        }
+      });
+      
+      return active;
     }
-
-    return active;
   }
 
   /**
    * Obtiene predicciones activas por timeframe
    */
-  getByTimeframe(timeframe: TrainingTimeframe): TrainingPrediction[] {
-    return this.getAllActive().filter(p => p.timeframe === timeframe);
+  async getByTimeframe(timeframe: TrainingTimeframe): Promise<TrainingPrediction[]> {
+    const all = await this.getAllActive();
+    return all.filter(p => p.timeframe === timeframe);
   }
 
   /**
@@ -238,10 +267,15 @@ class TrainingCacheService {
     const key = this.getKey(symbol, timeframe);
     const existed = this.cache.has(key);
     
-    if (existed) {
-      this.cache.delete(key);
-      await this.saveToStorage();
+    // Eliminar de cache local
+    this.cache.delete(key);
+    
+    // Eliminar del backend
+    try {
+      await apiClient.deleteTrainingCache(symbol, timeframe);
       console.log(`[TrainingCache] Removed ${symbol} ${timeframe}`);
+    } catch (error) {
+      console.error('[TrainingCache] Error removing from backend:', error);
     }
     
     return existed;
@@ -259,13 +293,12 @@ class TrainingCacheService {
         this.cache.delete(key);
         removed++;
       }
+      
+      // Eliminar del backend
+      apiClient.deleteTrainingCache(item.symbol, item.timeframe).catch(console.error);
     }
     
-    if (removed > 0) {
-      await this.saveToStorage();
-      console.log(`[TrainingCache] Removed ${removed} predictions`);
-    }
-    
+    console.log(`[TrainingCache] Removed ${removed} predictions`);
     return removed;
   }
 
@@ -273,46 +306,86 @@ class TrainingCacheService {
    * Limpia predicciones expiradas
    */
   async cleanup(): Promise<number> {
+    // Limpiar cache local
     const now = new Date();
-    let removed = 0;
-
     this.cache.forEach((prediction, key) => {
       if (prediction.expiresAt <= now) {
         this.cache.delete(key);
-        removed++;
       }
     });
 
-    if (removed > 0) {
-      await this.saveToStorage();
-      console.log(`[TrainingCache] Cleaned up ${removed} expired predictions`);
+    // Limpiar en backend
+    try {
+      const result = await apiClient.cleanupTrainingCache();
+      console.log(`[TrainingCache] Cleaned up ${result.deleted} expired predictions`);
+      return result.deleted;
+    } catch (error) {
+      console.error('[TrainingCache] Error cleaning up:', error);
+      return 0;
     }
-    
-    return removed;
   }
 
   /**
-   * Limpia todo el cache
+   * Limpia todo el cache local (no afecta backend)
    */
-  async clear(): Promise<void> {
+  clearLocal(): void {
     this.cache.clear();
-    await AsyncStorage.removeItem(STORAGE_KEY);
-    console.log('[TrainingCache] Cache cleared');
+    this.initialized = false;
+    this.initPromise = null;
+    console.log('[TrainingCache] Local cache cleared');
+  }
+
+  /**
+   * Limpia TODO el cache (local + backend)
+   */
+  async clear(): Promise<number> {
+    // Limpiar cache local
+    this.cache.clear();
+    this.initialized = false;
+    this.initPromise = null;
+    
+    // Limpiar en backend
+    try {
+      const result = await apiClient.clearAllTrainingCache();
+      console.log(`[TrainingCache] Cleared ${result.deleted} predictions from backend`);
+      return result.deleted;
+    } catch (error) {
+      console.error('[TrainingCache] Error clearing backend:', error);
+      return 0;
+    }
   }
 
   /**
    * Obtiene estadísticas del cache
    */
-  getStats(): { total: number; byTimeframe: Record<TrainingTimeframe, number> } {
-    const active = this.getAllActive();
-    return {
-      total: active.length,
-      byTimeframe: {
-        intraday: active.filter(p => p.timeframe === 'intraday').length,
-        swing: active.filter(p => p.timeframe === 'swing').length,
-        longterm: active.filter(p => p.timeframe === 'longterm').length,
-      },
-    };
+  async getStats(): Promise<{ 
+    total: number; 
+    byTimeframe: Record<TrainingTimeframe, number> 
+  }> {
+    try {
+      const stats = await apiClient.getTrainingStats();
+      return {
+        total: stats.totalCached || 0,
+        byTimeframe: stats.byTimeframe || {
+          intraday: 0,
+          swing: 0,
+          longterm: 0,
+        },
+      };
+    } catch (error) {
+      console.error('[TrainingCache] Error getting stats:', error);
+      
+      // Fallback a cache local
+      const active = Array.from(this.cache.values());
+      return {
+        total: active.length,
+        byTimeframe: {
+          intraday: active.filter(p => p.timeframe === 'intraday').length,
+          swing: active.filter(p => p.timeframe === 'swing').length,
+          longterm: active.filter(p => p.timeframe === 'longterm').length,
+        },
+      };
+    }
   }
 }
 

@@ -5,9 +5,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { CalibrationModel, confidenceCalibrationService } from '../services/confidence-calibration-service';
-import { MLMetrics, mlMetricsService } from '../services/ml-metrics-service';
-import { predictionTrackingService, TrackedPrediction, TrackingStats } from '../services/prediction-tracking-service';
+import { apiClient } from '../services/api-client';
+import { TrackingStats } from '../services/prediction-tracking-service';
 
 interface TrackingStatsCardProps {
   onClose?: () => void;
@@ -15,15 +14,13 @@ interface TrackingStatsCardProps {
 
 export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose }) => {
   const [stats, setStats] = useState<TrackingStats | null>(null);
-  const [metrics, setMetrics] = useState<MLMetrics | null>(null);
-  const [calibration, setCalibration] = useState<CalibrationModel | null>(null);
-  const [predictions, setPredictions] = useState<TrackedPrediction[]>([]);
+  const [pendingPredictions, setPendingPredictions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
-  const [recalculating, setRecalculating] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [activeTab, setActiveTab] = useState<'stats' | 'history' | 'metrics'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'history'>('stats');
+  const [historyPredictions, setHistoryPredictions] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
@@ -32,31 +29,17 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   const loadData = async () => {
     setLoading(true);
     try {
-      // Forzar recarga desde storage para asegurar datos frescos
-      await predictionTrackingService.forceReload();
-      
-      // Debug: obtener info después de recargar
-      const debugInfo = await predictionTrackingService.getDebugInfo();
-      console.log('[TrackingStatsCard] Debug info:', debugInfo);
-      
-      const [statsData, predictionsData, metricsData, calibrationData] = await Promise.all([
-        predictionTrackingService.getStats(),
-        predictionTrackingService.getAllPredictions(),
-        mlMetricsService.calculateMetrics(),
-        confidenceCalibrationService.getModel(),
-      ]);
-      
-      console.log('[TrackingStatsCard] Stats loaded:', {
-        total: statsData.totalPredictions,
-        verified: statsData.verified,
-        pending: statsData.pending
-      });
-      console.log('[TrackingStatsCard] Predictions loaded:', predictionsData.length);
-      
+      // Cargar stats desde backend
+      const statsData = await apiClient.getPredictionStats();
       setStats(statsData);
-      setPredictions(predictionsData);
-      setMetrics(metricsData);
-      setCalibration(calibrationData);
+      
+      // Cargar predicciones pendientes
+      const pendingData = await apiClient.getPendingPredictions();
+      setPendingPredictions(pendingData);
+      
+      // Cargar historial verificado
+      const verifiedData = await apiClient.getVerifiedPredictions(20);
+      setHistoryPredictions(verifiedData);
     } catch (error) {
       console.error('Error loading tracking data:', error);
     } finally {
@@ -65,94 +48,15 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
   };
 
   const handleVerify = async () => {
-    console.log('[TrackingStatsCard] handleVerify llamado');
     setVerifying(true);
     try {
-      console.log('[TrackingStatsCard] Llamando a verifyPendingPredictions...');
-      const verified = await predictionTrackingService.verifyPendingPredictions();
-      console.log('[TrackingStatsCard] Resultado:', verified.length, 'verificadas');
-      if (verified.length > 0) {
-        await loadData(); // Recargar datos
-      } else {
-        // Mostrar por qué no se verificó nada
-        const pending = await predictionTrackingService.getPendingPredictions();
-        console.log('[TrackingStatsCard] Pendientes:', pending.length);
-        if (pending.length === 0) {
-          console.log('Sin pendientes: No hay predicciones pendientes de verificar');
-        } else {
-          const now = new Date();
-          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          
-          // Ordenar por fecha más cercana
-          const sorted = pending.sort((a, b) => 
-            new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()
-          );
-          
-          // Mostrar info con hora de cierre del mercado
-          const fechasInfo = sorted.slice(0, 5).map(p => {
-            const fecha = new Date(p.targetDate);
-            const target = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
-            const isCrypto = p.symbol.includes('-USD') || p.symbol === 'BTC' || p.symbol === 'ETH';
-            const closeHour = isCrypto ? 23 : 22;
-            
-            let estado = '';
-            if (target < today) {
-              estado = '✓ Listo';
-            } else if (target.getTime() === today.getTime()) {
-              if (now.getHours() >= closeHour) {
-                estado = '✓ Mercado cerrado';
-              } else {
-                estado = `Cierre a las ${closeHour}:00`;
-              }
-            } else {
-              const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-              estado = diffDays === 1 ? 'Mañana' : `${diffDays} días`;
-            }
-            
-            return `• ${p.symbol}: ${fecha.toLocaleDateString('es-ES')} (${estado})`;
-          }).join('\n');
-          
-          console.log('[TrackingStatsCard] Fechas info:', fechasInfo);
-          
-          // Verificar si hay alguna lista para verificar
-          const readyToVerify = sorted.some(p => {
-            const fecha = new Date(p.targetDate);
-            const target = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
-            const isCrypto = p.symbol.includes('-USD') || p.symbol === 'BTC' || p.symbol === 'ETH';
-            const closeHour = isCrypto ? 23 : 22;
-            
-            if (target < today) return true;
-            if (target.getTime() === today.getTime() && now.getHours() >= closeHour) return true;
-            return false;
-          });
-          
-          if (!readyToVerify) {
-            console.log('Esperando cierre de mercado:', fechasInfo);
-          } else {
-            console.log('Error al obtener precios:', fechasInfo);
-          }
-        }
-      }
+      const result = await apiClient.verifyAllPending();
+      console.log('[TrackingStats] Verificadas:', result.verified);
+      await loadData();
     } catch (error) {
-      console.error('Error verifying predictions:', error);
+      console.error('Error verifying:', error);
     } finally {
       setVerifying(false);
-    }
-  };
-
-  const handleRecalculate = async () => {
-    console.log('[TrackingStatsCard] handleRecalculate llamado');
-    setRecalculating(true);
-    try {
-      const updated = await predictionTrackingService.recalculateAccuracyScores();
-      console.log(`[TrackingStatsCard] ${updated} predicciones actualizadas`);
-      if (updated > 0) {
-        await loadData(); // Recargar datos
-      }
-    } catch (error) {
-      console.error('Error recalculating scores:', error);
-    } finally {
-      setRecalculating(false);
     }
   };
 
@@ -162,38 +66,70 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       return;
     }
     
-    console.log('[TrackingStatsCard] handleReset confirmado');
     setResetting(true);
     try {
-      await predictionTrackingService.resetAll();
-      console.log('[TrackingStatsCard] Reset completado');
+      // Limpiar todo del backend
+      await apiClient.clearAllPredictions();
+      await apiClient.resetLearnedWeights();
+      await apiClient.clearAllTrainingCache();
+      await loadData();
       setConfirmReset(false);
-      await loadData(); // Recargar datos (ahora vacíos)
     } catch (error) {
-      console.error('Error resetting data:', error);
+      console.error('Error resetting:', error);
     } finally {
       setResetting(false);
     }
   };
 
-  const cancelReset = () => {
+  const handleCancelReset = () => {
     setConfirmReset(false);
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Cargando estadísticas...</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>📊 Estadísticas ML</Text>
+          {onClose && (
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={styles.loadingText}>Cargando estadísticas...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!stats || stats.total === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>📊 Estadísticas ML</Text>
+          {onClose && (
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>📭</Text>
+          <Text style={styles.emptyText}>Sin predicciones registradas</Text>
+          <Text style={styles.emptySubtext}>
+            Las predicciones que hagas se guardarán aquí para seguir su precisión
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>📊 Tracking de Predicciones</Text>
+        <Text style={styles.title}>📊 Estadísticas ML</Text>
         {onClose && (
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Text style={styles.closeText}>✕</Text>
@@ -203,7 +139,7 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
 
       {/* Tabs */}
       <View style={styles.tabs}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'stats' && styles.activeTab]}
           onPress={() => setActiveTab('stats')}
         >
@@ -211,15 +147,7 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
             Estadísticas
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'metrics' && styles.activeTab]}
-          onPress={() => setActiveTab('metrics')}
-        >
-          <Text style={[styles.tabText, activeTab === 'metrics' && styles.activeTabText]}>
-            Métricas ML
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'history' && styles.activeTab]}
           onPress={() => setActiveTab('history')}
         >
@@ -229,660 +157,207 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
-        {activeTab === 'stats' ? (
-          <StatsView 
-            stats={stats} 
-            onVerify={handleVerify} 
-            verifying={verifying}
-            onRecalculate={handleRecalculate}
-            recalculating={recalculating}
-            onReset={handleReset}
-            resetting={resetting}
-            confirmReset={confirmReset}
-            onCancelReset={cancelReset}
-          />
-        ) : activeTab === 'metrics' ? (
-          <MetricsView metrics={metrics} calibration={calibration} />
-        ) : (
-          <HistoryView predictions={predictions} />
-        )}
-      </ScrollView>
-    </View>
-  );
-};
+      {activeTab === 'stats' ? (
+        <View style={styles.content}>
+          {/* Sistema de Estabilidad ML */}
+          <SystemStabilityCard stats={stats} />
 
-// Vista de estadísticas
-const StatsView: React.FC<{ 
-  stats: TrackingStats | null; 
-  onVerify: () => void;
-  verifying: boolean;
-  onRecalculate: () => void;
-  recalculating: boolean;
-  onReset: () => void;
-  resetting: boolean;
-  confirmReset: boolean;
-  onCancelReset: () => void;
-}> = ({ stats, onVerify, verifying, onRecalculate, recalculating, onReset, resetting, confirmReset, onCancelReset }) => {
-  if (!stats || stats.totalPredictions === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyIcon}>📭</Text>
-        <Text style={styles.emptyText}>Aún no hay predicciones registradas</Text>
-        <Text style={styles.emptySubtext}>
-          Las predicciones se registrarán automáticamente cuando hagas consultas
-        </Text>
-        
-        {/* Botón reset en estado vacío por si hay datos residuales */}
-        <TouchableOpacity 
-          style={[styles.resetButton, { marginTop: 20 }]}
-          onPress={onReset}
-          disabled={resetting}
-        >
-          {resetting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.resetButtonText}>
-              🗑️ Limpiar datos ML
-            </Text>
+          {/* Resumen general */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>📈 Resumen</Text>
+            <View style={styles.statsRow}>
+              <StatBox label="Total" value={`${stats.total}`} color="#3b82f6" />
+              <StatBox label="Verificadas" value={`${stats.verified}`} color="#10b981" />
+              <StatBox label="Pendientes" value={`${stats.pending}`} color="#f59e0b" />
+            </View>
+          </View>
+
+          {/* Precisión */}
+          {stats.verified > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>🎯 Precisión</Text>
+              <View style={styles.statsRow}>
+                <StatBox
+                  label="Dirección"
+                  value={`${stats.directionAccuracy.toFixed(1)}%`}
+                  color={stats.directionAccuracy >= 60 ? '#10b981' : stats.directionAccuracy >= 50 ? '#f59e0b' : '#ef4444'}
+                />
+                <StatBox
+                  label="Score medio"
+                  value={`${stats.avgAccuracyScore.toFixed(0)}`}
+                  color={stats.avgAccuracyScore >= 70 ? '#10b981' : stats.avgAccuracyScore >= 50 ? '#f59e0b' : '#ef4444'}
+                />
+                <StatBox
+                  label="Error prom."
+                  value={`${stats.avgPriceError.toFixed(1)}%`}
+                  color={stats.avgPriceError <= 2 ? '#10b981' : stats.avgPriceError <= 5 ? '#f59e0b' : '#ef4444'}
+                />
+              </View>
+            </View>
           )}
-        </TouchableOpacity>
-      </View>
-    );
-  }
 
-  return (
-    <View>
-      {/* Estabilidad del Sistema ML */}
-      <SystemStabilityCard stats={stats} />
-      
-      {/* Resumen general */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>📈 Resumen General</Text>
-        <View style={styles.statsRow}>
-          <StatBox label="Total" value={stats.totalPredictions.toString()} color="#6b7280" />
-          <StatBox label="Verificadas" value={stats.verified.toString()} color="#10b981" />
-          <StatBox label="Pendientes" value={stats.pending.toString()} color="#f59e0b" />
-        </View>
-      </View>
-
-      {/* Precisión */}
-      {stats.verified > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>🎯 Precisión</Text>
-          <View style={styles.statsRow}>
-            <StatBox 
-              label="Dirección" 
-              value={`${stats.directionAccuracy}%`} 
-              color={stats.directionAccuracy >= 60 ? '#10b981' : stats.directionAccuracy >= 50 ? '#f59e0b' : '#ef4444'}
-            />
-            <StatBox 
-              label="Score medio" 
-              value={`${stats.avgAccuracyScore}%`} 
-              color={stats.avgAccuracyScore >= 70 ? '#10b981' : stats.avgAccuracyScore >= 50 ? '#f59e0b' : '#ef4444'}
-            />
-            <StatBox 
-              label="Error prom." 
-              value={`${stats.avgPriceError}%`} 
-              color={stats.avgPriceError <= 2 ? '#10b981' : stats.avgPriceError <= 5 ? '#f59e0b' : '#ef4444'}
-            />
-          </View>
-        </View>
-      )}
-      
-      {/* Calidad de Predicciones - NUEVO */}
-      {stats.verified > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>⭐ Calidad de Predicciones</Text>
-          <Text style={styles.cardSubtitle}>
-            Considera dirección + precisión del cambio porcentual
-          </Text>
-          <View style={styles.qualityGrid}>
-            <View style={[styles.qualityBox, { backgroundColor: '#10b98120' }]}>
-              <Text style={styles.qualityIcon}>🎯</Text>
-              <Text style={[styles.qualityValue, { color: '#10b981' }]}>
-                {stats.excellentPredictions}
+          {/* Calidad de Predicciones */}
+          {stats.verified > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>⭐ Calidad de Predicciones</Text>
+              <Text style={styles.cardSubtitle}>
+                Considera dirección + precisión del cambio porcentual
               </Text>
-              <Text style={styles.qualityLabel}>Excelentes</Text>
-              <Text style={styles.qualitySubLabel}>{'>75% score'}</Text>
+              <View style={styles.qualityGrid}>
+                <View style={[styles.qualityBox, { backgroundColor: '#10b98120' }]}>
+                  <Text style={styles.qualityIcon}>🎯</Text>
+                  <Text style={[styles.qualityValue, { color: '#10b981' }]}>
+                    {stats.byQuality.excellent}
+                  </Text>
+                  <Text style={styles.qualityLabel}>Excelentes</Text>
+                  <Text style={styles.qualitySubLabel}>{'>75% score'}</Text>
+                </View>
+                <View style={[styles.qualityBox, { backgroundColor: '#3b82f620' }]}>
+                  <Text style={styles.qualityIcon}>👍</Text>
+                  <Text style={[styles.qualityValue, { color: '#3b82f6' }]}>
+                    {stats.byQuality.good}
+                  </Text>
+                  <Text style={styles.qualityLabel}>Buenas</Text>
+                  <Text style={styles.qualitySubLabel}>{'50-75%'}</Text>
+                </View>
+                <View style={[styles.qualityBox, { backgroundColor: '#f59e0b20' }]}>
+                  <Text style={styles.qualityIcon}>⚠️</Text>
+                  <Text style={[styles.qualityValue, { color: '#f59e0b' }]}>
+                    {stats.byQuality.poor}
+                  </Text>
+                  <Text style={styles.qualityLabel}>Pobres</Text>
+                  <Text style={styles.qualitySubLabel}>{'25-50%'}</Text>
+                </View>
+                <View style={[styles.qualityBox, { backgroundColor: '#ef444420' }]}>
+                  <Text style={styles.qualityIcon}>❌</Text>
+                  <Text style={[styles.qualityValue, { color: '#ef4444' }]}>
+                    {stats.byQuality.failed}
+                  </Text>
+                  <Text style={styles.qualityLabel}>Fallidas</Text>
+                  <Text style={styles.qualitySubLabel}>{'<25%'}</Text>
+                </View>
+              </View>
             </View>
-            <View style={[styles.qualityBox, { backgroundColor: '#3b82f620' }]}>
-              <Text style={styles.qualityIcon}>👍</Text>
-              <Text style={[styles.qualityValue, { color: '#3b82f6' }]}>
-                {stats.goodPredictions}
-              </Text>
-              <Text style={styles.qualityLabel}>Buenas</Text>
-              <Text style={styles.qualitySubLabel}>{'50-75%'}</Text>
-            </View>
-            <View style={[styles.qualityBox, { backgroundColor: '#f59e0b20' }]}>
-              <Text style={styles.qualityIcon}>⚠️</Text>
-              <Text style={[styles.qualityValue, { color: '#f59e0b' }]}>
-                {stats.poorPredictions}
-              </Text>
-              <Text style={styles.qualityLabel}>Pobres</Text>
-              <Text style={styles.qualitySubLabel}>{'25-50%'}</Text>
-            </View>
-            <View style={[styles.qualityBox, { backgroundColor: '#ef444420' }]}>
-              <Text style={styles.qualityIcon}>❌</Text>
-              <Text style={[styles.qualityValue, { color: '#ef4444' }]}>
-                {stats.failedPredictions}
-              </Text>
-              <Text style={styles.qualityLabel}>Fallidas</Text>
-              <Text style={styles.qualitySubLabel}>{'<25%'}</Text>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Por dirección */}
-      {stats.verified > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>📊 Por Dirección</Text>
-          <View style={styles.directionRow}>
-            <View style={styles.directionItem}>
-              <Text style={styles.directionIcon}>📈</Text>
-              <Text style={styles.directionLabel}>Subidas</Text>
-              <Text style={styles.directionValue}>
-                {stats.upCorrect}/{stats.upPredictions}
-              </Text>
-            </View>
-            <View style={styles.directionItem}>
-              <Text style={styles.directionIcon}>📉</Text>
-              <Text style={styles.directionLabel}>Bajadas</Text>
-              <Text style={styles.directionValue}>
-                {stats.downCorrect}/{stats.downPredictions}
-              </Text>
-            </View>
-            <View style={styles.directionItem}>
-              <Text style={styles.directionIcon}>➡️</Text>
-              <Text style={styles.directionLabel}>Laterales</Text>
-              <Text style={styles.directionValue}>
-                {stats.neutralPredictions}
-              </Text>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Por confianza */}
-      {stats.verified > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>🔒 Por Nivel de Confianza</Text>
-          <View style={styles.confidenceList}>
-            <ConfidenceRow 
-              label="Alta (≥70%)" 
-              accuracy={stats.highConfidenceAccuracy} 
-            />
-            <ConfidenceRow 
-              label="Media (50-69%)" 
-              accuracy={stats.mediumConfidenceAccuracy} 
-            />
-            <ConfidenceRow 
-              label="Baja (<50%)" 
-              accuracy={stats.lowConfidenceAccuracy} 
-            />
-          </View>
-        </View>
-      )}
-
-      {/* Predicciones pendientes con tiempo restante */}
-      {stats.pending > 0 && (
-        <PendingPredictionsSection stats={stats} />
-      )}
-
-      {/* Botón verificar */}
-      {stats.pending > 0 && (
-        <TouchableOpacity 
-          style={[styles.verifyButton, verifying && styles.verifyButtonDisabled]}
-          onPress={onVerify}
-          disabled={verifying}
-        >
-          {verifying ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.verifyButtonText}>
-              🔄 Verificar predicciones pendientes ({stats.pending})
-            </Text>
           )}
-        </TouchableOpacity>
-      )}
-      
-      {/* Botón recalcular scores - NUEVO */}
-      {stats.verified > 0 && (stats.excellentPredictions + stats.goodPredictions + stats.poorPredictions + stats.failedPredictions) === 0 && (
-        <View style={styles.migrationNotice}>
-          <Text style={styles.migrationText}>
-            ⚠️ Tienes {stats.verified} predicciones verificadas sin el nuevo sistema de scoring
-          </Text>
-          <TouchableOpacity 
-            style={[styles.recalculateButton, recalculating && styles.verifyButtonDisabled]}
-            onPress={onRecalculate}
-            disabled={recalculating}
-          >
-            {recalculating ? (
-              <ActivityIndicator size="small" color="#fff" />
+
+          {/* Por dirección */}
+          {stats.verified > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>📊 Por Dirección</Text>
+              <View style={styles.directionRow}>
+                <View style={styles.directionItem}>
+                  <Text style={styles.directionIcon}>📈</Text>
+                  <Text style={styles.directionLabel}>Subidas</Text>
+                  <Text style={styles.directionValue}>
+                    {stats.byDirection.up.correct}/{stats.byDirection.up.total}
+                  </Text>
+                </View>
+                <View style={styles.directionItem}>
+                  <Text style={styles.directionIcon}>📉</Text>
+                  <Text style={styles.directionLabel}>Bajadas</Text>
+                  <Text style={styles.directionValue}>
+                    {stats.byDirection.down.correct}/{stats.byDirection.down.total}
+                  </Text>
+                </View>
+                <View style={styles.directionItem}>
+                  <Text style={styles.directionIcon}>➡️</Text>
+                  <Text style={styles.directionLabel}>Laterales</Text>
+                  <Text style={styles.directionValue}>
+                    {stats.byDirection.neutral.total}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Predicciones pendientes */}
+          {pendingPredictions.length > 0 && (
+            <PendingPredictionsSection predictions={pendingPredictions} />
+          )}
+
+          {/* Botón verificar */}
+          {stats.pending > 0 && (
+            <TouchableOpacity
+              style={[styles.verifyButton, verifying && styles.verifyButtonDisabled]}
+              onPress={handleVerify}
+              disabled={verifying}
+            >
+              {verifying ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.verifyButtonText}>
+                  🔄 Verificar predicciones pendientes ({stats.pending})
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Zona de Peligro */}
+          <View style={styles.dangerZone}>
+            <Text style={styles.dangerZoneTitle}>⚠️ Zona de Peligro</Text>
+            <Text style={styles.dangerZoneText}>
+              Elimina todas las predicciones, verificaciones y datos de aprendizaje ML
+            </Text>
+
+            {confirmReset ? (
+              <View style={styles.confirmResetContainer}>
+                <Text style={styles.confirmResetText}>
+                  ¿Estás seguro? Esta acción no se puede deshacer.
+                </Text>
+                <View style={styles.confirmResetButtons}>
+                  <TouchableOpacity
+                    style={styles.cancelResetButton}
+                    onPress={handleCancelReset}
+                  >
+                    <Text style={styles.cancelResetText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.confirmResetButtonStyle, resetting && styles.verifyButtonDisabled]}
+                    onPress={handleReset}
+                    disabled={resetting}
+                  >
+                    {resetting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.confirmResetButtonText}>Sí, eliminar todo</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
             ) : (
-              <Text style={styles.verifyButtonText}>
-                🎯 Recalcular Scores
-              </Text>
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={handleReset}
+              >
+                <Text style={styles.resetButtonText}>
+                  🗑️ Resetear Madurez IA
+                </Text>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Botón resetear todo - ZONA DE PELIGRO */}
-      <View style={styles.dangerZone}>
-        <Text style={styles.dangerZoneTitle}>⚠️ Zona de Peligro</Text>
-        <Text style={styles.dangerZoneText}>
-          Elimina todas las predicciones, verificaciones y datos de aprendizaje ML
-        </Text>
-        
-        {confirmReset ? (
-          <View style={styles.confirmResetContainer}>
-            <Text style={styles.confirmResetText}>
-              ¿Estás seguro? Esta acción no se puede deshacer.
-            </Text>
-            <View style={styles.confirmResetButtons}>
-              <TouchableOpacity 
-                style={styles.cancelResetButton}
-                onPress={onCancelReset}
-              >
-                <Text style={styles.cancelResetText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.confirmResetButton, resetting && styles.verifyButtonDisabled]}
-                onPress={onReset}
-                disabled={resetting}
-              >
-                {resetting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.confirmResetButtonText}>Sí, eliminar todo</Text>
-                )}
-              </TouchableOpacity>
-            </View>
           </View>
-        ) : (
-          <TouchableOpacity 
-            style={styles.resetButton}
-            onPress={onReset}
-          >
-            <Text style={styles.resetButtonText}>
-              🗑️ Resetear Todo
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Botón exportar para ML removido - no es necesario */}
-    </View>
-  );
-};
-
-// Vista de métricas ML
-const MetricsView: React.FC<{ metrics: MLMetrics | null; calibration: CalibrationModel | null }> = ({ metrics, calibration }) => {
-  if (!metrics || metrics.totalVerified === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyIcon}>📊</Text>
-        <Text style={styles.emptyText}>Aún no hay datos suficientes</Text>
-        <Text style={styles.emptySubtext}>
-          Las métricas se calcularán cuando haya predicciones verificadas
-        </Text>
-      </View>
-    );
-  }
-  
-  const getQualityColor = (quality: string) => {
-    switch (quality) {
-      case 'high': return '#10b981';
-      case 'medium': return '#3b82f6';
-      case 'low': return '#f59e0b';
-      default: return '#6b7280';
-    }
-  };
-  
-  const getMetricColor = (value: number, target: number, inverse = false) => {
-    const achieved = inverse ? value <= target : value >= target;
-    return achieved ? '#10b981' : value >= target * 0.8 ? '#f59e0b' : '#ef4444';
-  };
-  
-  return (
-    <View>
-      {/* Calidad de datos */}
-      <View style={[styles.card, { borderLeftWidth: 3, borderLeftColor: getQualityColor(metrics.dataQuality) }]}>
-        <Text style={styles.cardTitle}>📊 Calidad de Datos</Text>
-        <View style={[styles.qualityBadgeInline, { backgroundColor: getQualityColor(metrics.dataQuality) + '30' }]}>
-          <Text style={[styles.qualityBadgeTextInline, { color: getQualityColor(metrics.dataQuality) }]}>
-            {metrics.dataQuality.toUpperCase()}
-          </Text>
         </View>
-        <Text style={styles.dataQualityText}>{metrics.dataQualityReason}</Text>
-      </View>
-      
-      {/* Métricas principales */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🎯 Métricas Principales vs Objetivos</Text>
-        <View style={styles.metricsList}>
-          <MetricRow 
-            label="Direction Accuracy"
-            value={`${metrics.directionAccuracy}%`}
-            target="≥65%"
-            color={getMetricColor(metrics.directionAccuracy, 65)}
-          />
-          <MetricRow 
-            label="Avg Accuracy Score"
-            value={`${metrics.avgAccuracyScore}%`}
-            target="≥60%"
-            color={getMetricColor(metrics.avgAccuracyScore, 60)}
-          />
-          <MetricRow 
-            label="Calibration Error"
-            value={`${metrics.calibrationError}%`}
-            target="<5%"
-            color={getMetricColor(metrics.calibrationError, 5, true)}
-          />
-          <MetricRow 
-            label="Excellent Rate"
-            value={`${metrics.excellentRate}%`}
-            target="≥25%"
-            color={getMetricColor(metrics.excellentRate, 25)}
-          />
-          <MetricRow 
-            label="Failed Rate"
-            value={`${metrics.failedRate}%`}
-            target="<10%"
-            color={getMetricColor(metrics.failedRate, 10, true)}
-          />
-          {metrics.sharpeRatio !== null && (
-            <MetricRow 
-              label="Sharpe Ratio"
-              value={metrics.sharpeRatio.toFixed(2)}
-              target=">1.0"
-              color={getMetricColor(metrics.sharpeRatio, 1.0)}
-            />
-          )}
-        </View>
-      </View>
-      
-      {/* Distribución de calidad */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>⭐ Distribución de Calidad</Text>
-        <View style={styles.qualityDistribution}>
-          <QualityBar 
-            label="Excellent (>75)"
-            value={metrics.excellentRate}
-            color="#10b981"
-          />
-          <QualityBar 
-            label="Good (50-75)"
-            value={metrics.goodRate}
-            color="#3b82f6"
-          />
-          <QualityBar 
-            label="Poor (25-50)"
-            value={metrics.poorRate}
-            color="#f59e0b"
-          />
-          <QualityBar 
-            label="Failed (<25)"
-            value={metrics.failedRate}
-            color="#ef4444"
-          />
-        </View>
-      </View>
-      
-      {/* Calibración */}
-      {(metrics.calibrationByBucket.length > 0 || (calibration && calibration.totalSamples > 0)) && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>📐 Calibración de Confianza</Text>
-          <Text style={styles.cardSubtitle}>
-            ¿Cuando digo X% confianza, qué accuracy real tengo?
-          </Text>
-          
-          {/* Estado de calibración */}
-          {calibration && calibration.totalSamples >= 10 && (
-            <View style={[
-              styles.calibrationStatus,
-              { backgroundColor: calibration.isCalibrated ? '#dcfce7' : '#fef3c7' }
-            ]}>
-              <Text style={[
-                styles.calibrationStatusText,
-                { color: calibration.isCalibrated ? '#166534' : '#92400e' }
-              ]}>
-                {calibration.isCalibrated 
-                  ? `✅ Bien calibrado (error: ${calibration.avgCalibrationError.toFixed(1)}%)`
-                  : `⚠️ Necesita mejora (error: ${calibration.avgCalibrationError.toFixed(1)}%)`
-                }
-              </Text>
-            </View>
-          )}
-          
-          {/* Tabla de calibración por bucket */}
-          {calibration && calibration.buckets.filter(b => b.totalPredictions > 0).map((b) => (
-            <View key={b.range} style={styles.calibrationRow}>
-              <View style={styles.calibrationBucketContainer}>
-                <Text style={styles.calibrationBucket}>{b.range}</Text>
-                <Text style={[
-                  styles.calibrationQuality,
-                  { color: b.quality === 'calibrated' ? '#10b981' : 
-                           b.quality === 'overconfident' ? '#f59e0b' : '#3b82f6' }
-                ]}>
-                  {b.quality === 'calibrated' ? '✓' : 
-                   b.quality === 'overconfident' ? '↑ sobre' : '↓ infra'}
-                </Text>
-              </View>
-              <View style={styles.calibrationValues}>
-                <Text style={styles.calibrationLabel}>
-                  Accuracy real: {b.realAccuracy.toFixed(0)}%
-                </Text>
-                <Text style={[
-                  styles.calibrationError,
-                  { color: b.calibrationError < 5 ? '#10b981' : 
-                           b.calibrationError < 10 ? '#f59e0b' : '#ef4444' }
-                ]}>
-                  Error: {b.calibrationError.toFixed(1)}%
-                </Text>
-              </View>
-              <Text style={styles.calibrationCount}>n={b.totalPredictions}</Text>
-            </View>
-          ))}
-          
-          {/* Fallback a métricas si no hay modelo de calibración */}
-          {(!calibration || calibration.totalSamples < 10) && metrics.calibrationByBucket.map((b) => (
-            <View key={b.bucket} style={styles.calibrationRow}>
-              <Text style={styles.calibrationBucket}>{b.bucket}</Text>
-              <View style={styles.calibrationValues}>
-                <Text style={styles.calibrationLabel}>
-                  Conf: {b.avgConfidence.toFixed(1)}% → Real: {b.avgAccuracy.toFixed(1)}%
-                </Text>
-                <Text style={[
-                  styles.calibrationError,
-                  { color: b.error < 5 ? '#10b981' : b.error < 10 ? '#f59e0b' : '#ef4444' }
-                ]}>
-                  Error: {b.error.toFixed(1)}%
-                </Text>
-              </View>
-              <Text style={styles.calibrationCount}>n={b.count}</Text>
-            </View>
-          ))}
-        </View>
+      ) : (
+        <HistoryView predictions={historyPredictions} />
       )}
-      
-      {/* Por timeframe */}
-      {metrics.byTimeframe.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>⏱️ Performance por Timeframe</Text>
-          {metrics.byTimeframe.map((tf) => (
-            <View key={tf.timeframe} style={styles.performanceRow}>
-              <Text style={styles.performanceLabel}>{tf.timeframe}</Text>
-              <View style={styles.performanceValues}>
-                <Text style={styles.performanceValue}>Dir: {tf.directionAccuracy}%</Text>
-                <Text style={styles.performanceValue}>Score: {tf.avgAccuracyScore}%</Text>
-                <Text style={styles.performanceCount}>(n={tf.count})</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-      
-      {/* Por volatilidad */}
-      {metrics.byVolatility.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>📊 Performance por Volatilidad</Text>
-          {metrics.byVolatility.map((v) => (
-            <View key={v.category} style={styles.performanceRow}>
-              <Text style={styles.performanceLabel}>{v.category}</Text>
-              <View style={styles.performanceValues}>
-                <Text style={styles.performanceValue}>Dir: {v.directionAccuracy}%</Text>
-                <Text style={styles.performanceValue}>Score: {v.avgAccuracyScore}%</Text>
-                <Text style={styles.performanceCount}>(n={v.count})</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
+    </ScrollView>
   );
 };
 
-// Componente auxiliar para fila de métrica
-const MetricRow: React.FC<{ label: string; value: string; target: string; color: string }> = ({ label, value, target, color }) => (
-  <View style={styles.metricRow}>
-    <View style={styles.metricInfo}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricTarget}>Objetivo: {target}</Text>
-    </View>
-    <Text style={[styles.metricValue, { color }]}>{value}</Text>
-  </View>
-);
-
-// Componente auxiliar para barra de calidad
-const QualityBar: React.FC<{ label: string; value: number; color: string }> = ({ label, value, color }) => (
-  <View style={styles.qualityBarContainer}>
-    <Text style={styles.qualityBarLabel}>{label}</Text>
-    <View style={styles.qualityBarTrack}>
-      <View style={[styles.qualityBarFill, { width: `${value}%`, backgroundColor: color }]} />
-    </View>
-    <Text style={[styles.qualityBarValue, { color }]}>{value}%</Text>
-  </View>
-);
-
-// Vista de historial
-const HistoryView: React.FC<{ predictions: TrackedPrediction[] }> = ({ predictions }) => {
-  if (predictions.length === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyIcon}>📭</Text>
-        <Text style={styles.emptyText}>Sin historial de predicciones</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View>
-      {predictions.slice(0, 20).map((pred) => (
-        <PredictionHistoryItem key={pred.id} prediction={pred} />
-      ))}
-    </View>
-  );
-};
-
-// Item de historial
-const PredictionHistoryItem: React.FC<{ prediction: TrackedPrediction }> = ({ prediction }) => {
-  const directionIcon = prediction.predictedDirection === 'up' ? '📈' : 
-                        prediction.predictedDirection === 'down' ? '📉' : '➡️';
-  
-  const statusIcon = prediction.status === 'verified' 
-    ? (prediction.directionCorrect ? '✅' : '❌')
-    : prediction.status === 'pending' ? '⏳' : '⚠️';
-
-  const date = new Date(prediction.predictionDate).toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: 'short',
-  });
-
-  return (
-    <View style={styles.historyItem}>
-      <View style={styles.historyHeader}>
-        <Text style={styles.historySymbol}>{prediction.symbol}</Text>
-        <Text style={styles.historyDate}>{date}</Text>
-        <Text style={styles.historyStatus}>{statusIcon}</Text>
-      </View>
-      
-      <View style={styles.historyBody}>
-        <View style={styles.historyColumn}>
-          <Text style={styles.historyLabel}>Predicción</Text>
-          <Text style={styles.historyValue}>
-            {directionIcon} {prediction.predictedChange >= 0 ? '+' : ''}{prediction.predictedChange}%
-          </Text>
-        </View>
-        
-        {prediction.status === 'verified' && (
-          <View style={styles.historyColumn}>
-            <Text style={styles.historyLabel}>Real</Text>
-            <Text style={[
-              styles.historyValue,
-              prediction.directionCorrect ? styles.correct : styles.incorrect
-            ]}>
-              {prediction.actualChange !== undefined 
-                ? `${prediction.actualChange >= 0 ? '+' : ''}${prediction.actualChange}%`
-                : 'N/A'}
-            </Text>
-          </View>
-        )}
-        
-        {/* NUEVO: Mostrar accuracy score */}
-        {prediction.status === 'verified' && prediction.accuracyScore !== undefined && (
-          <View style={styles.historyColumn}>
-            <Text style={styles.historyLabel}>Score</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={[
-                styles.historyValue,
-                { 
-                  color: prediction.accuracyScore >= 75 ? '#10b981' :
-                         prediction.accuracyScore >= 50 ? '#3b82f6' :
-                         prediction.accuracyScore >= 25 ? '#f59e0b' : '#ef4444'
-                }
-              ]}>
-                {prediction.accuracyScore}
-              </Text>
-              <Text style={{ fontSize: 16 }}>
-                {prediction.predictionQuality === 'excellent' ? '🎯' :
-                 prediction.predictionQuality === 'good' ? '👍' :
-                 prediction.predictionQuality === 'poor' ? '⚠️' : '❌'}
-              </Text>
-            </View>
-          </View>
-        )}
-        
-        <View style={styles.historyColumn}>
-          <Text style={styles.historyLabel}>Confianza</Text>
-          <Text style={styles.historyValue}>{prediction.confidence}%</Text>
-        </View>
-      </View>
-    </View>
-  );
-};
-
-// Componentes auxiliares
-
-// Componente de Estabilidad del Sistema ML
+// Sistema de Estabilidad ML
 const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
-  // Calcular nivel de estabilidad basado en datos disponibles
   const getStabilityInfo = () => {
     const verified = stats.verified;
-    const qualityPredictions = stats.excellentPredictions + stats.goodPredictions;
-    const totalQuality = stats.excellentPredictions + stats.goodPredictions + stats.poorPredictions + stats.failedPredictions;
+    const qualityPredictions = stats.byQuality.excellent + stats.byQuality.good;
+    const totalQuality = stats.byQuality.excellent + stats.byQuality.good + stats.byQuality.poor + stats.byQuality.failed;
     const qualityRate = totalQuality > 0 ? (qualityPredictions / totalQuality) * 100 : 0;
-    
-    // Nivel basado en cantidad de predicciones verificadas
+
     let level: 'inicial' | 'aprendiendo' | 'desarrollando' | 'estable' | 'maduro';
     let color: string;
     let icon: string;
     let description: string;
     let progressPercent: number;
     let resetImpact: string;
-    
+
     if (verified < 5) {
       level = 'inicial';
       color = '#9ca3af';
@@ -919,16 +394,14 @@ const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
       progressPercent = 100;
       resetImpact = 'Impacto muy alto - meses de aprendizaje';
     }
-    
-    // Ajustar por calidad de predicciones
+
     const qualityBonus = qualityRate >= 60 ? ' (alta calidad)' : qualityRate >= 40 ? '' : ' (calidad mejorable)';
-    
+
     return { level, color, icon, description: description + qualityBonus, progressPercent, resetImpact, qualityRate };
   };
-  
+
   const stability = getStabilityInfo();
-  
-  // Calcular siguiente hito
+
   const getNextMilestone = () => {
     const verified = stats.verified;
     if (verified < 5) return { target: 5, label: 'Fase Aprendizaje', remaining: 5 - verified };
@@ -937,9 +410,9 @@ const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
     if (verified < 50) return { target: 50, label: 'Fase Madura', remaining: 50 - verified };
     return { target: 100, label: 'Máximo rendimiento', remaining: Math.max(0, 100 - verified) };
   };
-  
+
   const milestone = getNextMilestone();
-  
+
   return (
     <View style={[styles.card, { borderLeftWidth: 3, borderLeftColor: stability.color }]}>
       <View style={styles.stabilityHeader}>
@@ -950,23 +423,21 @@ const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
           </Text>
         </View>
       </View>
-      
+
       <Text style={styles.stabilityDescription}>{stability.description}</Text>
-      
-      {/* Barra de progreso hacia siguiente nivel */}
+
       <View style={styles.stabilityProgressContainer}>
         <View style={styles.stabilityProgressBar}>
           <View style={[styles.stabilityProgressFill, { width: `${stability.progressPercent}%`, backgroundColor: stability.color }]} />
         </View>
         <Text style={styles.stabilityProgressText}>
-          {milestone.remaining > 0 
+          {milestone.remaining > 0
             ? `${milestone.remaining} verificaciones más → ${milestone.label}`
             : '¡Máximo nivel alcanzado!'
           }
         </Text>
       </View>
-      
-      {/* Estadísticas clave */}
+
       <View style={styles.stabilityStats}>
         <View style={styles.stabilityStat}>
           <Text style={styles.stabilityStatValue}>{stats.verified}</Text>
@@ -985,6 +456,96 @@ const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
   );
 };
 
+// Vista de historial
+const HistoryView: React.FC<{ predictions: any[] }> = ({ predictions }) => {
+  if (predictions.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyIcon}>📭</Text>
+        <Text style={styles.emptyText}>Sin historial de predicciones</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.content}>
+      {predictions.map((pred) => (
+        <PredictionHistoryItem key={pred.id} prediction={pred} />
+      ))}
+    </View>
+  );
+};
+
+// Item de historial
+const PredictionHistoryItem: React.FC<{ prediction: any }> = ({ prediction }) => {
+  const directionIcon = prediction.direction === 'up' ? '📈' :
+                        prediction.direction === 'down' ? '📉' : '➡️';
+
+  const statusIcon = prediction.verified
+    ? (prediction.directionCorrect ? '✅' : '❌')
+    : '⏳';
+
+  const date = new Date(prediction.createdAt).toLocaleDateString('es-ES', {
+    day: '2-digit',
+    month: 'short',
+  });
+
+  return (
+    <View style={styles.historyItem}>
+      <View style={styles.historyHeader}>
+        <Text style={styles.historySymbol}>{prediction.symbol}</Text>
+        <Text style={styles.historyDate}>{date}</Text>
+        <Text style={styles.historyStatus}>{statusIcon}</Text>
+      </View>
+
+      <View style={styles.historyBody}>
+        <View style={styles.historyColumn}>
+          <Text style={styles.historyLabel}>Predicción</Text>
+          <Text style={styles.historyValue}>
+            {directionIcon} {prediction.predictedChange >= 0 ? '+' : ''}{prediction.predictedChange?.toFixed(1)}%
+          </Text>
+        </View>
+
+        {prediction.verified && (
+          <View style={styles.historyColumn}>
+            <Text style={styles.historyLabel}>Real</Text>
+            <Text style={[
+              styles.historyValue,
+              prediction.directionCorrect ? styles.correct : styles.incorrect
+            ]}>
+              {prediction.actualChange !== undefined
+                ? `${prediction.actualChange >= 0 ? '+' : ''}${prediction.actualChange?.toFixed(1)}%`
+                : 'N/A'}
+            </Text>
+          </View>
+        )}
+
+        {prediction.verified && prediction.accuracyScore !== undefined && (
+          <View style={styles.historyColumn}>
+            <Text style={styles.historyLabel}>Score</Text>
+            <Text style={[
+              styles.historyValue,
+              {
+                color: prediction.accuracyScore >= 75 ? '#10b981' :
+                       prediction.accuracyScore >= 50 ? '#3b82f6' :
+                       prediction.accuracyScore >= 25 ? '#f59e0b' : '#ef4444'
+              }
+            ]}>
+              {prediction.accuracyScore}
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.historyColumn}>
+          <Text style={styles.historyLabel}>Confianza</Text>
+          <Text style={styles.historyValue}>{prediction.confidence}%</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// Componentes auxiliares
 const StatBox: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
   <View style={styles.statBox}>
     <Text style={[styles.statValue, { color }]}>{value}</Text>
@@ -992,62 +553,36 @@ const StatBox: React.FC<{ label: string; value: string; color: string }> = ({ la
   </View>
 );
 
-const ConfidenceRow: React.FC<{ label: string; accuracy: number }> = ({ label, accuracy }) => (
-  <View style={styles.confidenceRow}>
-    <Text style={styles.confidenceLabel}>{label}</Text>
-    <View style={styles.confidenceBar}>
-      <View style={[styles.confidenceFill, { width: `${accuracy}%` }]} />
-    </View>
-    <Text style={styles.confidenceValue}>{accuracy}%</Text>
-  </View>
-);
-
-// Componente para mostrar predicciones pendientes con tiempo restante
-const PendingPredictionsSection: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
-  const [pendingPredictions, setPendingPredictions] = useState<TrackedPrediction[]>([]);
-  
-  useEffect(() => {
-    const loadPending = async () => {
-      const pending = await predictionTrackingService.getPendingPredictions();
-      // Ordenar por fecha más cercana
-      pending.sort((a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime());
-      setPendingPredictions(pending);
-    };
-    loadPending();
-  }, [stats.pending]);
-
-  const getMarketCloseInfo = (targetDate: string, symbol: string) => {
+// Predicciones pendientes
+const PendingPredictionsSection: React.FC<{ predictions: any[] }> = ({ predictions }) => {
+  const getMarketCloseInfo = (expiresAt: string, symbol: string) => {
     const now = new Date();
-    const fecha = new Date(targetDate);
+    const fecha = new Date(expiresAt);
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const target = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
-    
-    const isCrypto = symbol.includes('-USD') || symbol === 'BTC' || symbol === 'ETH' || 
+
+    const isCrypto = symbol.includes('-USD') || symbol === 'BTC' || symbol === 'ETH' ||
                      symbol === 'DOGE' || symbol === 'SOL' || symbol === 'XRP';
-    
-    // Hora de cierre del mercado
-    const closeHour = isCrypto ? 23 : 22; // 22:00 para acciones, 23:00 para crypto
-    
-    // Si la fecha objetivo ya pasó
+
+    const closeHour = isCrypto ? 23 : 22;
+
     if (target < today) {
       return { text: '✓ Listo', color: '#10b981', ready: true };
     }
-    
-    // Si es hoy
+
     if (target.getTime() === today.getTime()) {
       if (now.getHours() >= closeHour) {
         return { text: '✓ Cerrado', color: '#10b981', ready: true };
       } else {
         const hoursToClose = closeHour - now.getHours();
-        return { 
-          text: `Cierre en ${hoursToClose}h`, 
-          color: hoursToClose <= 2 ? '#10b981' : '#f59e0b', 
-          ready: false 
+        return {
+          text: `Cierre en ${hoursToClose}h`,
+          color: hoursToClose <= 2 ? '#10b981' : '#f59e0b',
+          ready: false
         };
       }
     }
-    
-    // Si es futuro
+
     const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays === 1) {
       return { text: 'Mañana', color: '#f59e0b', ready: false };
@@ -1064,20 +599,20 @@ const PendingPredictionsSection: React.FC<{ stats: TrackingStats }> = ({ stats }
     }
   };
 
-  if (pendingPredictions.length === 0) return null;
+  if (predictions.length === 0) return null;
 
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>⏳ Predicciones Pendientes</Text>
       <View style={styles.pendingList}>
-        {pendingPredictions.slice(0, 5).map((pred, index) => {
-          const timeInfo = getMarketCloseInfo(pred.targetDate, pred.symbol);
+        {predictions.slice(0, 5).map((pred, index) => {
+          const timeInfo = getMarketCloseInfo(pred.expiresAt, pred.symbol);
           return (
             <View key={pred.id || index} style={styles.pendingItem}>
               <View style={styles.pendingLeft}>
                 <Text style={styles.pendingSymbol}>{pred.symbol}</Text>
                 <Text style={styles.pendingDirection}>
-                  {getDirectionIcon(pred.predictedDirection)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange.toFixed(1)}%
+                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(1)}%
                 </Text>
               </View>
               <View style={styles.pendingRight}>
@@ -1087,14 +622,14 @@ const PendingPredictionsSection: React.FC<{ stats: TrackingStats }> = ({ stats }
                   </Text>
                 </View>
                 <Text style={styles.pendingDate}>
-                  {new Date(pred.targetDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                  {new Date(pred.expiresAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
                 </Text>
               </View>
             </View>
           );
         })}
-        {pendingPredictions.length > 5 && (
-          <Text style={styles.moreText}>+{pendingPredictions.length - 5} más...</Text>
+        {predictions.length > 5 && (
+          <Text style={styles.moreText}>+{predictions.length - 5} más...</Text>
         )}
       </View>
     </View>
@@ -1106,8 +641,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1f2937',
     padding: 16,
-    minHeight: 800,
-    maxHeight: 800,
   },
   header: {
     flexDirection: 'row',
@@ -1154,6 +687,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  loadingContainer: {
+    padding: 32,
+    alignItems: 'center',
+  },
   loadingText: {
     color: '#9ca3af',
     marginTop: 16,
@@ -1190,6 +727,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 12,
   },
+  cardSubtitle: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginTop: -8,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -1206,33 +750,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  directionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  directionItem: {
-    alignItems: 'center',
-  },
-  directionIcon: {
-    fontSize: 24,
-  },
-  directionLabel: {
-    color: '#9ca3af',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  directionValue: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  // Estilos para calidad de predicciones - NUEVO
   qualityGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    marginTop: 12,
   },
   qualityBox: {
     flex: 1,
@@ -1261,132 +782,27 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontSize: 11,
   },
-  cardSubtitle: {
+  directionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  directionItem: {
+    alignItems: 'center',
+  },
+  directionIcon: {
+    fontSize: 24,
+  },
+  directionLabel: {
     color: '#9ca3af',
     fontSize: 12,
     marginTop: 4,
-    fontStyle: 'italic',
   },
-  confidenceList: {
-    gap: 8,
-  },
-  confidenceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  confidenceLabel: {
-    color: '#9ca3af',
-    fontSize: 12,
-    width: 100,
-  },
-  confidenceBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#4b5563',
-    borderRadius: 4,
-    marginHorizontal: 8,
-  },
-  confidenceFill: {
-    height: '100%',
-    backgroundColor: '#3b82f6',
-    borderRadius: 4,
-  },
-  confidenceValue: {
+  directionValue: {
     color: '#fff',
-    fontSize: 12,
-    width: 40,
-    textAlign: 'right',
-  },
-  verifyButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  recalculateButton: {
-    backgroundColor: '#8b5cf6',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  migrationNotice: {
-    backgroundColor: '#f59e0b20',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#f59e0b',
-  },
-  migrationText: {
-    color: '#fbbf24',
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  exportButton: {
-    backgroundColor: '#8b5cf6',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  verifyButtonDisabled: {
-    backgroundColor: '#6b7280',
-  },
-  verifyButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  historyItem: {
-    backgroundColor: '#374151',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  historySymbol: {
-    color: '#fff',
-    fontWeight: 'bold',
     fontSize: 16,
-    flex: 1,
-  },
-  historyDate: {
-    color: '#9ca3af',
-    fontSize: 12,
-    marginRight: 8,
-  },
-  historyStatus: {
-    fontSize: 16,
-  },
-  historyBody: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  historyColumn: {
-    alignItems: 'center',
-  },
-  historyLabel: {
-    color: '#6b7280',
-    fontSize: 10,
-  },
-  historyValue: {
-    color: '#fff',
-    fontSize: 14,
     fontWeight: 'bold',
+    marginTop: 2,
   },
-  correct: {
-    color: '#10b981',
-  },
-  incorrect: {
-    color: '#ef4444',
-  },
-  // Estilos para predicciones pendientes
   pendingList: {
     gap: 8,
   },
@@ -1407,7 +823,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
-    minWidth: 50,
+    minWidth: 60,
   },
   pendingDirection: {
     color: '#9ca3af',
@@ -1436,7 +852,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
   },
-  // Estilos para zona de peligro / reset
+  verifyButton: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  verifyButtonDisabled: {
+    backgroundColor: '#6b7280',
+  },
+  verifyButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
   dangerZone: {
     backgroundColor: '#7f1d1d20',
     borderWidth: 1,
@@ -1493,7 +922,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
-  confirmResetButton: {
+  confirmResetButtonStyle: {
     backgroundColor: '#dc2626',
     paddingVertical: 10,
     paddingHorizontal: 20,
@@ -1504,7 +933,53 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
-  // Estilos para Sistema de Estabilidad ML
+  historyItem: {
+    backgroundColor: '#374151',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  historySymbol: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+    flex: 1,
+  },
+  historyDate: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginRight: 8,
+  },
+  historyStatus: {
+    fontSize: 16,
+  },
+  historyBody: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  historyColumn: {
+    alignItems: 'center',
+  },
+  historyLabel: {
+    color: '#6b7280',
+    fontSize: 10,
+  },
+  historyValue: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  correct: {
+    color: '#10b981',
+  },
+  incorrect: {
+    color: '#ef4444',
+  },
   stabilityHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1531,7 +1006,7 @@ const styles = StyleSheet.create({
   },
   stabilityProgressBar: {
     height: 6,
-    backgroundColor: '#374151',
+    backgroundColor: '#4b5563',
     borderRadius: 3,
     marginBottom: 6,
     overflow: 'hidden',
@@ -1550,7 +1025,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#374151',
+    borderTopColor: '#4b5563',
   },
   stabilityStat: {
     alignItems: 'center',
@@ -1564,159 +1039,5 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 10,
     marginTop: 2,
-  },
-  // Estilos para vista de métricas
-  qualityBadgeInline: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginVertical: 8,
-  },
-  qualityBadgeTextInline: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  dataQualityText: {
-    color: '#9ca3af',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  metricsList: {
-    gap: 12,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
-  },
-  metricInfo: {
-    flex: 1,
-  },
-  metricLabel: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  metricTarget: {
-    color: '#6b7280',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  metricValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 12,
-  },
-  qualityDistribution: {
-    gap: 12,
-    marginTop: 8,
-  },
-  qualityBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  qualityBarLabel: {
-    color: '#9ca3af',
-    fontSize: 12,
-    width: 100,
-  },
-  qualityBarTrack: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#374151',
-    borderRadius: 4,
-  },
-  qualityBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  qualityBarValue: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    width: 35,
-    textAlign: 'right',
-  },
-  calibrationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
-  },
-  calibrationBucket: {
-    color: '#fff',
-    fontSize: 12,
-    width: 70,
-    fontWeight: '500',
-  },
-  calibrationValues: {
-    flex: 1,
-    marginLeft: 8,
-  },
-  calibrationLabel: {
-    color: '#9ca3af',
-    fontSize: 11,
-  },
-  calibrationError: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  calibrationCount: {
-    color: '#6b7280',
-    fontSize: 11,
-    marginLeft: 8,
-  },
-  calibrationStatus: {
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  calibrationStatusText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  calibrationBucketContainer: {
-    width: 80,
-    flexDirection: 'column',
-  },
-  calibrationQuality: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  performanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
-  },
-  performanceLabel: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '500',
-    textTransform: 'capitalize',
-  },
-  performanceValues: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  performanceValue: {
-    color: '#9ca3af',
-    fontSize: 12,
-  },
-  performanceCount: {
-    color: '#6b7280',
-    fontSize: 11,
   },
 });

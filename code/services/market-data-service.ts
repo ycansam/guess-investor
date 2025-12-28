@@ -4,7 +4,7 @@
  * Soporta paginación y categorías dinámicas
  */
 
-import { YahooV8Data, yahooV8Service } from './yahoo-v8-service';
+import { apiClient, AssetQuote } from './api-client';
 
 export interface MarketAsset {
   symbol: string;
@@ -190,7 +190,7 @@ export const POPULAR_ASSETS: MarketAsset[] = ALL_ASSETS.slice(0, 18);
 
 // Cache con duración de 15 minutos
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutos
-const marketCache = new Map<string, { data: YahooV8Data; timestamp: number }>();
+const marketCache = new Map<string, { data: AssetQuote; timestamp: number }>();
 
 // Tamaño de batch para paginación
 const BATCH_SIZE = 10;
@@ -203,7 +203,7 @@ class MarketDataService {
    * Obtiene datos LITE de un símbolo (solo precio y cambio) con cache de 15 minutos
    * Optimizado para listas de mercado
    */
-  async getQuoteLite(symbol: string): Promise<YahooV8Data | null> {
+  async getQuoteLite(symbol: string): Promise<AssetQuote | null> {
     const cached = marketCache.get(symbol);
     const now = Date.now();
 
@@ -211,19 +211,21 @@ class MarketDataService {
       return cached.data;
     }
 
-    const data = await yahooV8Service.getQuoteLite(symbol);
-    
-    if (data) {
-      marketCache.set(symbol, { data, timestamp: now });
+    try {
+      const data = await apiClient.getQuote(symbol);
+      if (data) {
+        marketCache.set(symbol, { data, timestamp: now });
+      }
+      return data;
+    } catch {
+      return null;
     }
-
-    return data;
   }
 
   /**
    * Obtiene datos completos de un símbolo con cache de 15 minutos
    */
-  async getQuote(symbol: string): Promise<YahooV8Data | null> {
+  async getQuote(symbol: string): Promise<AssetQuote | null> {
     const cached = marketCache.get(symbol);
     const now = Date.now();
 
@@ -233,13 +235,15 @@ class MarketDataService {
     }
 
     console.log(`[MarketData] Fetching ${symbol}...`);
-    const data = await yahooV8Service.getQuote(symbol);
-    
-    if (data) {
-      marketCache.set(symbol, { data, timestamp: now });
+    try {
+      const data = await apiClient.getQuote(symbol);
+      if (data) {
+        marketCache.set(symbol, { data, timestamp: now });
+      }
+      return data;
+    } catch {
+      return null;
     }
-
-    return data;
   }
 
   /**
@@ -291,9 +295,9 @@ class MarketDataService {
               symbol,
               asset: {
                 ...asset,
-                price: data.regularMarketPrice,
-                change: data.priceChange,
-                changePercent: data.priceChangePercent,
+                price: data.price,
+                change: data.change,
+                changePercent: data.changePercent,
                 currency: data.currency,
               } as MarketAsset
             };
@@ -327,9 +331,9 @@ class MarketDataService {
       if (cached) {
         return {
           ...asset,
-          price: cached.data.regularMarketPrice,
-          change: cached.data.priceChange,
-          changePercent: cached.data.priceChangePercent,
+          price: cached.data.price,
+          change: cached.data.change,
+          changePercent: cached.data.changePercent,
           currency: cached.data.currency,
         };
       }
@@ -348,9 +352,9 @@ class MarketDataService {
       if (cached) {
         return {
           ...asset,
-          price: cached.data.regularMarketPrice,
-          change: cached.data.priceChange,
-          changePercent: cached.data.priceChangePercent,
+          price: cached.data.price,
+          change: cached.data.change,
+          changePercent: cached.data.changePercent,
           currency: cached.data.currency,
         };
       }
@@ -462,9 +466,9 @@ class MarketDataService {
       if (cached && (now - cached.timestamp) < CACHE_DURATION) {
         return {
           ...asset,
-          price: cached.data.regularMarketPrice,
-          change: cached.data.priceChange,
-          changePercent: cached.data.priceChangePercent,
+          price: cached.data.price,
+          change: cached.data.change,
+          changePercent: cached.data.changePercent,
           currency: cached.data.currency,
         };
       }
@@ -475,9 +479,9 @@ class MarketDataService {
         if (data) {
           return {
             ...asset,
-            price: data.regularMarketPrice,
-            change: data.priceChange,
-            changePercent: data.priceChangePercent,
+            price: data.price,
+            change: data.change,
+            changePercent: data.changePercent,
             currency: data.currency,
           };
         }

@@ -16,7 +16,7 @@ import {
     useWindowDimensions,
     View,
 } from 'react-native';
-import { favoritesService } from '../../../services/favorites-service';
+import { favoritesService } from '../../../services/favorites-service-v2';
 import { ALL_ASSETS, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { trainingCacheService } from '../../../services/training-cache-service';
 
@@ -55,7 +55,7 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
       
       // Obtener predicciones
       await trainingCacheService.init();
-      const predictions = trainingCacheService.getAllActive();
+      const predictions = await trainingCacheService.getAllActive();
       const predSymbols = new Set(predictions.map(p => p.symbol));
       setPredictedSymbols(predSymbols);
       
@@ -85,9 +85,9 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
             if (data) {
               return {
                 ...asset,
-                price: data.regularMarketPrice,
-                change: data.priceChange,
-                changePercent: data.priceChangePercent,
+                price: data.price,
+                change: data.change,
+                changePercent: data.changePercent,
                 currency: data.currency,
               };
             }

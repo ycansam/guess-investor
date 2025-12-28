@@ -7,22 +7,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
+import { apiClient, CalculatedPrediction } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
-import { CalculatedPrediction, predictionCalculatorService } from '../../services/prediction-calculator';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
-import { yahooV8Service } from '../../services/yahoo-v8-service';
-import { InvestmentPrediction } from '../../types';
+import { AssetType, InvestmentPrediction } from '../../types';
 
 // Tipos de timeframe para el gráfico
 type ChartTimeframe = 'intraday' | 'swing' | 'longterm';
@@ -93,7 +92,7 @@ function toInvestmentPrediction(
       id: `${symbol}-${Date.now()}`,
       asset: calc.asset,
       symbol: calc.symbol,
-      assetType: calc.assetType,
+      assetType: calc.assetType as AssetType,
       currentPrice: calc.currentPrice,
       predictedPrice: calc.predictedPriceMax,
       predictedPriceMin: calc.predictedPriceMin,
@@ -133,7 +132,7 @@ function toInvestmentPrediction(
       id: `${symbol}-${Date.now()}`,
       asset: ad.asset,
       symbol: ad.symbol,
-      assetType: ad.assetType,
+      assetType: ad.assetType as AssetType,
       currentPrice: ad.currentPrice,
       predictedPrice: ad.predictedPriceMax,
       predictedPriceMin: ad.predictedPriceMin,
@@ -197,23 +196,23 @@ export default function AssetDetailScreen() {
 
     setLoading(true);
     try {
-      const v8Data = await yahooV8Service.getQuote(symbol);
-      if (v8Data) {
+      const quote = await apiClient.getQuote(symbol);
+      if (quote) {
         setAssetData({
-          symbol: v8Data.symbol,
-          name: v8Data.longName || v8Data.shortName || symbol,
-          price: v8Data.regularMarketPrice,
-          currency: v8Data.currency,
-          change: v8Data.priceChange,
-          changePercent: v8Data.priceChangePercent,
+          symbol: quote.symbol,
+          name: quote.name || symbol,
+          price: quote.price,
+          currency: quote.currency,
+          change: quote.change,
+          changePercent: quote.changePercent,
         });
         
         // Convertir a EUR
-        if (v8Data.currency && v8Data.currency !== 'EUR') {
-          const eurPrice = await currencyService.convertToEUR(v8Data.regularMarketPrice, v8Data.currency);
+        if (quote.currency && quote.currency !== 'EUR') {
+          const eurPrice = await currencyService.convertToEUR(quote.price, quote.currency);
           setPriceInEur(eurPrice);
         } else {
-          setPriceInEur(v8Data.regularMarketPrice);
+          setPriceInEur(quote.price);
         }
       }
     } catch (error) {
@@ -233,6 +232,7 @@ export default function AssetDetailScreen() {
     try {
       const config = TIMEFRAME_CONFIG[selectedTimeframe];
       let range = config.historyRange;
+      let interval = config.historyInterval;
 
       // Ajustar para largo plazo
       if (selectedTimeframe === 'longterm') {
@@ -243,10 +243,10 @@ export default function AssetDetailScreen() {
       setPrediction(null);
       setPredictionData([]);
 
-      // Obtener datos históricos
-      const historical = await yahooV8Service.getHistorical(symbol, range as any, config.historyInterval);
+      // Obtener datos históricos con el intervalo correcto
+      const historical = await apiClient.getHistory(symbol, range, interval);
 
-      if (historical?.historicalPrices && historical.historicalPrices.length > 0) {
+      if (historical && historical.length > 0) {
         // Obtener la tasa de cambio a EUR
         const currency = assetData?.currency || 'USD';
         let rate = 1;
@@ -255,8 +255,14 @@ export default function AssetDetailScreen() {
         }
         setEurExchangeRate(rate);
 
-        // Filtrar y formatear datos
-        let prices = historical.historicalPrices;
+        // Filtrar datos inválidos (null, undefined, NaN) y formatear
+        let prices = historical.filter(p => 
+          p.close !== null && 
+          p.close !== undefined && 
+          !isNaN(p.close) &&
+          p.timestamp !== null &&
+          p.timestamp !== undefined
+        );
 
         // Limitar puntos según timeframe
         if (selectedTimeframe === 'intraday') {
@@ -265,9 +271,15 @@ export default function AssetDetailScreen() {
           prices = prices.slice(-70);
         }
 
+        if (prices.length === 0) {
+          setChartData([]);
+          return;
+        }
+
         // Guardar último precio y timestamp para predicción (en EUR)
         const lastPrice = prices[prices.length - 1];
-        setLastPriceForPrediction(lastPrice.close * rate);
+        const safeRate = (rate && !isNaN(rate)) ? rate : 1;
+        setLastPriceForPrediction(lastPrice.close * safeRate);
         setLastTimestamp(lastPrice.timestamp);
 
         // Crear datos para gifted-charts
@@ -290,8 +302,9 @@ export default function AssetDetailScreen() {
             label = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
           }
           
+          const value = p.close * safeRate;
           return {
-            value: p.close * rate, // Convertir a EUR
+            value: isNaN(value) ? 0 : value, // Asegurar que nunca sea NaN
             label,
             timestamp: p.timestamp, // Guardar timestamp para tooltip
             isPrediction: false,
@@ -323,9 +336,8 @@ export default function AssetDetailScreen() {
         ? 'crypto'
         : 'stock';
 
-      const pred = await predictionCalculatorService.calculatePrediction(
+      const pred = await apiClient.calculatePrediction(
         symbol,
-        assetType,
         predictionDays
       );
 
@@ -403,10 +415,14 @@ export default function AssetDetailScreen() {
       if (!symbol || lastPriceForPrediction === 0) return;
       
       await trainingCacheService.init();
-      const cached = trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
+      const cached = await trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
       
       if (cached) {
-        console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}`);
+        console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}:`, {
+          change: cached.predictedChange,
+          confidence: cached.confidence,
+          targetPrice: cached.targetPrice
+        });
         setPrediction({
           change: cached.predictedChange,
           confidence: cached.confidence,
@@ -474,9 +490,16 @@ export default function AssetDetailScreen() {
   const yAxisOffset = useMemo(() => {
     const allData = [...chartData, ...predictionData];
     if (allData.length === 0) return 0;
-    const minValue = Math.min(...allData.map(d => d.value));
-    // Restar un 5% del mínimo para dar espacio
-    return Math.max(0, minValue * 0.95);
+    // Filtrar valores inválidos antes de calcular el mínimo
+    const validValues = allData.map(d => d.value).filter(v => v !== undefined && v !== null && !isNaN(v) && isFinite(v) && v > 0);
+    if (validValues.length === 0) return 0;
+    const minValue = Math.min(...validValues);
+    const maxValue = Math.max(...validValues);
+    // Si min y max son iguales, no usar offset
+    if (minValue === maxValue) return 0;
+    // Restar un 2% del mínimo para dar espacio (menos agresivo)
+    const offset = minValue * 0.98;
+    return isNaN(offset) || !isFinite(offset) ? 0 : Math.floor(offset);
   }, [chartData, predictionData]);
 
   // Calcular spacing uniforme para todos los puntos
@@ -484,13 +507,20 @@ export default function AssetDetailScreen() {
     if (chartData.length === 0) return 3;
     
     const totalPoints = chartData.length + predictionData.length;
-    return chartAreaWidth / Math.max(totalPoints - 1, 1);
+    const spacing = chartAreaWidth / Math.max(totalPoints - 1, 1);
+    return isNaN(spacing) || !isFinite(spacing) ? 3 : spacing;
   }, [chartData.length, predictionData.length, chartAreaWidth]);
 
-  // Combinar datos históricos y predicción en uno solo
+  // Combinar datos históricos y predicción en uno solo, filtrando valores inválidos
   const combinedChartData = useMemo(() => {
-    if (predictionData.length === 0) return chartData;
-    return [...chartData, ...predictionData];
+    const allData = predictionData.length === 0 ? chartData : [...chartData, ...predictionData];
+    // Filtrar cualquier punto con value inválido
+    return allData.filter(d => 
+      d.value !== undefined && 
+      d.value !== null && 
+      !isNaN(d.value) && 
+      isFinite(d.value)
+    );
   }, [chartData, predictionData]);
 
   // Segmentos de línea para colorear histórico (verde) y predicción (morado)
@@ -513,7 +543,8 @@ export default function AssetDetailScreen() {
   }, [chartData.length, predictionData.length]);
 
   // Formatear precio para tooltip
-  const formatPrice = (value: number): string => {
+  const formatPrice = (value: number | undefined): string => {
+    if (value === undefined || value === null || isNaN(value) || !isFinite(value)) return '0.00';
     if (value >= 1000) {
       return value.toFixed(0);
     } else if (value >= 1) {
@@ -539,10 +570,10 @@ export default function AssetDetailScreen() {
         {assetData && (
           <View style={styles.priceContainer}>
             <Text style={styles.price}>
-              {priceInEur !== null ? priceInEur.toFixed(2) : assetData.price.toFixed(2)} €
+              {priceInEur !== null ? priceInEur.toFixed(2) : (assetData.price ?? 0).toFixed(2)} €
             </Text>
-            <Text style={[styles.change, { color: assetData.changePercent >= 0 ? '#22c55e' : '#ef4444' }]}>
-              {assetData.changePercent >= 0 ? '+' : ''}{assetData.changePercent.toFixed(2)}%
+            <Text style={[styles.change, { color: (assetData.changePercent ?? 0) >= 0 ? '#22c55e' : '#ef4444' }]}>
+              {(assetData.changePercent ?? 0) >= 0 ? '+' : ''}{(assetData.changePercent ?? 0).toFixed(2)}%
             </Text>
           </View>
         )}
@@ -799,20 +830,20 @@ export default function AssetDetailScreen() {
                 <Text
                   style={[
                     styles.predictionValue,
-                    { color: prediction.change >= 0 ? '#22c55e' : '#ef4444' },
+                    { color: (prediction.change ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
                   ]}
                 >
-                  {prediction.change >= 0 ? '+' : ''}{prediction.change.toFixed(2)}%
+                  {(prediction.change ?? 0) >= 0 ? '+' : ''}{(prediction.change ?? 0).toFixed(2)}%
                 </Text>
               </View>
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Confianza</Text>
-                <Text style={styles.predictionValue}>{prediction.confidence}%</Text>
+                <Text style={styles.predictionValue}>{prediction.confidence ?? 0}%</Text>
               </View>
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Precio objetivo</Text>
                 <Text style={styles.predictionValue}>
-                  {((assetData?.price || 0) * (1 + prediction.change / 100)).toFixed(2)} {assetData?.currency}
+                  {((assetData?.price || 0) * (1 + (prediction.change ?? 0) / 100)).toFixed(2)} €
                 </Text>
               </View>
             </View>

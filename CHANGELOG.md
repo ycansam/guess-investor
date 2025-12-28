@@ -1,8 +1,130 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 26 de diciembre de 2025  
-**Versión:** `1.2.0`  
-**Commit actual:** `pending`
+**Última actualización:** 28 de diciembre de 2025  
+**Versión:** `1.3.0`  
+**Commit actual:** `590e536`
+
+---
+
+## [1.3.0] - 28 de diciembre de 2025
+
+### 📝 Commits Principales
+
+```
+590e536 - actualizados readmes [develop]
+27aa153 - fixed some services [develop]
+00464ac - añadido factor confianza en base a prediccion IA [develop]
+5b45e6a - fixed color error [develop]
+f8cfe36 - fixed some services [develop]
+73be218 - añadido prioridad media [develop]
+13e924d - integrada python [develop]
+ddda123 - fixeada migracion prioridad alta [develop]
+adfc636 - fixed prediccions como original [develop]
+a3dcdb2 - migrados 11 factores de back [develop]
+93bc24b - fixeada pestaña graficos [develop]
+e17fbbe - fixed predictions [develop]
+106f402 - fixed grafico [develop]
+f67f268 - movidas predicciones al backend y etc [develop]
+91d0441 - migracion back [develop]
+```
+
+### 🖥️ Backend Completo
+
+#### Nueva Arquitectura
+- **API REST completa** con Express + Prisma + SQLite/PostgreSQL
+- **33+ servicios** migrados del frontend al backend
+- **Puerto 3001** para el servidor Node.js
+- **Puerto 8765** para el servidor Python ML
+
+#### Servicios External (20+)
+- `yahoo.service.ts` - Precios, históricos, fundamentales
+- `technical.service.ts` - RSI, MACD, Bollinger, etc.
+- `sentiment.service.ts` - Sentimiento del mercado
+- `news.service.ts` - Noticias financieras
+- `institutional.service.ts` - Actividad institucional
+- `finviz.service.ts` - Target prices, short interest
+- `options.service.ts` - Put/Call ratio, flow
+- `dark-pools.service.ts` - Dark pool activity
+- `cot-report.service.ts` - COT Report (CFTC)
+- `etf-flows.service.ts` - Flujos de ETFs
+- Y 10+ más...
+
+#### Servicios Prediction (7)
+- `calculator.service.ts` - Motor principal con 11 factores
+- `asset-adjustment.service.ts` - Ajustes por activo (TSLA, NVDA, crypto)
+- `accuracy-predictor.service.ts` - Predice accuracy esperado
+- `confidence-calibration.service.ts` - Calibra confianza vs accuracy real
+- `uncertainty-analysis.service.ts` - Detecta condiciones de incertidumbre
+- `ensemble.service.ts` - Combina múltiples modelos
+- `track-record.service.ts` - Historial de performance por símbolo
+
+### 🧠 ML Avanzado (6 nuevos servicios)
+
+#### Reinforcement Learning Service
+- **Q-Learning** para decidir CUÁNDO predecir
+- Acciones: skip, predict_low, predict_medium, predict_high
+- Persistencia de Q-Table en base de datos (MLModelState)
+- ε-greedy policy con exploración decreciente
+
+#### Factor Correlation Service
+- Detecta **sinergias** entre factores (technical+trend, sentiment+news)
+- Penaliza **conflictos** y **redundancias**
+- Ajusta confianza automáticamente
+- Coherence bonus / Conflict penalty
+
+#### Temporal Cross-Validation Service
+- **Walk-forward validation**
+- Out-of-sample testing
+- **Detección de overfitting**
+- Métricas de degradación y estabilidad
+
+#### Meta-Learning Service
+- **MAML-inspired** few-shot learning
+- Adaptación rápida para nuevos símbolos (2-5 datos)
+- Transfer learning entre activos similares
+- Perfiles de símbolo aprendidos
+
+#### Probabilistic Model Service
+- **Distribuciones de probabilidad** en lugar de puntos
+- Intervalos de confianza (50%, 80%, 95%)
+- 7 escenarios con probabilidades (crash → rally)
+- Métricas: expected value, median, mode, std, skew
+
+#### Feature Engineering Service
+- Features derivados automáticos
+- Momentum, volatility, cross-factor features
+- Temporal features (day of week, etc.)
+- Divergencias y señales de agotamiento
+
+### 📡 Nuevos Endpoints
+
+```
+GET    /api/ml/status                        # Estado general de ML
+GET    /api/ml/rl/stats                      # Stats de Reinforcement Learning
+POST   /api/ml/rl/policy                     # Obtener política RL
+POST   /api/ml/tcv/run                       # Ejecutar cross-validation
+POST   /api/ml/tcv/out-of-sample             # Test out-of-sample
+POST   /api/ml/tcv/detect-overfitting        # Detectar overfitting
+GET    /api/ml/probabilistic/stats           # Stats modelo probabilístico
+POST   /api/ml/probabilistic/predict         # Predicción probabilística
+POST   /api/ml/correlation/analyze           # Análisis de correlación
+GET    /api/ml/meta/stats                    # Stats meta-learning
+POST   /api/ml/features/generate             # Generar features derivados
+```
+
+### 🗄️ Base de Datos
+
+#### Nuevo modelo MLModelState
+- Persiste estados de modelos ML
+- Campos: modelType, version, stateJson
+- Soporta RL Q-Tables, Meta-Learning profiles, etc.
+
+### 📊 Integración en Calculator
+
+El `calculator.service.ts` ahora integra:
+- Factor correlation adjustment (sinergias/conflictos)
+- Probabilistic predictions (distribuciones)
+- Reinforcement Learning (ajuste de confianza)
 
 ---
 

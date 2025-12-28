@@ -3,7 +3,8 @@ import { appConfig, INVESTMENT_SYSTEM_PROMPT } from '../config/app-config';
 import { ChatMessage, ParsedAIResponse } from '../types';
 import { getErrorMessage } from '../utils/ai-response-utils';
 import { cleanConversationHistory, formatHistoryForGemini } from '../utils/conversation-utils';
-import { marketDataEnricherService } from './market-data-enricher-service';
+import { apiClient, CalculatedPrediction } from './api-client';
+import { messageParserService } from './message-parser-service';
 
 /**
  * Servicio principal para comunicación con Google Gemini
@@ -46,12 +47,25 @@ class GeminiService {
     conversationHistory: ChatMessage[] = []
   ): Promise<ParsedAIResponse> {
     try {
-      // Enriquecer el mensaje con datos de mercado y calcular predicción
-      console.log('[Gemini] Enriqueciendo mensaje y calculando predicción...');
-      const enrichResult = await marketDataEnricherService.enrichMessage(userMessage);
-      const { enrichedMessage, hasMarketData, calculatedPrediction } = enrichResult;
+      // 1. Parsear el mensaje para extraer activo y timeframe
+      console.log('[Gemini] Parseando mensaje...');
+      const parsedMessage = await messageParserService.parseMessage(userMessage);
       
-      console.log('[Gemini] ¿Tiene datos?', hasMarketData);
+      let calculatedPrediction: CalculatedPrediction | undefined;
+      
+      if (parsedMessage && parsedMessage.isFinancialRequest && parsedMessage.symbol) {
+        // 2. Calcular predicción usando el backend
+        console.log('[Gemini] Calculando predicción para', parsedMessage.symbol);
+        try {
+          calculatedPrediction = await apiClient.calculatePrediction(
+            parsedMessage.symbol,
+            parsedMessage.timeframeDays || 7
+          );
+        } catch (error: any) {
+          console.warn('[Gemini] Error calculando predicción:', error.message);
+        }
+      }
+      
       console.log('[Gemini] ¿Tiene predicción calculada?', !!calculatedPrediction);
 
       // Si tenemos una predicción calculada, usarla directamente
@@ -114,7 +128,7 @@ ${directionEmoji} Predicción: ${directionText} (${calculatedPrediction.predicte
           prediction: {
             asset: calculatedPrediction.asset,
             symbol: calculatedPrediction.symbol,
-            assetType: calculatedPrediction.assetType,
+            assetType: calculatedPrediction.assetType as any,
             direction: calculatedPrediction.direction,
             confidence: calculatedPrediction.confidence,
             timeframe: calculatedPrediction.timeframe,
@@ -147,7 +161,7 @@ ${directionEmoji} Predicción: ${directionText} (${calculatedPrediction.predicte
         };
       }
 
-      // Si no hay predicción calculada, usar Gemini para responder
+      // Si no hay predicción calculada, usar Gemini para responder sin datos financieros
       const model = this.createModel();
       const cleanedHistory = cleanConversationHistory(conversationHistory);
       const formattedHistory = formatHistoryForGemini(cleanedHistory);
@@ -157,7 +171,7 @@ ${directionEmoji} Predicción: ${directionText} (${calculatedPrediction.predicte
       });
 
       console.log('[Gemini] Enviando a Gemini (sin predicción calculada)...');
-      const result = await chat.sendMessage(enrichedMessage);
+      const result = await chat.sendMessage(userMessage);
       const response = await result.response;
       const assistantMessage = response.text() || 'Lo siento, no pude procesar tu solicitud.';
 

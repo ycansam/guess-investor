@@ -8,12 +8,12 @@ interface PredictionCardAnalysisProps {
   prediction: InvestmentPrediction;
 }
 
-// Factores esenciales por tipo de activo
+// Factores esenciales por tipo de activo (se muestran aunque no tengan datos)
 const ESSENTIAL_FACTORS: Record<string, string[]> = {
-  stock: ['trend', 'technical', 'sentiment', 'news', 'financials'],
-  crypto: ['trend', 'technical', 'sentiment', 'news'],
-  etf: ['trend', 'technical', 'macro'],
-  index: ['trend', 'technical', 'macro', 'sentiment'],
+  stock: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
+  crypto: ['trend', 'technical', 'sentiment', 'news', 'macro', 'seasonality'],
+  etf: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
+  index: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
 };
 
 // Detectar tipo de activo y devolver factores esenciales
@@ -149,11 +149,12 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             </View>
 
             {/* Barra de factores */}
+            {prediction.analysisData?.factorBreakdown?.availableFactors && (
             <View style={styles.factorBarContainer}>
               {prediction.analysisData.factorBreakdown.availableFactors
                 .filter(f => {
                   // Solo mostrar factores relevantes para este tipo de activo
-                  const isRelevant = prediction.analysisData?.factorBreakdown?.relevantFactors.includes(f.name);
+                  const isRelevant = prediction.analysisData?.factorBreakdown?.relevantFactors?.includes(f.name);
                   if (!isRelevant) return false;
                   
                   // Factores esenciales siempre se muestran (con advertencia si no hay datos)
@@ -215,11 +216,14 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                   );
                 })}
             </View>
+            )}
 
             {/* Explicación de confianza */}
+            {prediction.analysisData?.factorBreakdown?.confidenceExplanation && (
             <Text style={styles.confidenceExplanation}>
               💡 {prediction.analysisData.factorBreakdown.confidenceExplanation}
             </Text>
+            )}
           </View>
         </View>
       )}
@@ -388,7 +392,7 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             )}
 
             {/* Señales activas */}
-            {prediction.analysisData.technicalAnalysis.signals.length > 0 && (
+            {prediction.analysisData?.technicalAnalysis?.signals && prediction.analysisData.technicalAnalysis.signals.length > 0 && (
               <View style={styles.technicalSignals}>
                 {prediction.analysisData.technicalAnalysis.signals.slice(0, 3).map((signal, index) => (
                   <Text key={index} style={styles.technicalSignal}>
@@ -800,7 +804,7 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                 </Text>
               </View>
             )}
-            {prediction.analysisData.seasonality.events.length > 0 && (
+            {prediction.analysisData?.seasonality?.events && prediction.analysisData.seasonality.events.length > 0 && (
               <View style={styles.seasonalityEvents}>
                 {prediction.analysisData.seasonality.events.map((event, index) => (
                   <Text key={index} style={styles.seasonalityEvent}>
@@ -839,6 +843,7 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
           </Text>
           
           {/* Fuentes de datos */}
+          {prediction.analysisData?.audit?.dataSources && (
           <View style={styles.auditSourcesContainer}>
             {prediction.analysisData.audit.dataSources.map((source, index) => (
               <View key={index} style={styles.auditSourceItem}>
@@ -858,8 +863,11 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               </View>
             ))}
           </View>
+          )}
 
           {/* Cálculo paso a paso */}
+          {prediction.analysisData?.audit?.calculationSteps && (
+          <>
           <Text style={styles.auditCalcTitle}>📐 Cálculo matemático:</Text>
           <View style={styles.auditCalcContainer}>
             {prediction.analysisData.audit.calculationSteps.map((step, index) => (
@@ -870,14 +878,18 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               </View>
             ))}
           </View>
+          </>
+          )}
 
           {/* Fórmula final */}
+          {prediction.analysisData?.audit?.expectedChangeBreakdown && (
           <View style={styles.auditFinalFormula}>
             <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
             <Text style={styles.auditFormulaText}>
               {prediction.analysisData.audit.expectedChangeBreakdown}
             </Text>
           </View>
+          )}
         </View>
       )}
     </View>

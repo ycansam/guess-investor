@@ -1,11 +1,15 @@
 # 🎯 Guess Investor
 
+**Última actualización:** 28 de diciembre de 2025  
+**Versión:** 1.3.0
+
 **Aplicación de predicción de inversiones con IA híbrida** que combina análisis cuantitativo en tiempo real con machine learning para generar predicciones de precios de activos financieros.
 
 ![React Native](https://img.shields.io/badge/React_Native-Expo-blue?logo=expo)
+![Node.js](https://img.shields.io/badge/Node.js-Backend-green?logo=node.js)
 ![Python](https://img.shields.io/badge/Python-ML_Server-green?logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Version](https://img.shields.io/badge/version-1.2.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.3.0-brightgreen)
 
 ---
 
@@ -16,16 +20,17 @@ Guess Investor analiza **11 factores** diferentes para cada activo financiero y 
 ### ✨ Características principales
 
 - 📊 **11 Factores de análisis**: Tendencia, Técnico, Sentimiento, Noticias, Macro, Competidores, Forex, Institucional, Estacionalidad, Financieros, Expectativas
-- 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo + **Red Neuronal MAML**
-- 📈 **Datos en tiempo real**: Yahoo Finance V8 API (gratis e ilimitado) + **V8 Extended** (dividendos, volatilidad)
+- 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo + **Red Neuronal con Gradient Descent**
+- 🖥️ **Backend completo**: API REST con Express + Prisma + SQLite/PostgreSQL
+- 🧠 **ML Avanzado**: 6 servicios ML (Reinforcement Learning, Meta-Learning, Probabilistic, etc.)
+- 📈 **Datos en tiempo real**: Yahoo Finance, Finviz, Dark Pools, COT Report, ETF Flows
 - 📉 **Gráficos interactivos**: Históricos + predicción visual con react-native-gifted-charts
 - 💶 **Precios en EUR**: Conversión automática a euros con tipos de cambio en tiempo real
-- 🎯 **Tracking de predicciones**: Verificación automática al cierre del mercado con **sistema de accuracy scoring**
+- 🎯 **Tracking de predicciones**: Verificación automática con **sistema de accuracy scoring**
 - ⭐ **Sistema de favoritos**: Guarda tus activos preferidos para acceso rápido
-- 🔍 **Buscador dinámico**: +120 activos organizados por categorías (Tech, Crypto, España, ETFs, Commodities...)
-- 🧠 **Auto-aprendizaje**: El sistema mejora basándose en sus errores con **calibración de confianza** e **incertidumbre**
-- 🌍 **Mercados globales**: NYSE, NASDAQ, Europa (.MC, .DE, .PA), Crypto, Commodities
-- 📱 **UI moderna**: 3 pestañas (Favoritos/Explorar/Predicciones), gráficos con tooltips, infinite scroll
+- 🔍 **Buscador dinámico**: +120 activos organizados por categorías
+- 🧠 **Auto-aprendizaje**: El sistema mejora basándose en sus errores
+- 🌍 **Mercados globales**: NYSE, NASDAQ, Europa, Crypto, Commodities
 
 ---
 
@@ -40,12 +45,23 @@ guess-investor/
 │   ├── store/               # Estado global (Zustand)
 │   ├── types/               # Tipos TypeScript
 │   └── utils/               # Utilidades
-├── python/                  # Servidor ML
+├── backend/                 # API REST (Express + Prisma)
+│   ├── src/
+│   │   ├── controllers/     # Handlers de endpoints
+│   │   ├── services/
+│   │   │   ├── external/    # APIs externas (20+ servicios)
+│   │   │   ├── prediction/  # Cálculo y ajuste de predicciones (7 servicios)
+│   │   │   └── ml/          # Machine Learning avanzado (6 servicios)
+│   │   ├── routes/          # Definición de rutas
+│   │   └── repositories/    # Acceso a datos (Prisma)
+│   ├── prisma/              # Schema de base de datos
+│   └── python/              # Scripts de entrenamiento
+├── python/                  # Servidor ML (Gradient Descent)
 │   ├── src/
 │   │   ├── config/          # Configuración
 │   │   ├── models/          # Optimizador y función de pérdida
 │   │   └── utils/           # Utilidades
-│   ├── server.py            # Servidor HTTP para la app
+│   ├── server.py            # Servidor HTTP (puerto 8765)
 │   └── main.py              # CLI de entrenamiento
 └── CHANGELOG.md             # Historial de cambios
 ```
@@ -67,32 +83,34 @@ guess-investor/
 git clone <repo-url>
 cd guess-investor
 
-# Instalar dependencias de la app
-cd code
+# === BACKEND ===
+cd backend
 npm install
-
-# Configurar variables de entorno
 cp .env.example .env
-# Editar .env con tus API keys
+npm run db:generate
+npm run db:push
+npm run dev   # Puerto 3001
+
+# === PYTHON ML SERVER ===
+cd ../python
+python server.py   # Puerto 8765
+
+# === FRONTEND ===
+cd ../code
+npm install
+npm start
 ```
 
-### Ejecutar
+### Ejecutar Todo Junto
 
-**Opción 1: Todo junto (recomendado)**
 ```bash
+# Windows
 cd code
 .\start-all.bat
-```
 
-**Opción 2: Por separado**
-```bash
-# Terminal 1 - Servidor Python ML
-cd python
-python server.py
-
-# Terminal 2 - App Expo
+# Linux/Mac
 cd code
-npm start
+./start-all.sh
 ```
 
 ---
@@ -128,6 +146,17 @@ Donde:
 - **β = 0.35**: Importancia de acertar la magnitud del cambio
 - **γ = 0.15**: Importancia de que el precio esté en el rango predicho
 
+### Servicios ML Avanzados (Backend)
+
+| Servicio | Descripción |
+|----------|-------------|
+| **Reinforcement Learning** | Q-Learning para decidir CUÁNDO predecir |
+| **Factor Correlation** | Detecta sinergias/conflictos entre factores |
+| **Meta-Learning** | Few-shot learning para nuevos símbolos |
+| **Probabilistic Model** | Distribuciones de probabilidad en lugar de puntos |
+| **Temporal Cross-Validation** | Walk-forward validation para detectar overfitting |
+| **Feature Engineering** | Features derivados automáticos |
+
 ---
 
 ## ⭐ Sistema de Accuracy Scoring
@@ -159,15 +188,34 @@ Real: AAPL +2.8% en 1 día
 
 ---
 
+## �️ Backend API
+
+El backend proporciona una API REST completa:
+
+### Endpoints Principales
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/assets/search` | Buscar activos |
+| `POST /api/predictions` | Crear predicción |
+| `GET /api/predictions/stats` | Estadísticas |
+| `GET /api/ml/status` | Estado de ML |
+| `POST /api/ml/rl/policy` | Política RL |
+| `POST /api/ml/probabilistic/predict` | Predicción probabilística |
+
+Ver [backend/README.md](./backend/README.md) para documentación completa.
+
+---
+
 ## 📊 APIs y Fuentes de Datos
 
 | Fuente | Uso | Costo |
 |--------|-----|-------|
 | Yahoo Finance V8 | Precios, históricos, OHLCV | ✅ Gratis |
-| Yahoo Finance (RapidAPI) | Fundamentales, institucional, earnings | 💰 Freemium |
+| Finviz | Target prices, short interest | ✅ Gratis |
+| Dark Pools | Short volume ratio | ✅ Gratis |
+| COT Report | Posiciones CFTC | ✅ Gratis |
 | StockTwits | Sentimiento social | ✅ Gratis |
-| Reddit JSON | r/wallstreetbets, r/stocks | ✅ Gratis |
-| Alternative.me | Fear & Greed (crypto) | ✅ Gratis |
 | CBOE | Put/Call Ratio SPX | ✅ Gratis |
 
 ---
@@ -200,10 +248,9 @@ MIT © 2025
 
 Ver [CHANGELOG.md](./CHANGELOG.md) para el historial completo de cambios.
 
-### Últimas actualizaciones (21/12/2025)
-- ⭐ **Sistema de Accuracy Scoring**: Puntuación 0-100 considerando precisión del cambio
-- 🎨 **Mejoras de contraste**: Modal de análisis con mejor legibilidad
-- 📱 **Modal full screen**: Tracking ocupa toda la pantalla
-- 🔕 **Sin popups**: Eliminados todos los Alert.alert para mejor UX
-- 🔍 **Análisis individual**: Botón para ver análisis completo de cada predicción
+### Últimas actualizaciones (28/12/2025)
+- 🖥️ **Backend completo**: API REST con Express + Prisma + 33+ servicios
+- 🧠 **ML Avanzado**: 6 nuevos servicios (RL, Meta-Learning, Probabilistic, etc.)
+- 📊 **Migración 100%**: Todos los servicios del frontend migrados al backend
+- 🔗 **Nuevos endpoints**: 11 endpoints ML en `/api/ml/*`
 
