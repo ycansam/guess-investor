@@ -509,7 +509,12 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Asset adjustment applied for ${symbol}`);
     }
     
-    logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%`);
+    // Recalcular dirección DESPUÉS de todos los ajustes para que coincida con predictedChange
+    if (expectedChange > 0.1) direction = 'up';
+    else if (expectedChange < -0.1) direction = 'down';
+    else direction = 'neutral';
+    
+    logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%, Direction: ${direction}`);
     
     const margin = periodVol * 0.5;
 
