@@ -64,8 +64,10 @@ export interface CalculatedPrediction {
   calculatedAt: Date;
   
   audit: {
-    dataSources: { name: string; fetchedAt: Date }[];
+    dataSources: { name: string; url: string; fetchedAt: Date }[];
+    calculationSteps: { step: string; formula: string; result: number }[];
     combinedScoreBreakdown: string;
+    expectedChangeBreakdown: string;
   };
 }
 
@@ -394,13 +396,20 @@ export const predictionCalculatorService = {
       calculatedAt: new Date(),
       audit: {
         dataSources: [
-          ...(hasHistoricalData ? [{ name: 'Yahoo Finance (Historical)', fetchedAt: new Date() }] : []),
-          ...(hasTechnicalData ? [{ name: 'Technical Analysis', fetchedAt: new Date() }] : []),
-          ...(hasSentimentData ? [{ name: 'Sentiment (VIX/FearGreed)', fetchedAt: new Date() }] : []),
-          ...(hasNewsData ? [{ name: 'Yahoo Finance (News)', fetchedAt: new Date() }] : []),
-          ...(hasMacroData ? [{ name: 'Macro Indicators', fetchedAt: new Date() }] : []),
+          ...(hasHistoricalData ? [{ name: 'Yahoo Finance (Historical)', url: `https://finance.yahoo.com/quote/${symbol}/history`, fetchedAt: new Date() }] : []),
+          ...(hasTechnicalData ? [{ name: 'Technical Analysis', url: `https://finance.yahoo.com/quote/${symbol}/chart`, fetchedAt: new Date() }] : []),
+          ...(hasSentimentData ? [{ name: 'Sentiment (VIX/FearGreed)', url: 'https://edition.cnn.com/markets/fear-and-greed', fetchedAt: new Date() }] : []),
+          ...(hasNewsData ? [{ name: 'Yahoo Finance (News)', url: `https://finance.yahoo.com/quote/${symbol}/news`, fetchedAt: new Date() }] : []),
+          ...(hasMacroData ? [{ name: 'Macro Indicators', url: 'https://tradingeconomics.com/', fetchedAt: new Date() }] : []),
+        ],
+        calculationSteps: [
+          { step: 'Score combinado', formula: `${availableFactors.map(f => `${f.name}(${f.score.toFixed(0)})`).join(' + ')} / ${availableFactors.length}`, result: combinedScore },
+          { step: 'Volatilidad diaria', formula: `${volatility.toFixed(1)}% / √252`, result: dailyVol },
+          { step: 'Volatilidad período', formula: `${dailyVol.toFixed(2)}% × √${timeframeDays}`, result: periodVol },
+          { step: 'Cambio esperado', formula: `(${combinedScore.toFixed(1)}/100) × ${periodVol.toFixed(2)}% × (${confidence}/100)`, result: expectedChange },
         ],
         combinedScoreBreakdown: `Score: ${combinedScore.toFixed(1)} = ${availableFactors.map(f => `${f.name}(${f.score.toFixed(0)})`).join(' + ')}`,
+        expectedChangeBreakdown: `Precio objetivo = ${currentPrice.toFixed(2)} × (1 + ${expectedChange.toFixed(2)}%) = ${(currentPrice * (1 + expectedChange / 100)).toFixed(2)} ${currency}`,
       },
     };
   },

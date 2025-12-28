@@ -368,12 +368,24 @@ export const apiClient = {
   /**
    * Obtener todas las predicciones con paginación
    */
-  getAllPredictions: (options: { limit?: number; offset?: number; verified?: boolean } = {}): Promise<{ predictions: any[]; total: number }> => {
+  getAllPredictions: async (options: { limit?: number; offset?: number; verified?: boolean } = {}): Promise<{ predictions: any[]; total: number }> => {
     const params = new URLSearchParams();
     if (options.limit) params.append('limit', options.limit.toString());
     if (options.offset) params.append('offset', options.offset.toString());
     if (options.verified !== undefined) params.append('verified', options.verified.toString());
-    return get(`/predictions?${params.toString()}`);
+    
+    // Necesitamos acceso a pagination, no solo data
+    const response = await fetchWithTimeout(`${API_BASE_URL}/predictions?${params.toString()}`);
+    const json = await response.json();
+    
+    if (!json.success) {
+      throw new Error(json.error || 'Unknown error');
+    }
+    
+    return {
+      predictions: json.data || [],
+      total: json.pagination?.total || 0,
+    };
   },
 
   /**

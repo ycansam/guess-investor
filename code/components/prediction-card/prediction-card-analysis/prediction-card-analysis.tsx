@@ -882,12 +882,14 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
           )}
 
           {/* Fórmula final */}
+          {prediction.analysisData?.audit?.expectedChangeBreakdown && (
           <View style={styles.auditFinalFormula}>
             <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
             <Text style={styles.auditFormulaText}>
               {prediction.analysisData.audit.expectedChangeBreakdown}
             </Text>
           </View>
+          )}
         </View>
       )}
     </View>
