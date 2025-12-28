@@ -8,12 +8,12 @@ interface PredictionCardAnalysisProps {
   prediction: InvestmentPrediction;
 }
 
-// Factores esenciales por tipo de activo
+// Factores esenciales por tipo de activo (se muestran aunque no tengan datos)
 const ESSENTIAL_FACTORS: Record<string, string[]> = {
-  stock: ['trend', 'technical', 'sentiment', 'news', 'financials'],
-  crypto: ['trend', 'technical', 'sentiment', 'news'],
-  etf: ['trend', 'technical', 'macro'],
-  index: ['trend', 'technical', 'macro', 'sentiment'],
+  stock: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
+  crypto: ['trend', 'technical', 'sentiment', 'news', 'macro', 'seasonality'],
+  etf: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
+  index: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
 };
 
 // Detectar tipo de activo y devolver factores esenciales

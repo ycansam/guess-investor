@@ -177,6 +177,56 @@ const DEFAULT_WEIGHTS = {
   },
 };
 
+// --- AJUSTE DE PESOS POR VOLATILIDAD DEL ACTIVO (como en original 5c77276) ---
+function adjustWeightsForVolatility(
+  baseWeights: Record<string, number>, 
+  assetVolatility: number
+): Record<string, number> {
+  let volatilityMultiplier: Record<string, number>;
+  
+  if (assetVolatility < 20) {
+    // Baja volatilidad: priorizar fundamentales
+    volatilityMultiplier = {
+      trend: 0.8, technical: 0.7, sentiment: 0.6, news: 0.8,
+      macro: 1.3, competitors: 1.2, forex: 1.1, institutional: 1.4,
+      seasonality: 1.2, financials: 1.5, expectations: 1.5
+    };
+    logger.info(`[PredictionCalc] Low volatility (${assetVolatility.toFixed(1)}%): prioritizing fundamentals`);
+  } else if (assetVolatility < 50) {
+    // Volatilidad media: sin ajuste
+    volatilityMultiplier = {
+      trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
+      macro: 1.0, competitors: 1.0, forex: 1.0, institutional: 1.0,
+      seasonality: 1.0, financials: 1.0, expectations: 1.0
+    };
+  } else {
+    // Alta volatilidad: priorizar técnico/momentum/sentiment
+    volatilityMultiplier = {
+      trend: 1.4, technical: 1.5, sentiment: 1.4, news: 1.3,
+      macro: 0.7, competitors: 0.8, forex: 0.9, institutional: 0.8,
+      seasonality: 0.6, financials: 0.5, expectations: 0.5
+    };
+    logger.info(`[PredictionCalc] High volatility (${assetVolatility.toFixed(1)}%): prioritizing technical/sentiment`);
+  }
+  
+  // Aplicar multiplicadores y renormalizar
+  const adjustedWeights: Record<string, number> = {};
+  let totalAdjusted = 0;
+  
+  for (const [factor, weight] of Object.entries(baseWeights)) {
+    const multiplier = volatilityMultiplier[factor] || 1.0;
+    adjustedWeights[factor] = weight * multiplier;
+    totalAdjusted += adjustedWeights[factor];
+  }
+  
+  // Normalizar para que sumen 1
+  for (const factor of Object.keys(adjustedWeights)) {
+    adjustedWeights[factor] = adjustedWeights[factor] / totalAdjusted;
+  }
+  
+  return adjustedWeights;
+}
+
 // ============================================================================
 // SERVICIO PRINCIPAL
 // ============================================================================
@@ -348,7 +398,7 @@ export const predictionCalculatorService = {
     // Obtener pesos (aprendidos o por defecto)
     type WeightsType = { trend: number; technical: number; sentiment: number; news: number; macro: number };
     const timeframeKey = timeframeDays <= 1 ? 'intraday' : timeframeDays <= 7 ? 'swing' : 'long';
-    let weights = DEFAULT_WEIGHTS[timeframeKey];
+    let baseWeights = DEFAULT_WEIGHTS[timeframeKey];
     let usingLearnedWeights = false;
 
     try {
@@ -356,7 +406,7 @@ export const predictionCalculatorService = {
       if (learnedWeights?.weights?.[timeframeKey]) {
         const learned = learnedWeights.weights[timeframeKey];
         if (learned.trend !== undefined && learned.technical !== undefined) {
-          weights = { ...weights, ...learned };
+          baseWeights = { ...baseWeights, ...learned };
           usingLearnedWeights = true;
           logger.info(`[PredictionCalc] Using learned weights (${learnedWeights.trainingSamples} samples)`);
         }
@@ -364,6 +414,10 @@ export const predictionCalculatorService = {
     } catch (e) {
       // Usar pesos por defecto
     }
+
+    // Ajustar pesos según volatilidad del activo (como en original 5c77276)
+    const assetVolatility = historical.volatility || 20;
+    const weights = adjustWeightsForVolatility(baseWeights, assetVolatility);
 
     // Definir los 11 factores
     const factors = [
@@ -394,10 +448,10 @@ export const predictionCalculatorService = {
 
     logger.info(`[PredictionCalc] Combined score: ${combinedScore.toFixed(1)} (${availableFactors.length}/${factors.length} factors)`);
 
-    // Determinar dirección
+    // Determinar dirección (umbral ±5 como en original)
     let direction: 'up' | 'down' | 'neutral' = 'neutral';
-    if (combinedScore > 10) direction = 'up';
-    else if (combinedScore < -10) direction = 'down';
+    if (combinedScore > 5) direction = 'up';
+    else if (combinedScore < -5) direction = 'down';
 
     // Detectar grupo de activo y calcular confianza
     const assetGroup = this.detectAssetGroup(symbol, type);
@@ -411,8 +465,40 @@ export const predictionCalculatorService = {
     const dailyVol = volatility / Math.sqrt(252);
     const periodVol = dailyVol * Math.sqrt(timeframeDays);
     
-    // Cambio esperado basado en score y volatilidad
-    const expectedChange = (combinedScore / 100) * periodVol * (confidence / 100);
+    // --- SCALE FACTOR DINÁMICO (como en original 5c77276) ---
+    // Más agresivo cuando señales coherentes, conservador cuando hay contradicción
+    let scaleFactor: number;
+    if (confidence >= 75) {
+      scaleFactor = 2.5; // Señales muy coherentes - agresivo
+    } else if (confidence >= 65) {
+      scaleFactor = 2.0; // Señales coherentes - moderado
+    } else if (confidence >= 55) {
+      scaleFactor = 1.5; // Señales mixtas con dirección
+    } else if (confidence >= 45) {
+      scaleFactor = 1.0; // Señales contradictorias - conservador
+    } else {
+      scaleFactor = 0.7; // Muy poca confianza - muy conservador
+    }
+    
+    const scoreNormalized = combinedScore / 100; // -1 a +1
+    let expectedChange = scoreNormalized * periodVol * scaleFactor;
+    
+    // --- AJUSTE POR TARGET PRICE DE ANALISTAS (para swing/largo plazo) ---
+    if (financials?.targetPrice && financials.targetVsCurrent && timeframeDays > 1) {
+      const targetInfluence = Math.min(Math.abs(financials.targetVsCurrent) / 100, 0.5);
+      const targetDirection = financials.targetVsCurrent > 0 ? 1 : -1;
+      const timeframeWeight = Math.min(timeframeDays / 30, 1) * 0.25;
+      const targetAdjustment = targetInfluence * (periodVol * timeframeWeight) * targetDirection;
+      expectedChange += targetAdjustment;
+      logger.info(`[PredictionCalc] Target price adjustment: ${targetAdjustment.toFixed(2)}%`);
+    }
+    
+    // --- LÍMITES DE CAMBIO MÁXIMO (como en original) ---
+    const maxChange = Math.min(periodVol * 1.5, timeframeDays <= 1 ? 8 : 15);
+    expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
+    
+    logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%`);
+    
     const margin = periodVol * 0.5;
 
     const predictedPriceMin = currentPrice * (1 + (expectedChange - margin) / 100);
