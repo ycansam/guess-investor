@@ -262,12 +262,15 @@ export const apiClient = {
   /**
    * Obtener datos históricos
    */
-  getHistory: (
+  getHistory: async (
     symbol: string,
     range: '1d' | '3d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' = '1mo',
     interval: '1m' | '5m' | '15m' | '1h' | '1d' = '1d'
   ): Promise<HistoricalDataPoint[]> => {
-    return get(`/assets/${encodeURIComponent(symbol)}/history?range=${range}&interval=${interval}`);
+    const response = await get<{ symbol: string; range: string; interval: string; count: number; prices: HistoricalDataPoint[] }>(
+      `/assets/${encodeURIComponent(symbol)}/history?range=${range}&interval=${interval}`
+    );
+    return response.prices;
   },
 
   // -------------------------------------------------------------------------
