@@ -1,5 +1,7 @@
 # 🧠 Sistema de IA que Aprende Sobre Sí Misma
 
+**Última actualización:** 28 de diciembre de 2025
+
 Este documento describe cómo la IA de Guess Investor aprende de sus propios errores y mejora con el tiempo.
 
 ## Arquitectura del Sistema de Aprendizaje
@@ -11,8 +13,8 @@ Este documento describe cómo la IA de Guess Investor aprende de sus propios err
 
 1. PREDICCIÓN          2. ESPERA              3. VERIFICACIÓN         4. APRENDIZAJE
 ┌──────────────┐       ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-│ Usuario pide │──────▶│ Predicción   │──────▶│ Fecha cumple │──────▶│ ML aprende   │
-│ predicción   │       │ guardada     │       │ se verifica  │       │ de errores   │
+│ Backend crea │──────▶│ Predicción   │──────▶│ Fecha cumple │──────▶│ ML aprende   │
+│ predicción   │       │ en DB        │       │ se verifica  │       │ de errores   │
 └──────────────┘       └──────────────┘       └──────────────┘       └──────────────┘
        │                                              │                      │
        │                                              ▼                      │
@@ -27,17 +29,12 @@ Este documento describe cómo la IA de Guess Investor aprende de sus propios err
 
 ## Componentes del Sistema ML
 
-### 1. 📊 Tracking Service (`prediction-tracking-service.ts`)
+### 1. 📊 Prediction Repository (Backend)
 
-Registra TODAS las predicciones:
-- Símbolo, fecha de predicción, fecha objetivo
-- Precio inicial, predicción (%, rango)
-- Factor scores usados
-- Confianza calculada
-- Volatilidad del activo
+Registra TODAS las predicciones en base de datos (Prisma/SQLite):
 
 ```typescript
-interface TrackedPrediction {
+interface Prediction {
   id: string;
   symbol: string;
   predictedChange: number;        // % predicho
@@ -47,12 +44,13 @@ interface TrackedPrediction {
   predictionQuality?: 'excellent' | 'good' | 'poor' | 'failed';
   volatilityCategory?: 'low' | 'medium' | 'high';
   factorScores: Record<string, number>;
+  // + campos probabilísticos, correlación, etc.
 }
 ```
 
-### 2. ⚖️ Weight Optimizer (`weight-optimizer-service.ts`)
+### 2. ⚖️ Calculator Service (Backend)
 
-Optimiza los pesos de los 11 factores de análisis usando **descenso de gradiente con momentum**.
+Calcula predicciones usando los 11 factores + servicios ML avanzados:
 
 #### 11 Factores de Análisis
 | Factor | Descripción |
@@ -79,7 +77,7 @@ El sistema mantiene pesos **separados** para cada tipo de predicción:
 | `long` | >7 días | Fundamentales dominan |
 
 #### Pesos por Volatilidad
-**NUEVO:** También ajusta pesos según la volatilidad del activo:
+También ajusta pesos según la volatilidad del activo:
 
 | Categoría | Volatilidad | Activos típicos | Ajuste |
 |-----------|-------------|-----------------|--------|
@@ -87,27 +85,32 @@ El sistema mantiene pesos **separados** para cada tipo de predicción:
 | `medium` | 20-50% | Mayoría de stocks | Pesos balanceados |
 | `high` | >50% | Crypto, Growth, Small caps | Prioriza técnico/momentum |
 
-### 3. 📈 Accuracy Predictor (`accuracy-predictor-service.ts`)
+### 3. 🧠 Servicios ML Avanzados (Backend)
 
-Predice el accuracy esperado de una NUEVA predicción basándose en historial:
+**NUEVO en 1.3.0:** 6 servicios ML en `backend/src/services/ml/`:
 
-```typescript
-interface ExpectedAccuracy {
-  expectedScore: number;           // 0-100
-  expectedQuality: 'excellent' | 'good' | 'poor' | 'failed';
-  directionProbability: number;    // % de acertar dirección
-  confidence: 'high' | 'medium' | 'low';
-  suggestedTimeframe?: string;     // Mejor timeframe para este activo
-}
+| Servicio | Descripción |
+|----------|-------------|
+| `reinforcement-learning.service.ts` | Q-Learning para CUÁNDO predecir |
+| `factor-correlation.service.ts` | Sinergias/conflictos entre factores |
+| `temporal-cross-validation.service.ts` | Walk-forward validation, overfitting |
+| `meta-learning.service.ts` | Few-shot learning para símbolos nuevos |
+| `probabilistic-model.service.ts` | Distribuciones en lugar de puntos |
+| `feature-engineering.service.ts` | Features derivados automáticos |
+
+### 4. 📈 Python Training Server
+
+Optimiza los pesos de los 11 factores usando **descenso de gradiente con momentum**:
+
+```bash
+cd python
+python server.py  # Puerto 8765
 ```
 
-#### Fuentes de datos del modelo:
-- Por nivel de confianza (buckets de 10%)
-- Por timeframe
-- Por tipo de activo (stock, crypto, etf)
-- Por volatilidad
-- Por símbolo específico
-- Combinaciones (timeframe + volatilidad)
+Endpoints:
+- `POST /train` - Entrena con datos del backend
+- `GET /weights` - Retorna pesos aprendidos
+- `GET /status` - Estado del servidor
 
 ## Función de Pérdida (Loss Function)
 
