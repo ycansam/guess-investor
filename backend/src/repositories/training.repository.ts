@@ -138,19 +138,14 @@ export const trainingRepository = {
    * Eliminar cache por símbolo y timeframe
    */
   async deleteFromCache(symbol: string, timeframe: string): Promise<boolean> {
-    try {
-      await prisma.trainingCache.delete({
-        where: {
-          symbol_timeframe: {
-            symbol: symbol.toUpperCase(),
-            timeframe,
-          },
-        },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    // Usar deleteMany en lugar de delete para evitar errores si no existe
+    const result = await prisma.trainingCache.deleteMany({
+      where: {
+        symbol: symbol.toUpperCase(),
+        timeframe,
+      },
+    });
+    return result.count > 0;
   },
 
   /**
