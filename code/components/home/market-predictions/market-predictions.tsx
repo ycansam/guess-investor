@@ -6,26 +6,27 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { ALL_ASSETS, MarketAsset, marketDataService } from '../../../services/market-data-service';
+import { storageDiagnosticService } from '../../../services/storage-diagnostic-service';
 import {
-  TIMEFRAME_INFO,
-  trainingCacheService,
-  TrainingPrediction,
-  TrainingTimeframe,
+    TIMEFRAME_INFO,
+    trainingCacheService,
+    TrainingPrediction,
+    TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { useChatStore } from '../../../store/chat-store';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
@@ -105,7 +106,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       const favSymbols = favoritesService.getAll();
       setFavoriteSymbols(new Set(favSymbols));
       
-      const activePredictions = trainingCacheService.getAllActive();
+      const activePredictions = await trainingCacheService.getAllActive();
       setCachedPredictions(activePredictions);
       
       // Combinar favoritos + activos con predicciones activas
@@ -177,10 +178,10 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     setRefreshing(false);
   }, [loadData]);
 
-  // Obtener predicción cacheada para un símbolo y timeframe
-  const getCachedPrediction = useCallback((symbol: string, timeframe: TrainingTimeframe) => {
-    return trainingCacheService.get(symbol, timeframe);
-  }, []);
+  // Obtener predicción cacheada para un símbolo y timeframe (desde el estado local)
+  const getCachedPrediction = useCallback((symbol: string, timeframe: TrainingTimeframe): TrainingPrediction | null => {
+    return cachedPredictions.find(p => p.symbol === symbol && p.timeframe === timeframe) || null;
+  }, [cachedPredictions]);
 
   // Hacer predicción para un activo
   const makePrediction = useCallback(async (asset: MarketAsset, timeframe: TrainingTimeframe) => {
@@ -249,7 +250,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       });
 
       // Actualizar lista de predicciones cacheadas
-      setCachedPredictions(trainingCacheService.getAllActive());
+      const updatedPredictions = await trainingCacheService.getAllActive();
+      setCachedPredictions(updatedPredictions);
 
       if (onPredictionMade) {
         onPredictionMade(prediction);
@@ -319,9 +321,9 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const sortedAssets = useMemo(() => {
     const sorted = [...assets];
 
-    // Obtener predicción para un símbolo
+    // Obtener predicción para un símbolo desde cachedPredictions
     const getPrediction = (symbol: string) => {
-      return trainingCacheService.get(symbol, selectedTimeframe);
+      return cachedPredictions.find(p => p.symbol === symbol && p.timeframe === selectedTimeframe) || null;
     };
     
     switch (sortBy) {
@@ -438,7 +440,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
     setPredictingSymbol(null);
     setIsPredictingBatch(false);
-    setCachedPredictions(trainingCacheService.getAllActive());
+    const batchUpdatedPredictions = await trainingCacheService.getAllActive();
+    setCachedPredictions(batchUpdatedPredictions);
     setSelectedSymbols(new Set());
 
     console.log(`Predicciones completadas: ${successCount} creadas${errorCount > 0 ? `, ${errorCount} errores` : ''}`);
@@ -456,7 +459,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     const items = toDelete.map(p => ({ symbol: p.symbol, timeframe: p.timeframe }));
     const removed = await trainingCacheService.removeMultiple(items);
     
-    setCachedPredictions(trainingCacheService.getAllActive());
+    const deletedUpdatedPredictions = await trainingCacheService.getAllActive();
+    setCachedPredictions(deletedUpdatedPredictions);
     setSelectedSymbols(new Set());
     
     console.log(`${removed} predicciones eliminadas`);
@@ -707,14 +711,19 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         <Text style={styles.statsText}>
           {cachedPredictions.length} predicciones activas
         </Text>
-        {cachedPredictions.length > 0 && (
-          <TouchableOpacity onPress={async () => {
-            await trainingCacheService.clear();
-            setCachedPredictions([]);
-          }}>
-            <Text style={styles.clearText}>Limpiar todo</Text>
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          <TouchableOpacity onPress={() => storageDiagnosticService.copyToClipboard()}>
+            <Text style={[styles.clearText, { color: '#3b82f6' }]}>📋 Exportar datos</Text>
           </TouchableOpacity>
-        )}
+          {cachedPredictions.length > 0 && (
+            <TouchableOpacity onPress={async () => {
+              await trainingCacheService.clear();
+              setCachedPredictions([]);
+            }}>
+              <Text style={styles.clearText}>Limpiar todo</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Selector de modo */}

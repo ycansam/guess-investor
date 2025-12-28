@@ -55,6 +55,9 @@ export { symbolLookupService } from './symbol-lookup-service';
 export { predictionTrackingService } from './prediction-tracking-service';
 export type { TrackedPrediction, TrackingStats } from './prediction-tracking-service';
 
+// Migración de datos legacy
+export { dataMigrationService } from './data-migration-service';
+
 // =============================================================================
 // ARQUITECTURA:
 // =============================================================================

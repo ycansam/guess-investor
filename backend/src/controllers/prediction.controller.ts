@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
-import { predictionRepository } from '../repositories/prediction.repository.js';
+import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
+import { yahooService } from '../services/external/yahoo.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 
 export const predictionController = {
   /**
    * POST /api/predictions
-   * Crear nueva predicción usando el calculador completo
+   * Crear nueva predicción usando el calculador completo y guardarla
    */
   create: asyncHandler(async (req: Request, res: Response) => {
     const parsed = CreatePredictionRequestSchema.safeParse(req.body);
@@ -72,29 +73,132 @@ export const predictionController = {
   }),
 
   /**
-   * GET /api/predictions/:id
-   * Obtener predicción por ID
+   * POST /api/predictions/track
+   * Registrar una predicción para tracking (desde el frontend)
    */
-  getById: asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    
-    const prediction = await predictionRepository.findById(id);
-    
-    if (!prediction) {
-      throw NotFoundError(`Prediction ${id}`);
+  track: asyncHandler(async (req: Request, res: Response) => {
+    const {
+      symbol,
+      asset,
+      assetType,
+      timeframe,
+      timeframeDays,
+      direction,
+      predictedChange,
+      confidence,
+      currentPrice,
+      predictedPriceMin,
+      predictedPriceMax,
+      volatility,
+      volatilityCategory,
+      factorBreakdown,
+      factorWeights,
+      uncertaintyScore,
+      uncertaintyData,
+    } = req.body;
+
+    if (!symbol || !direction || currentPrice === undefined) {
+      throw BadRequestError('symbol, direction and currentPrice are required');
     }
+
+    const saved = await predictionRepository.create({
+      symbol: symbol.toUpperCase(),
+      asset,
+      assetType: assetType || 'stock',
+      timeframe: timeframe || '1 día',
+      timeframeDays: timeframeDays || 1,
+      direction,
+      predictedChange: predictedChange || 0,
+      confidence: confidence || 50,
+      currentPrice,
+      predictedPriceMin,
+      predictedPriceMax,
+      volatility,
+      volatilityCategory,
+      factorBreakdown,
+      factorWeights,
+      uncertaintyScore,
+      uncertaintyData,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: saved.id,
+        symbol: saved.symbol,
+        direction: saved.direction,
+        expiresAt: saved.expiresAt.toISOString(),
+      },
+    });
+  }),
+
+  /**
+   * GET /api/predictions
+   * Obtener todas las predicciones con filtros
+   */
+  getAll: asyncHandler(async (req: Request, res: Response) => {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const verified = req.query.verified === 'true' ? true : 
+                    req.query.verified === 'false' ? false : undefined;
+    const symbol = req.query.symbol as string;
+
+    const { predictions, total } = await predictionRepository.findAll({
+      limit,
+      offset,
+      verified,
+      symbol,
+    });
 
     res.json({
       success: true,
-      data: {
-        ...prediction,
-        createdAt: prediction.createdAt.toISOString(),
-        expiresAt: prediction.expiresAt.toISOString(),
-        verifiedAt: prediction.verifiedAt?.toISOString(),
-        factorBreakdown: prediction.factorBreakdown 
-          ? JSON.parse(prediction.factorBreakdown) 
-          : null,
+      data: predictions.map(p => formatPrediction(p)),
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + predictions.length < total,
       },
+    });
+  }),
+
+  /**
+   * GET /api/predictions/active
+   * Obtener predicciones activas (no expiradas)
+   */
+  getActive: asyncHandler(async (_req: Request, res: Response) => {
+    const predictions = await predictionRepository.findActive();
+
+    res.json({
+      success: true,
+      data: predictions.map(p => formatPrediction(p)),
+    });
+  }),
+
+  /**
+   * GET /api/predictions/pending
+   * Obtener predicciones pendientes de verificar
+   */
+  getPending: asyncHandler(async (_req: Request, res: Response) => {
+    const predictions = await predictionRepository.findPendingVerification();
+
+    res.json({
+      success: true,
+      data: predictions.map(p => formatPrediction(p)),
+    });
+  }),
+
+  /**
+   * GET /api/predictions/verified
+   * Obtener predicciones verificadas
+   */
+  getVerified: asyncHandler(async (req: Request, res: Response) => {
+    const limit = parseInt(req.query.limit as string) || 100;
+    const predictions = await predictionRepository.findVerified(limit);
+
+    res.json({
+      success: true,
+      data: predictions.map(p => formatPrediction(p)),
     });
   }),
 
@@ -113,47 +217,36 @@ export const predictionController = {
 
     res.json({
       success: true,
-      data: predictions.map(p => ({
-        ...p,
-        createdAt: p.createdAt.toISOString(),
-        expiresAt: p.expiresAt.toISOString(),
-        verifiedAt: p.verifiedAt?.toISOString(),
-      })),
+      data: predictions.map(p => formatPrediction(p)),
     });
   }),
 
   /**
-   * GET /api/predictions/pending
-   * Obtener predicciones pendientes de verificar
+   * GET /api/predictions/:id
+   * Obtener predicción por ID
    */
-  getPending: asyncHandler(async (_req: Request, res: Response) => {
-    const predictions = await predictionRepository.findPendingVerification();
+  getById: asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    
+    const prediction = await predictionRepository.findById(id);
+    
+    if (!prediction) {
+      throw NotFoundError(`Prediction ${id}`);
+    }
 
     res.json({
       success: true,
-      data: predictions.map(p => ({
-        id: p.id,
-        symbol: p.symbol,
-        direction: p.direction,
-        predictedChange: p.predictedChange,
-        currentPrice: p.currentPrice,
-        targetPrice: p.targetPrice,
-        expiresAt: p.expiresAt.toISOString(),
-      })),
+      data: formatPrediction(prediction),
     });
   }),
 
   /**
    * POST /api/predictions/:id/verify
-   * Verificar predicción
+   * Verificar predicción con precio actual
    */
   verify: asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { actualPrice } = req.body;
-
-    if (typeof actualPrice !== 'number' || actualPrice <= 0) {
-      throw BadRequestError('actualPrice must be a positive number');
-    }
+    let { actualPrice } = req.body;
 
     const prediction = await predictionRepository.findById(id);
     if (!prediction) {
@@ -164,59 +257,286 @@ export const predictionController = {
       throw BadRequestError('Prediction already verified');
     }
 
+    // Si no se proporciona precio, obtenerlo de Yahoo
+    if (actualPrice === undefined) {
+      try {
+        const quote = await yahooService.getQuote(prediction.symbol);
+        if (!quote) {
+          throw BadRequestError('Could not fetch current price. Please provide actualPrice.');
+        }
+        actualPrice = quote.price;
+      } catch (error) {
+        throw BadRequestError('Could not fetch current price. Please provide actualPrice.');
+      }
+    }
+
+    if (typeof actualPrice !== 'number' || actualPrice <= 0) {
+      throw BadRequestError('actualPrice must be a positive number');
+    }
+
     // Calcular resultados
     const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
-    const directionCorrect = 
-      (prediction.direction === 'up' && actualChange > 0) ||
-      (prediction.direction === 'down' && actualChange < 0);
+    const actualDirection: 'up' | 'down' | 'neutral' = 
+      actualChange > 0.5 ? 'up' : 
+      actualChange < -0.5 ? 'down' : 'neutral';
+    
+    const directionCorrect = prediction.direction === actualDirection ||
+      (prediction.direction !== 'neutral' && actualDirection === 'neutral');
+    
+    const withinRange = prediction.predictedPriceMin !== null && 
+                       prediction.predictedPriceMax !== null &&
+                       actualPrice >= prediction.predictedPriceMin && 
+                       actualPrice <= prediction.predictedPriceMax;
+    
+    const priceError = Math.abs(actualChange - prediction.predictedChange);
+    
+    // Calcular precisión del cambio (0-100)
+    let changeAccuracy = 0;
+    if (Math.abs(prediction.predictedChange) > 0.1) {
+      const fulfillmentRatio = Math.abs(actualChange) / Math.abs(prediction.predictedChange);
+      if (directionCorrect) {
+        changeAccuracy = Math.min(100, fulfillmentRatio * 100);
+      } else {
+        changeAccuracy = Math.max(0, (1 - fulfillmentRatio) * 50);
+      }
+    } else if (Math.abs(actualChange) < 0.5) {
+      changeAccuracy = 100; // Predijo neutral y fue neutral
+    }
+    
+    // Accuracy score combinado
+    const directionWeight = 0.6;
+    const changeWeight = 0.4;
+    const accuracyScore = 
+      (directionCorrect ? 100 : 0) * directionWeight + 
+      changeAccuracy * changeWeight;
+    
+    // Clasificar calidad
+    let quality: 'excellent' | 'good' | 'poor' | 'failed';
+    if (accuracyScore >= 75) quality = 'excellent';
+    else if (accuracyScore >= 50) quality = 'good';
+    else if (accuracyScore >= 25) quality = 'poor';
+    else quality = 'failed';
 
-    // Accuracy score (100 si perfecta, menos según error)
-    const error = Math.abs(actualChange - prediction.predictedChange);
-    const accuracyScore = Math.max(0, 100 - error * 10);
-
-    // Actualizar predicción
-    const verified = await predictionRepository.verify(
-      id,
+    const verifyData: VerifyPredictionData = {
       actualPrice,
       actualChange,
+      actualDirection,
       directionCorrect,
-      accuracyScore
-    );
+      withinRange,
+      priceError,
+      changeAccuracy: Math.round(changeAccuracy),
+      accuracyScore: Math.round(accuracyScore),
+      quality,
+    };
 
-    // TODO: Crear assetAdjustmentRepository e implementar aprendizaje
-    // await assetAdjustmentRepository.updateFromVerification(
-    //   prediction.symbol,
-    //   prediction.predictedChange,
-    //   actualChange
-    // );
+    const verified = await predictionRepository.verify(id, verifyData);
 
     res.json({
       success: true,
       data: {
         predictionId: verified.id,
-        directionCorrect,
-        actualChange,
+        ...verifyData,
         predictedChange: prediction.predictedChange,
-        accuracyScore,
+      },
+    });
+  }),
+
+  /**
+   * POST /api/predictions/verify-pending
+   * Verificar todas las predicciones pendientes automáticamente
+   */
+  verifyPending: asyncHandler(async (_req: Request, res: Response) => {
+    const pending = await predictionRepository.findPendingVerification();
+    const results: any[] = [];
+
+    for (const prediction of pending) {
+      try {
+        const quote = await yahooService.getQuote(prediction.symbol);
+        if (!quote) {
+          results.push({ id: prediction.id, symbol: prediction.symbol, error: 'Could not fetch price' });
+          continue;
+        }
+        const actualPrice = quote.price;
+        
+        // Calcular resultados (mismo código que verify)
+        const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
+        const actualDirection: 'up' | 'down' | 'neutral' = 
+          actualChange > 0.5 ? 'up' : 
+          actualChange < -0.5 ? 'down' : 'neutral';
+        
+        const directionCorrect = prediction.direction === actualDirection;
+        
+        const withinRange = prediction.predictedPriceMin !== null && 
+                           prediction.predictedPriceMax !== null &&
+                           actualPrice >= prediction.predictedPriceMin && 
+                           actualPrice <= prediction.predictedPriceMax;
+        
+        const priceError = Math.abs(actualChange - prediction.predictedChange);
+        
+        let changeAccuracy = 0;
+        if (Math.abs(prediction.predictedChange) > 0.1) {
+          const fulfillmentRatio = Math.abs(actualChange) / Math.abs(prediction.predictedChange);
+          if (directionCorrect) {
+            changeAccuracy = Math.min(100, fulfillmentRatio * 100);
+          }
+        }
+        
+        const accuracyScore = (directionCorrect ? 100 : 0) * 0.6 + changeAccuracy * 0.4;
+        
+        let quality: 'excellent' | 'good' | 'poor' | 'failed';
+        if (accuracyScore >= 75) quality = 'excellent';
+        else if (accuracyScore >= 50) quality = 'good';
+        else if (accuracyScore >= 25) quality = 'poor';
+        else quality = 'failed';
+
+        await predictionRepository.verify(prediction.id, {
+          actualPrice,
+          actualChange,
+          actualDirection,
+          directionCorrect,
+          withinRange,
+          priceError,
+          changeAccuracy: Math.round(changeAccuracy),
+          accuracyScore: Math.round(accuracyScore),
+          quality,
+        });
+
+        results.push({
+          id: prediction.id,
+          symbol: prediction.symbol,
+          directionCorrect,
+          quality,
+        });
+      } catch (error: any) {
+        results.push({
+          id: prediction.id,
+          symbol: prediction.symbol,
+          error: error.message,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        processed: results.length,
+        results,
       },
     });
   }),
 
   /**
    * GET /api/predictions/stats
-   * Obtener estadísticas
+   * Obtener estadísticas completas
    */
   getStats: asyncHandler(async (_req: Request, res: Response) => {
     const stats = await predictionRepository.getStats();
 
     res.json({
       success: true,
+      data: stats,
+    });
+  }),
+
+  /**
+   * DELETE /api/predictions/:id
+   * Eliminar una predicción
+   */
+  delete: asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    
+    const prediction = await predictionRepository.findById(id);
+    if (!prediction) {
+      throw NotFoundError(`Prediction ${id}`);
+    }
+
+    await predictionRepository.delete(id);
+
+    res.json({
+      success: true,
+      message: 'Prediction deleted',
+    });
+  }),
+
+  /**
+   * DELETE /api/predictions
+   * Limpiar todas las predicciones (solo en desarrollo)
+   */
+  clear: asyncHandler(async (_req: Request, res: Response) => {
+    if (process.env.NODE_ENV === 'production') {
+      throw BadRequestError('Cannot clear predictions in production');
+    }
+
+    const count = await predictionRepository.clear();
+
+    res.json({
+      success: true,
+      message: `Deleted ${count} predictions`,
+    });
+  }),
+
+  /**
+   * POST /api/predictions/import-bulk
+   * Importar predicciones en masa (migración desde AsyncStorage)
+   */
+  importBulk: asyncHandler(async (req: Request, res: Response) => {
+    const { predictions, source } = req.body;
+
+    if (!predictions || !Array.isArray(predictions)) {
+      throw BadRequestError('predictions array is required');
+    }
+
+    console.log(`[Predictions] Importing ${predictions.length} predictions from ${source || 'unknown'}`);
+
+    const result = await predictionRepository.importBulk(predictions);
+
+    res.json({
+      success: true,
       data: {
-        ...stats,
-        directionAccuracy: stats.verified > 0 
-          ? (stats.correctDirection / stats.verified) * 100 
-          : 0,
+        imported: result.imported,
+        total: predictions.length,
+        errors: result.errors,
       },
     });
   }),
 };
+
+// Helper para formatear predicción para respuesta JSON
+function formatPrediction(p: any) {
+  return {
+    id: p.id,
+    symbol: p.symbol,
+    asset: p.asset,
+    assetType: p.assetType,
+    timeframe: p.timeframe,
+    timeframeDays: p.timeframeDays,
+    direction: p.direction,
+    predictedChange: p.predictedChange,
+    confidence: p.confidence,
+    currentPrice: p.currentPrice,
+    targetPrice: p.targetPrice,
+    predictedPriceMin: p.predictedPriceMin,
+    predictedPriceMax: p.predictedPriceMax,
+    currency: p.currency,
+    volatility: p.volatility,
+    volatilityCategory: p.volatilityCategory,
+    createdAt: p.createdAt?.toISOString?.() || p.createdAt,
+    expiresAt: p.expiresAt?.toISOString?.() || p.expiresAt,
+    verified: p.verified,
+    verifiedAt: p.verifiedAt?.toISOString?.() || p.verifiedAt,
+    actualPrice: p.actualPrice,
+    actualChange: p.actualChange,
+    actualDirection: p.actualDirection,
+    directionCorrect: p.directionCorrect,
+    withinRange: p.withinRange,
+    priceError: p.priceError,
+    changeAccuracy: p.changeAccuracy,
+    accuracyScore: p.accuracyScore,
+    quality: p.quality,
+    factorBreakdown: p.factorBreakdown ? JSON.parse(p.factorBreakdown) : null,
+    factorWeights: p.factorWeights ? JSON.parse(p.factorWeights) : null,
+    reasoning: p.reasoning,
+    uncertaintyScore: p.uncertaintyScore,
+    uncertaintyData: p.uncertaintyData ? JSON.parse(p.uncertaintyData) : null,
+  };
+}

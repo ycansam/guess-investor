@@ -55,7 +55,7 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
       
       // Obtener predicciones
       await trainingCacheService.init();
-      const predictions = trainingCacheService.getAllActive();
+      const predictions = await trainingCacheService.getAllActive();
       const predSymbols = new Set(predictions.map(p => p.symbol));
       setPredictedSymbols(predSymbols);
       

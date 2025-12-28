@@ -7,17 +7,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from 'react-native';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
@@ -86,7 +86,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
       setFavorites(new Set(favoritesService.getAll()));
       
       await trainingCacheService.init();
-      const predictions = trainingCacheService.getAllActive();
+      const predictions = await trainingCacheService.getAllActive();
       const symbols = new Set(predictions.map(p => p.symbol));
       setPredictedSymbols(symbols);
     } catch (error) {

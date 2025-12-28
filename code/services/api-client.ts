@@ -362,6 +362,153 @@ export const apiClient = {
     return get('/predictions/stats');
   },
 
+  /**
+   * Obtener todas las predicciones con paginación
+   */
+  getAllPredictions: (options: { limit?: number; offset?: number; verified?: boolean } = {}): Promise<{ predictions: any[]; total: number }> => {
+    const params = new URLSearchParams();
+    if (options.limit) params.append('limit', options.limit.toString());
+    if (options.offset) params.append('offset', options.offset.toString());
+    if (options.verified !== undefined) params.append('verified', options.verified.toString());
+    return get(`/predictions?${params.toString()}`);
+  },
+
+  /**
+   * Verificar todas las predicciones pendientes automáticamente
+   */
+  verifyAllPending: (): Promise<{ verified: number; results: any[] }> => {
+    return post('/predictions/verify-pending', {});
+  },
+
+  /**
+   * Obtener predicciones verificadas
+   */
+  getVerifiedPredictions: (limit: number = 100): Promise<any[]> => {
+    return get(`/predictions/verified?limit=${limit}`);
+  },
+
+  /**
+   * Limpiar TODAS las predicciones (zona de peligro)
+   */
+  clearAllPredictions: (): Promise<{ deleted: number }> => {
+    return del('/predictions');
+  },
+
+  /**
+   * Resetear pesos aprendidos del ML
+   */
+  resetLearnedWeights: (): Promise<{ reset: boolean }> => {
+    return del('/training/weights');
+  },
+
+  /**
+   * Importar predicciones en masa (migración desde AsyncStorage)
+   */
+  importPredictionsBulk: (data: {
+    predictions: any[];
+    source: string;
+  }): Promise<{ imported: number; total: number; errors: string[] }> => {
+    return post('/predictions/import-bulk', data);
+  },
+
+  /**
+   * Importar datos de training desde el frontend (migración)
+   */
+  importTrainingData: (data: {
+    predictions: any[];
+    chatPredictions?: any[];
+    source: string;
+  }): Promise<{ imported: number; errors: string[] }> => {
+    return post('/training/import', data);
+  },
+
+  /**
+   * Obtener estadísticas de training del backend
+   */
+  getTrainingStats: (): Promise<any> => {
+    return get('/training/stats');
+  },
+
+  /**
+   * Obtener todo el cache de training activo
+   */
+  getTrainingCache: (): Promise<any[]> => {
+    return get('/training/cache');
+  },
+
+  /**
+   * Guardar predicción en cache de training
+   */
+  saveTrainingCache: (data: {
+    symbol: string;
+    timeframe: string;
+    predictedChange: number;
+    confidence: number;
+    direction: string;
+    currentPrice: number;
+    targetPrice: number;
+    analysisData?: any;
+    expiresAt: string;
+  }): Promise<any> => {
+    return post('/training/cache', data);
+  },
+
+  /**
+   * Obtener predicción específica del cache
+   */
+  getTrainingCacheItem: (symbol: string, timeframe: string): Promise<any> => {
+    return get(`/training/cache/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}`);
+  },
+
+  /**
+   * Eliminar predicción del cache
+   */
+  deleteTrainingCache: (symbol: string, timeframe: string): Promise<{ deleted: boolean }> => {
+    return del(`/training/cache/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}`);
+  },
+
+  /**
+   * Obtener datos de training por símbolo
+   */
+  getTrainingBySymbol: (symbol: string): Promise<any[]> => {
+    return get(`/training/symbol/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Limpiar cache de training expirado
+   */
+  cleanupTrainingCache: (): Promise<{ deleted: number }> => {
+    return post('/training/cleanup', {});
+  },
+
+  /**
+   * Borrar TODO el cache de training
+   */
+  clearAllTrainingCache: (): Promise<{ deleted: number }> => {
+    return del('/training/cache/all');
+  },
+
+  /**
+   * Exportar todos los datos de training
+   */
+  exportTrainingData: (): Promise<any> => {
+    return get('/training/export');
+  },
+
+  /**
+   * Obtener pesos aprendidos
+   */
+  getLearnedWeights: (): Promise<any> => {
+    return get('/training/weights');
+  },
+
+  /**
+   * Guardar pesos aprendidos
+   */
+  saveLearnedWeights: (weights: any): Promise<any> => {
+    return post('/training/weights', weights);
+  },
+
   // -------------------------------------------------------------------------
   // FAVORITES
   // -------------------------------------------------------------------------
