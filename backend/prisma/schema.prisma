@@ -237,3 +237,25 @@ model TrainingCache {
   @@index([symbol])
   @@index([expiresAt])
 }
+
+// ============================================================================
+// ML MODEL STATE - Estado de modelos de ML
+// ============================================================================
+
+model MLModelState {
+  id          String   @id @default(uuid())
+  
+  // Tipo de modelo (reinforcement_learning, factor_correlation, meta_learning, probabilistic_model)
+  modelType   String
+  version     Int      @default(1)
+  
+  // Estado serializado en JSON
+  stateJson   String   // JSON con el estado completo del modelo
+  
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+  
+  @@unique([modelType, version])
+  @@index([modelType])
+}

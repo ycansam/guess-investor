@@ -18,6 +18,11 @@ import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
 import { yahooService } from '../external/yahoo.service.js';
+import {
+    factorCorrelationService,
+    probabilisticModelService,
+    reinforcementLearningService,
+} from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { trackRecordService } from './track-record.service.js';
 
@@ -49,6 +54,24 @@ export interface CalculatedPrediction {
     signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
     assetAdjustmentApplied?: boolean;
     trackRecordAdjustment?: number;
+    correlationAdjustment?: number;
+  };
+  
+  // Modelo probabilístico
+  probabilistic?: {
+    mean: number;
+    stdDev: number;
+    confidenceIntervals: {
+      ci50: { lower: number; upper: number };
+      ci80: { lower: number; upper: number };
+      ci95: { lower: number; upper: number };
+    };
+    probabilities: {
+      up: number;
+      down: number;
+      neutral: number;
+    };
+    skewness: number;
   };
   
   sentiment: {
@@ -309,6 +332,32 @@ export const predictionCalculatorService = {
         timeframeDays
       );
 
+      // --- REINFORCEMENT LEARNING: Obtener recomendación de política ---
+      const volatilityCategory = historical.volatility > 50 ? 'high' : historical.volatility > 20 ? 'medium' : 'low';
+      const signalStrength = Math.abs(prediction.predictedChange) > 2 ? 'strong' : Math.abs(prediction.predictedChange) > 0.5 ? 'moderate' : 'weak';
+      
+      const rlState = {
+        regime: prediction.predictedChange > 0 ? 'bull' : prediction.predictedChange < 0 ? 'bear' : 'sideways',
+        volatility: volatilityCategory,
+        timeframe: timeframeDays <= 1 ? 'intraday' : timeframeDays <= 7 ? 'swing' : 'long',
+        signalStrength,
+        signalCoherence: prediction.factorBreakdown.signalSummary.includes('coherent') ? 'aligned' : 
+                         prediction.factorBreakdown.signalSummary === 'mixed' ? 'mixed' : 'conflicting',
+        eventProximity: 'none',
+        recentPerformance: 'average',
+      } as const;
+      
+      const rlRecommendation = await reinforcementLearningService.getPolicy(rlState);
+      
+      // Ajustar confianza según recomendación del RL
+      if (rlRecommendation.recommendedAction === 'skip' && rlRecommendation.confidence > 0.7) {
+        prediction.confidence = Math.max(20, prediction.confidence - 15);
+        logger.info(`[PredictionCalc] RL suggests skipping, reducing confidence to ${prediction.confidence}%`);
+      } else if (rlRecommendation.recommendedAction === 'predict_high' && rlRecommendation.confidence > 0.6) {
+        prediction.confidence = Math.min(95, prediction.confidence + 5);
+        logger.info(`[PredictionCalc] RL suggests high confidence prediction (+5%)`);
+      }
+
       logger.info(`[PredictionCalc] Prediction: ${prediction.direction} ${prediction.predictedChange.toFixed(2)}% (confidence: ${prediction.confidence}%)`);
 
       return prediction;
@@ -519,6 +568,26 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Track record adjustment for ${symbol}: ${trackRecordAdjustment > 0 ? '+' : ''}${trackRecordAdjustment}% → ${finalConfidence}%`);
     }
     
+    // --- AJUSTE POR CORRELACIÓN DE FACTORES (ML) ---
+    // Detecta double-counting y ajusta confianza según coherencia de señales
+    const factorScores: Record<string, number> = {};
+    factors.forEach(f => { factorScores[f.name] = f.score; });
+    const correlationAdjustment = factorCorrelationService.calculateConfidenceAdjustment(factorScores, finalConfidence);
+    if (correlationAdjustment.adjustedConfidence !== finalConfidence) {
+      const diff = correlationAdjustment.adjustedConfidence - finalConfidence;
+      finalConfidence = correlationAdjustment.adjustedConfidence;
+      logger.info(`[PredictionCalc] Factor correlation adjustment: ${diff > 0 ? '+' : ''}${diff}% (${correlationAdjustment.reasons.join(', ')})`);
+    }
+    
+    // --- MODELO PROBABILÍSTICO ---
+    // Genera distribución de probabilidad e intervalos de confianza
+    const probabilisticResult = await probabilisticModelService.generateProbabilisticPrediction(
+      symbol,
+      expectedChange,
+      finalConfidence,
+      historical.volatility || 20
+    );
+    
     // Recalcular dirección DESPUÉS de todos los ajustes para que coincida con predictedChange
     if (expectedChange > 0.1) direction = 'up';
     else if (expectedChange < -0.1) direction = 'down';
@@ -558,6 +627,22 @@ export const predictionCalculatorService = {
         signalSummary,
         assetAdjustmentApplied: assetAdjustment.wasAdjusted,
         trackRecordAdjustment,
+        correlationAdjustment: correlationAdjustment.adjustedConfidence - correlationAdjustment.originalConfidence,
+      },
+      probabilistic: {
+        mean: probabilisticResult.pointEstimate,
+        stdDev: probabilisticResult.distribution.parameters.stdDev,
+        confidenceIntervals: {
+          ci50: { lower: probabilisticResult.distribution.percentiles.p25, upper: probabilisticResult.distribution.percentiles.p75 },
+          ci80: { lower: probabilisticResult.distribution.percentiles.p10, upper: probabilisticResult.distribution.percentiles.p90 },
+          ci95: { lower: probabilisticResult.distribution.percentiles.p5, upper: probabilisticResult.distribution.percentiles.p95 },
+        },
+        probabilities: {
+          up: probabilisticResult.riskMetrics.uptailProbability,
+          down: probabilisticResult.riskMetrics.downtailProbability,
+          neutral: 1 - probabilisticResult.riskMetrics.uptailProbability - probabilisticResult.riskMetrics.downtailProbability,
+        },
+        skewness: probabilisticResult.distribution.parameters.skewness || 0,
       },
       sentiment: {
         score: sentimentScore,
