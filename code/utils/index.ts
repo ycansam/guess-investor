@@ -2,7 +2,7 @@
 export { getErrorMessage, parseAIResponse } from './ai-response-utils';
 
 // Utilidades de conversación
-export { cleanConversationHistory, formatHistoryForGemini } from './conversation-utils';
+export { cleanConversationHistory } from './conversation-utils';
 
 // Utilidades de texto
 export { extractDirectSymbols, extractWords, normalizeText } from './text-utils';

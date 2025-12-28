@@ -27,8 +27,8 @@ export type {
 // Favoritos - Persistencia en backend
 export { favoritesService } from './favorites-service-v2';
 
-// Chat con IA - Gemini
-export { aiService, geminiService } from './gemini-service';
+// Servicio de IA - Solo usa el backend
+export { aiService } from './ai-service';
 
 // Lista de activos disponibles (datos locales)
 export { ALL_ASSETS, marketDataService } from './market-data-service';

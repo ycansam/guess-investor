@@ -66,5 +66,5 @@ export function getErrorMessage(error: any): string {
     return 'La respuesta fue bloqueada por filtros de seguridad. Intenta reformular tu pregunta.';
   }
   
-  return message || 'Error al conectar con Gemini';
+  return message || 'Error al conectar con el servidor';
 }

@@ -14,7 +14,6 @@ export const config = {
   // API Keys
   rapidApiKey: process.env.RAPIDAPI_KEY || '',
   fredApiKey: process.env.FRED_API_KEY || '',
-  geminiApiKey: process.env.GEMINI_API_KEY || '',
   
   // Cache TTLs (en segundos)
   cache: {

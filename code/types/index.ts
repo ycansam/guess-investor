@@ -229,8 +229,6 @@ export interface PredictionState {
 }
 
 export interface AppConfig {
-  geminiApiKey: string;
-  model: string;
   maxTokens: number;
   temperature: number;
 }

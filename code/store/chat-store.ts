@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { geminiService } from '../services/gemini-service';
+import { aiService } from '../services/ai-service';
 import { predictionTrackingService } from '../services/prediction-tracking-service';
 import { ChatMessage, ChatState, InvestmentPrediction, PredictionState } from '../types';
 
@@ -50,7 +50,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  // Enviar mensaje y obtener respuesta de Gemini
+  // Enviar mensaje y obtener respuesta del servicio AI
   sendMessage: async (content: string) => {
     const { addMessage, messages, addPrediction, setError } = get();
     
@@ -63,8 +63,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Obtener respuesta de Gemini
-      const response = await geminiService.sendMessage(content, messages);
+      // Obtener respuesta del servicio de IA (backend)
+      const response = await aiService.sendMessage(content, messages);
       
       // Añadir respuesta del asistente
       const assistantMessage: Omit<ChatMessage, 'id' | 'timestamp'> = {
@@ -230,7 +230,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ isAnalyzing: true, error: null });
     
     try {
-      const response = await geminiService.getQuickAnalysis(asset, assetType);
+      const response = await aiService.getQuickAnalysis(asset, assetType);
       
       get().addMessage({
         role: 'user',

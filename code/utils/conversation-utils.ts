@@ -33,14 +33,4 @@ export function cleanConversationHistory(
   });
 }
 
-/**
- * Convierte el historial al formato esperado por Gemini
- */
-export function formatHistoryForGemini(
-  history: ChatMessage[]
-): Array<{ role: string; parts: Array<{ text: string }> }> {
-  return history.map(msg => ({
-    role: msg.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: msg.content }],
-  }));
-}
+

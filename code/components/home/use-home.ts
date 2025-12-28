@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { geminiService } from '../../services/gemini-service';
 import { useChatStore } from '../../store/chat-store';
 
 
@@ -19,14 +18,10 @@ export function useHome() {
     loadPredictions,
   } = useChatStore();
 
-  // Cargar predicciones guardadas y verificar configuración de API al montar
+  // Cargar predicciones guardadas al montar
   useEffect(() => {
     // Cargar predicciones desde IndexedDB
     loadPredictions();
-    
-    if (!geminiService.isConfigured()) {
-      console.warn('⚠️ API Key de Gemini no configurada');
-    }
   }, []);
 
   const handleSendMessage = async (content: string) => {
