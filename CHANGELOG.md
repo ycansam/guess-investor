@@ -2,11 +2,31 @@
 
 **Última actualización:** 28 de diciembre de 2025  
 **Versión:** `1.3.0`  
-**Commit actual:** `pending`
+**Commit actual:** `590e536`
 
 ---
 
 ## [1.3.0] - 28 de diciembre de 2025
+
+### 📝 Commits Principales
+
+```
+590e536 - actualizados readmes [develop]
+27aa153 - fixed some services [develop]
+00464ac - añadido factor confianza en base a prediccion IA [develop]
+5b45e6a - fixed color error [develop]
+f8cfe36 - fixed some services [develop]
+73be218 - añadido prioridad media [develop]
+13e924d - integrada python [develop]
+ddda123 - fixeada migracion prioridad alta [develop]
+adfc636 - fixed prediccions como original [develop]
+a3dcdb2 - migrados 11 factores de back [develop]
+93bc24b - fixeada pestaña graficos [develop]
+e17fbbe - fixed predictions [develop]
+106f402 - fixed grafico [develop]
+f67f268 - movidas predicciones al backend y etc [develop]
+91d0441 - migracion back [develop]
+```
 
 ### 🖥️ Backend Completo
 
