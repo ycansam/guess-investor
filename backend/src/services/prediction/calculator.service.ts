@@ -18,6 +18,7 @@ import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
 import { yahooService } from '../external/yahoo.service.js';
+import { assetAdjustmentService } from './asset-adjustment.service.js';
 
 // ============================================================================
 // TIPOS
@@ -45,6 +46,7 @@ export interface CalculatedPrediction {
     usingLearnedWeights: boolean;
     confidenceExplanation: string;
     signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
+    assetAdjustmentApplied?: boolean;
   };
   
   sentiment: {
@@ -497,6 +499,16 @@ export const predictionCalculatorService = {
     const maxChange = Math.min(periodVol * 1.5, timeframeDays <= 1 ? 8 : 15);
     expectedChange = Math.max(-maxChange, Math.min(maxChange, expectedChange));
     
+    // --- AJUSTE POR ACTIVO (como en original 5c77276) ---
+    // Corrige predicciones para activos problemáticos (TSLA, NVDA, crypto, etc.)
+    let finalConfidence = confidence;
+    const assetAdjustment = assetAdjustmentService.applyAdjustment(symbol, expectedChange, confidence);
+    if (assetAdjustment.wasAdjusted) {
+      expectedChange = assetAdjustment.adjustedChange;
+      finalConfidence = assetAdjustment.adjustedConfidence;
+      logger.info(`[PredictionCalc] Asset adjustment applied for ${symbol}`);
+    }
+    
     logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%`);
     
     const margin = periodVol * 0.5;
@@ -519,7 +531,7 @@ export const predictionCalculatorService = {
       predictedPriceMax,
       predictedChange: expectedChange,
       direction,
-      confidence,
+      confidence: finalConfidence,
       factorBreakdown: {
         assetGroup,
         assetGroupDescription: groupConfig.description,
@@ -529,6 +541,7 @@ export const predictionCalculatorService = {
         usingLearnedWeights,
         confidenceExplanation,
         signalSummary,
+        assetAdjustmentApplied: assetAdjustment.wasAdjusted,
       },
       sentiment: {
         score: sentimentScore,

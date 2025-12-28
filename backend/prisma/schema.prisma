@@ -135,12 +135,15 @@ model AssetAdjustment {
   confidenceScale Float    @default(1.0)  // 0.5-1.0
   
   // Estadísticas aprendidas
-  avgError        Float?
-  avgBias         Float?
-  sampleCount     Int      @default(0)
+  sampleCount         Int      @default(0)
+  avgPredictedChange  Float    @default(0.0)
+  avgActualChange     Float    @default(0.0)
+  avgError            Float    @default(0.0)
+  avgAbsError         Float    @default(0.0)
+  hitRate             Float    @default(0.0)
   
   // Metadata
-  reason          String   @default("learned") // "manual" | "learned"
+  reason          String   @default("auto_learned") // "manual" | "auto_learned" | "predefined" | "volatility_adjustment"
   updatedAt       DateTime @updatedAt
   
   @@index([symbol])

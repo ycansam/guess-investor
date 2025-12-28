@@ -254,7 +254,10 @@ export const trainingRepository = {
     directionalBias?: number;
     confidenceScale?: number;
     avgError?: number;
-    avgBias?: number;
+    avgAbsError?: number;
+    avgPredictedChange?: number;
+    avgActualChange?: number;
+    hitRate?: number;
     sampleCount?: number;
     reason?: string;
   }): Promise<AssetAdjustment> {
@@ -265,17 +268,23 @@ export const trainingRepository = {
         magnitudeScale: data.magnitudeScale ?? 1.0,
         directionalBias: data.directionalBias ?? 0.0,
         confidenceScale: data.confidenceScale ?? 1.0,
-        avgError: data.avgError,
-        avgBias: data.avgBias,
+        avgError: data.avgError ?? 0.0,
+        avgAbsError: data.avgAbsError ?? 0.0,
+        avgPredictedChange: data.avgPredictedChange ?? 0.0,
+        avgActualChange: data.avgActualChange ?? 0.0,
+        hitRate: data.hitRate ?? 0.0,
         sampleCount: data.sampleCount ?? 0,
-        reason: data.reason ?? 'learned',
+        reason: data.reason ?? 'auto_learned',
       },
       update: {
         magnitudeScale: data.magnitudeScale,
         directionalBias: data.directionalBias,
         confidenceScale: data.confidenceScale,
         avgError: data.avgError,
-        avgBias: data.avgBias,
+        avgAbsError: data.avgAbsError,
+        avgPredictedChange: data.avgPredictedChange,
+        avgActualChange: data.avgActualChange,
+        hitRate: data.hitRate,
         sampleCount: data.sampleCount,
         reason: data.reason,
       },

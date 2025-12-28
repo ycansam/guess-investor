@@ -183,10 +183,11 @@ export const assetAdjustmentRepository = {
   async updateFromVerification(
     symbol: string,
     predictedChange: number,
-    actualChange: number
+    actualChange: number,
+    directionCorrect: boolean = false
   ): Promise<void> {
-    const error = actualChange - predictedChange;
-    const bias = error; // Sesgo = diferencia real - predicha
+    const error = predictedChange - actualChange;
+    const absError = Math.abs(error);
 
     const existing = await prisma.assetAdjustment.findUnique({
       where: { symbol },
@@ -195,30 +196,35 @@ export const assetAdjustmentRepository = {
     if (existing) {
       // EMA para suavizar
       const alpha = 0.2;
-      const newAvgError = existing.avgError 
-        ? existing.avgError * (1 - alpha) + Math.abs(error) * alpha
-        : Math.abs(error);
-      const newAvgBias = existing.avgBias
-        ? existing.avgBias * (1 - alpha) + bias * alpha
-        : bias;
+      const newAvgError = existing.avgError * (1 - alpha) + error * alpha;
+      const newAvgAbsError = existing.avgAbsError * (1 - alpha) + absError * alpha;
+      const newAvgPredicted = existing.avgPredictedChange * (1 - alpha) + predictedChange * alpha;
+      const newAvgActual = existing.avgActualChange * (1 - alpha) + actualChange * alpha;
+      const newHitRate = existing.hitRate * (1 - alpha) + (directionCorrect ? 1 : 0) * alpha;
 
       await prisma.assetAdjustment.update({
         where: { symbol },
         data: {
           avgError: newAvgError,
-          avgBias: newAvgBias,
+          avgAbsError: newAvgAbsError,
+          avgPredictedChange: newAvgPredicted,
+          avgActualChange: newAvgActual,
+          hitRate: newHitRate,
           sampleCount: existing.sampleCount + 1,
-          reason: 'learned',
+          reason: 'auto_learned',
         },
       });
     } else {
       await prisma.assetAdjustment.create({
         data: {
           symbol,
-          avgError: Math.abs(error),
-          avgBias: bias,
+          avgError: error,
+          avgAbsError: absError,
+          avgPredictedChange: predictedChange,
+          avgActualChange: actualChange,
+          hitRate: directionCorrect ? 1 : 0,
           sampleCount: 1,
-          reason: 'learned',
+          reason: 'auto_learned',
         },
       });
     }
