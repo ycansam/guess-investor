@@ -219,8 +219,8 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
   }, [loadData, loadFavoritesAndPredictions]);
 
   // Toggle favorito
-  const toggleFavorite = useCallback(async (symbol: string) => {
-    await favoritesService.toggle(symbol);
+  const toggleFavorite = useCallback(async (symbol: string, name?: string, assetType?: string) => {
+    await favoritesService.toggle(symbol, name, assetType);
     setFavorites(new Set(favoritesService.getAll()));
     onFavoritesChange?.();
   }, [onFavoritesChange]);
@@ -282,7 +282,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
         {/* Favorito */}
         <TouchableOpacity 
           style={styles.favoriteButton}
-          onPress={() => toggleFavorite(item.symbol)}
+          onPress={() => toggleFavorite(item.symbol, item.name, item.type)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Ionicons 

@@ -415,10 +415,14 @@ export default function AssetDetailScreen() {
       if (!symbol || lastPriceForPrediction === 0) return;
       
       await trainingCacheService.init();
-      const cached = trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
+      const cached = await trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
       
       if (cached) {
-        console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}`);
+        console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}:`, {
+          change: cached.predictedChange,
+          confidence: cached.confidence,
+          targetPrice: cached.targetPrice
+        });
         setPrediction({
           change: cached.predictedChange,
           confidence: cached.confidence,
@@ -839,7 +843,7 @@ export default function AssetDetailScreen() {
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Precio objetivo</Text>
                 <Text style={styles.predictionValue}>
-                  {((assetData?.price || 0) * (1 + prediction.change / 100)).toFixed(2)} {assetData?.currency}
+                  {((assetData?.price || 0) * (1 + (prediction.change ?? 0) / 100)).toFixed(2)} €
                 </Text>
               </View>
             </View>

@@ -221,8 +221,9 @@ class PredictionTrackingService {
       targetPrice: p.targetPrice,
       volatility: p.volatility,
       volatilityCategory: p.volatilityCategory,
-      factorBreakdown: p.factorBreakdown ? JSON.parse(p.factorBreakdown) : null,
-      factorWeights: p.factorWeights ? JSON.parse(p.factorWeights) : null,
+      // Backend already parses JSON fields, no need to parse again
+      factorBreakdown: p.factorBreakdown,
+      factorWeights: p.factorWeights,
       verified: p.verified,
       verifiedAt: p.verifiedAt,
       actualPrice: p.actualPrice,
@@ -235,7 +236,7 @@ class PredictionTrackingService {
       accuracyScore: p.accuracyScore,
       quality: p.quality,
       uncertaintyScore: p.uncertaintyScore,
-      uncertaintyData: p.uncertaintyData ? JSON.parse(p.uncertaintyData) : null,
+      uncertaintyData: p.uncertaintyData,
     };
   }
 

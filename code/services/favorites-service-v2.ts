@@ -27,9 +27,9 @@ class FavoritesService {
     return this.favorites.has(symbol);
   }
 
-  async add(symbol: string): Promise<void> {
+  async add(symbol: string, name?: string, assetType?: string): Promise<void> {
     try {
-      await apiClient.addFavorite(symbol);
+      await apiClient.addFavorite(symbol, name, assetType);
       this.favorites.add(symbol);
     } catch (error) {
       console.error('[Favorites] Error adding:', error);
@@ -47,13 +47,22 @@ class FavoritesService {
     }
   }
 
-  async toggle(symbol: string): Promise<boolean> {
-    if (this.favorites.has(symbol)) {
-      await this.remove(symbol);
-      return false;
-    } else {
-      await this.add(symbol);
-      return true;
+  async toggle(symbol: string, name?: string, assetType?: string): Promise<boolean> {
+    try {
+      // Usar el endpoint atómico del backend
+      const result = await apiClient.toggleFavorite(symbol, name, assetType);
+      
+      // Actualizar caché local
+      if (result.isFavorite) {
+        this.favorites.add(symbol);
+      } else {
+        this.favorites.delete(symbol);
+      }
+      
+      return result.isFavorite;
+    } catch (error) {
+      console.error('[Favorites] Error toggling:', error);
+      throw error;
     }
   }
 

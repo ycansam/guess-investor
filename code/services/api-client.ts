@@ -526,8 +526,14 @@ export const apiClient = {
   /**
    * Añadir favorito
    */
-  addFavorite: (symbol: string): Promise<{ symbol: string }> => {
-    return post('/favorites', { symbol });
+  addFavorite: (symbol: string, name?: string, assetType?: string): Promise<{ symbol: string }> => {
+    // Determinar tipo de activo basado en el símbolo
+    const type = assetType || (symbol.includes('-USD') || symbol.includes('-EUR') ? 'crypto' : 'stock');
+    return post('/favorites', { 
+      symbol, 
+      name: name || symbol,
+      assetType: type
+    });
   },
 
   /**
@@ -542,6 +548,18 @@ export const apiClient = {
    */
   isFavorite: (symbol: string): Promise<{ isFavorite: boolean }> => {
     return get(`/favorites/${encodeURIComponent(symbol)}/check`);
+  },
+
+  /**
+   * Toggle favorito (atómico - añadir o eliminar)
+   */
+  toggleFavorite: (symbol: string, name?: string, assetType?: string): Promise<{ symbol: string; isFavorite: boolean; action: string }> => {
+    const type = assetType || (symbol.includes('-USD') || symbol.includes('-EUR') ? 'crypto' : 'stock');
+    return post('/favorites/toggle', {
+      symbol,
+      name: name || symbol,
+      assetType: type
+    });
   },
 
   // -------------------------------------------------------------------------

@@ -68,10 +68,10 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     
     setResetting(true);
     try {
-      // Limpiar predicciones del backend
+      // Limpiar todo del backend
       await apiClient.clearAllPredictions();
-      // Limpiar learned weights
       await apiClient.resetLearnedWeights();
+      await apiClient.clearAllTrainingCache();
       await loadData();
       setConfirmReset(false);
     } catch (error) {

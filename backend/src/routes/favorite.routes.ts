@@ -9,6 +9,9 @@ router.get('/', favoriteController.getAll);
 // POST /api/favorites
 router.post('/', favoriteController.create);
 
+// POST /api/favorites/toggle
+router.post('/toggle', favoriteController.toggle);
+
 // PUT /api/favorites/reorder
 router.put('/reorder', favoriteController.reorder);
 
