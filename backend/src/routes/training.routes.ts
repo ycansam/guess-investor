@@ -57,4 +57,26 @@ router.delete('/weights', trainingController.resetWeights);
 // GET /api/training/export - Exportar todos los datos
 router.get('/export', trainingController.export);
 
+// =============================================================================
+// PYTHON ML INTEGRATION
+// =============================================================================
+
+// GET /api/training/python/status - Estado del servidor Python
+router.get('/python/status', trainingController.pythonStatus);
+
+// POST /api/training/python/sync - Sincronizar predicciones a Python
+router.post('/python/sync', trainingController.pythonSync);
+
+// POST /api/training/python/train - Disparar entrenamiento en Python
+router.post('/python/train', trainingController.pythonTrain);
+
+// POST /api/training/python/sync-and-train - Sincronizar y entrenar
+router.post('/python/sync-and-train', trainingController.pythonSyncAndTrain);
+
+// POST /api/training/python/import-weights - Importar pesos desde Python
+router.post('/python/import-weights', trainingController.pythonImportWeights);
+
+// GET /api/training/python/weights - Obtener pesos de Python
+router.get('/python/weights', trainingController.pythonGetWeights);
+
 export const trainingRoutes = router;

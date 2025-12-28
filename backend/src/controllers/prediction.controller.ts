@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
 import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
+import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 
@@ -331,6 +332,11 @@ export const predictionController = {
 
     const verified = await predictionRepository.verify(id, verifyData);
 
+    // Sincronizar con Python en background (no bloqueante)
+    pythonTrainingService.syncAndTrain().catch(err => {
+      console.log('[PythonSync] Background sync skipped:', err.message || 'Python server not available');
+    });
+
     res.json({
       success: true,
       data: {
@@ -416,11 +422,19 @@ export const predictionController = {
       }
     }
 
+    // Sincronizar con Python después de verificar todas las pendientes
+    const pythonSync = await pythonTrainingService.syncAndTrain();
+
     res.json({
       success: true,
       data: {
         processed: results.length,
         results,
+        pythonSync: {
+          available: pythonSync.available,
+          synced: pythonSync.synced,
+          trained: pythonSync.trained,
+        },
       },
     });
   }),

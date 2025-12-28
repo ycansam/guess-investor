@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { trainingRepository } from '../repositories/training.repository.js';
+import { pythonTrainingService } from '../services/external/python-training.service.js';
 
 // ============================================================================
 // CONTROLADOR DE TRAINING
@@ -378,6 +379,96 @@ export const trainingController = {
         } : null,
         exportedAt: new Date().toISOString(),
       },
+    });
+  }),
+
+  // ==========================================================================
+  // PYTHON ML INTEGRATION
+  // ==========================================================================
+
+  /**
+   * GET /api/training/python/status
+   * Verificar estado del servidor Python
+   */
+  pythonStatus: asyncHandler(async (_req: Request, res: Response) => {
+    const status = await pythonTrainingService.getStatus();
+    
+    res.json({
+      success: true,
+      data: status,
+    });
+  }),
+
+  /**
+   * POST /api/training/python/sync
+   * Sincronizar predicciones verificadas a Python
+   */
+  pythonSync: asyncHandler(async (_req: Request, res: Response) => {
+    const result = await pythonTrainingService.syncPredictions();
+    
+    res.json({
+      success: result.success,
+      data: {
+        synced: result.synced,
+        error: result.error,
+      },
+    });
+  }),
+
+  /**
+   * POST /api/training/python/train
+   * Disparar entrenamiento en Python
+   */
+  pythonTrain: asyncHandler(async (_req: Request, res: Response) => {
+    const result = await pythonTrainingService.triggerTraining();
+    
+    res.json({
+      success: result.success,
+      data: result.result,
+      error: result.error,
+    });
+  }),
+
+  /**
+   * POST /api/training/python/sync-and-train
+   * Sincronizar Y entrenar en un solo paso
+   */
+  pythonSyncAndTrain: asyncHandler(async (_req: Request, res: Response) => {
+    const result = await pythonTrainingService.syncAndTrain();
+    
+    res.json({
+      success: result.trained || result.synced > 0,
+      data: result,
+    });
+  }),
+
+  /**
+   * POST /api/training/python/import-weights
+   * Importar pesos entrenados desde Python al backend
+   */
+  pythonImportWeights: asyncHandler(async (_req: Request, res: Response) => {
+    const result = await pythonTrainingService.importWeightsFromPython();
+    
+    res.json({
+      success: result.success,
+      data: {
+        imported: result.imported,
+      },
+      error: result.error,
+    });
+  }),
+
+  /**
+   * GET /api/training/python/weights
+   * Obtener pesos directamente desde Python (sin importar)
+   */
+  pythonGetWeights: asyncHandler(async (_req: Request, res: Response) => {
+    const result = await pythonTrainingService.getTrainedWeights();
+    
+    res.json({
+      success: result.success,
+      data: result.weights,
+      error: result.error,
     });
   }),
 };

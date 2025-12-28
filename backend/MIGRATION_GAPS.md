@@ -53,9 +53,29 @@ Este documento detalla los servicios y funcionalidades que faltan por migrar del
 
 ---
 
+### 5. Python ML Integration
+**Estado:** ✅ COMPLETADO  
+**Archivo creado:** `backend/src/services/external/python-training.service.ts`
+
+**Funcionalidad:**
+- Conecta backend Node.js con servidor Python (puerto 8765)
+- Sincroniza predicciones verificadas automáticamente
+- Dispara entrenamiento de pesos con gradient descent
+- Importa pesos entrenados de Python al backend
+
+**Endpoints creados:**
+- `GET /api/training/python/status` - Estado del servidor Python
+- `POST /api/training/python/sync` - Sincronizar predicciones
+- `POST /api/training/python/train` - Disparar entrenamiento
+- `POST /api/training/python/sync-and-train` - Sync + Train en uno
+- `POST /api/training/python/import-weights` - Importar pesos
+- `GET /api/training/python/weights` - Ver pesos de Python
+
+---
+
 ## 🟠 PRIORIDAD MEDIA (Mejoran la predicción)
 
-### 5. Corporate Events Service
+### 6. Corporate Events Service
 **Estado:** ❌ No implementado  
 **Archivo original:** `code/services/corporate-events-service.ts`
 

@@ -5,6 +5,7 @@ export * from './forex.service.js';
 export * from './institutional.service.js';
 export * from './macro.service.js';
 export * from './news.service.js';
+export * from './python-training.service.js';
 export * from './seasonality.service.js';
 export * from './sentiment.service.js';
 export * from './technical.service.js';
