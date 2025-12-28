@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { predictionController } from '../controllers/prediction.controller.js';
+import { getTrackRecord, predictionController } from '../controllers/prediction.controller.js';
 
 const router = Router();
 
@@ -17,6 +17,9 @@ router.get('/active', predictionController.getActive);
 
 // GET /api/predictions/verified
 router.get('/verified', predictionController.getVerified);
+
+// GET /api/predictions/track-record/:symbol - Track record de un símbolo
+router.get('/track-record/:symbol', getTrackRecord);
 
 // GET /api/predictions/symbol/:symbol
 router.get('/symbol/:symbol', predictionController.getBySymbol);

@@ -5,6 +5,7 @@ import { predictionRepository, VerifyPredictionData } from '../repositories/pred
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
+import { trackRecordService } from '../services/prediction/track-record.service.js';
 
 export const predictionController = {
   /**
@@ -332,6 +333,9 @@ export const predictionController = {
 
     const verified = await predictionRepository.verify(id, verifyData);
 
+    // Limpiar cache del track record para este símbolo
+    trackRecordService.clearCache(prediction.symbol);
+
     // Sincronizar con Python en background (no bloqueante)
     pythonTrainingService.syncAndTrain().catch(err => {
       console.log('[PythonSync] Background sync skipped:', err.message || 'Python server not available');
@@ -554,3 +558,26 @@ function formatPrediction(p: any) {
     uncertaintyData: p.uncertaintyData ? JSON.parse(p.uncertaintyData) : null,
   };
 }
+
+/**
+ * GET /api/predictions/track-record/:symbol
+ * Obtener track record de un símbolo específico
+ */
+export const getTrackRecord = asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const trackRecord = await trackRecordService.getSymbolTrackRecord(symbol);
+  const globalRecord = await trackRecordService.getGlobalTrackRecord();
+
+  res.json({
+    success: true,
+    data: {
+      symbol: trackRecord,
+      global: globalRecord,
+    },
+  });
+});

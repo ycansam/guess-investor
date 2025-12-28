@@ -19,6 +19,7 @@ import { SentimentData, sentimentService } from '../external/sentiment.service.j
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
+import { trackRecordService } from './track-record.service.js';
 
 // ============================================================================
 // TIPOS
@@ -47,6 +48,7 @@ export interface CalculatedPrediction {
     confidenceExplanation: string;
     signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
     assetAdjustmentApplied?: boolean;
+    trackRecordAdjustment?: number;
   };
   
   sentiment: {
@@ -509,6 +511,14 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Asset adjustment applied for ${symbol}`);
     }
     
+    // --- AJUSTE POR TRACK RECORD (nuevo) ---
+    // Ajusta confianza basándose en historial de predicciones verificadas
+    const trackRecordAdjustment = await trackRecordService.getConfidenceAdjustment(symbol);
+    if (trackRecordAdjustment !== 0) {
+      finalConfidence = Math.max(20, Math.min(95, finalConfidence + trackRecordAdjustment));
+      logger.info(`[PredictionCalc] Track record adjustment for ${symbol}: ${trackRecordAdjustment > 0 ? '+' : ''}${trackRecordAdjustment}% → ${finalConfidence}%`);
+    }
+    
     // Recalcular dirección DESPUÉS de todos los ajustes para que coincida con predictedChange
     if (expectedChange > 0.1) direction = 'up';
     else if (expectedChange < -0.1) direction = 'down';
@@ -547,6 +557,7 @@ export const predictionCalculatorService = {
         confidenceExplanation,
         signalSummary,
         assetAdjustmentApplied: assetAdjustment.wasAdjusted,
+        trackRecordAdjustment,
       },
       sentiment: {
         score: sentimentScore,
