@@ -1,13 +1,5 @@
 // Tipos para el sistema de predicciones de inversiones con IA
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: Date;
-  prediction?: InvestmentPrediction;
-}
-
 export interface InvestmentPrediction {
   id: string;
   asset: string;
@@ -214,12 +206,6 @@ export interface MarketData {
   open?: number;
   previousClose?: number;
   currency?: string;
-}
-
-export interface ChatState {
-  messages: ChatMessage[];
-  isLoading: boolean;
-  error: string | null;
 }
 
 export interface PredictionState {
