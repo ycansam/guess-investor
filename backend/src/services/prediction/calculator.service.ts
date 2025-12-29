@@ -266,18 +266,65 @@ function adjustWeightsForVolatility(
 }
 
 // ============================================================================
+// CACHÉ DE PREDICCIONES (15 minutos)
+// ============================================================================
+
+interface PredictionCacheEntry {
+  prediction: CalculatedPrediction;
+  cachedAt: number;
+}
+
+const PREDICTION_CACHE_DURATION = 15 * 60 * 1000; // 15 minutos
+const predictionCache = new Map<string, PredictionCacheEntry>();
+
+function getPredictionCacheKey(symbol: string, timeframeDays: number): string {
+  return `${symbol.toUpperCase()}:${timeframeDays}`;
+}
+
+function getCachedPrediction(symbol: string, timeframeDays: number): CalculatedPrediction | null {
+  const key = getPredictionCacheKey(symbol, timeframeDays);
+  const entry = predictionCache.get(key);
+  
+  if (entry && (Date.now() - entry.cachedAt) < PREDICTION_CACHE_DURATION) {
+    logger.debug(`[PredictionCalc] Cache hit for ${key}`);
+    return entry.prediction;
+  }
+  
+  if (entry) {
+    predictionCache.delete(key);
+  }
+  
+  return null;
+}
+
+function cachePrediction(symbol: string, timeframeDays: number, prediction: CalculatedPrediction): void {
+  const key = getPredictionCacheKey(symbol, timeframeDays);
+  predictionCache.set(key, {
+    prediction,
+    cachedAt: Date.now(),
+  });
+  logger.debug(`[PredictionCalc] Cached prediction for ${key}`);
+}
+
+// ============================================================================
 // SERVICIO PRINCIPAL
 // ============================================================================
 
 export const predictionCalculatorService = {
   /**
    * Calcula una predicción completa para un símbolo
+   * Cachea el resultado por 15 minutos
    */
   async calculatePrediction(
     symbol: string,
     type: 'stock' | 'crypto',
     timeframeDays: number = 1
   ): Promise<CalculatedPrediction | null> {
+    // Verificar caché primero
+    const cached = getCachedPrediction(symbol, timeframeDays);
+    if (cached) {
+      return cached;
+    }
     try {
       logger.info(`[PredictionCalc] Calculating prediction for ${symbol} (${type})`);
 
@@ -370,6 +417,9 @@ export const predictionCalculatorService = {
       }
 
       logger.info(`[PredictionCalc] Prediction: ${prediction.direction} ${prediction.predictedChange.toFixed(2)}% (confidence: ${prediction.confidence}%)`);
+
+      // Cachear predicción por 15 minutos
+      cachePrediction(symbol, timeframeDays, prediction);
 
       return prediction;
     } catch (error: any) {
