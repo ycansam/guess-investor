@@ -42,14 +42,8 @@ export type { TrainingPrediction, TrainingTimeframe } from './training-cache-ser
 export { currencyService } from './currency-service';
 
 // Horarios de mercado
-export { default as marketHoursService } from './market-hours-service';
-
-// Parser de mensajes del chat
-export { messageParserService } from './message-parser-service';
-export type { ParsedMessage } from './message-parser-service';
-
-// Lookup de símbolos
-export { symbolLookupService } from './symbol-lookup-service';
+export { canTradeNow, getMarketHours } from './market-hours-service';
+export type { MarketHoursInfo } from './market-hours-service';
 
 // Tracking de predicciones
 export { predictionTrackingService } from './prediction-tracking-service';

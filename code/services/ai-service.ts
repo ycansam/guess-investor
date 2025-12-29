@@ -1,50 +1,34 @@
 /**
  * Servicio de IA - Usa exclusivamente el backend para predicciones
- * No hay integración con APIs externas de IA (Gemini, OpenAI, etc.)
+ * El símbolo viene directamente de la lista de mercado
  */
 import { ParsedAIResponse } from '../types';
 import { apiClient, CalculatedPrediction } from './api-client';
-import { messageParserService } from './message-parser-service';
 
 /**
  * Servicio de IA que usa el backend para cálculos determinísticos
  */
 class AIService {
   /**
-   * Analiza un activo y retorna la predicción
+   * Analiza un activo por símbolo y retorna la predicción
    */
-  async analyzeAsset(
-    userMessage: string
+  async analyzeBySymbol(
+    symbol: string,
+    timeframeDays: number = 7
   ): Promise<ParsedAIResponse> {
     try {
-      // 1. Parsear el mensaje para extraer activo y timeframe
-      console.log('[AIService] Parseando mensaje...');
-      const parsedMessage = await messageParserService.parseMessage(userMessage);
+      console.log('[AIService] Calculando predicción para', symbol);
       
-      let calculatedPrediction: CalculatedPrediction | undefined;
-      
-      if (parsedMessage && parsedMessage.isFinancialRequest && parsedMessage.symbol) {
-        // 2. Calcular predicción usando el backend
-        console.log('[AIService] Calculando predicción para', parsedMessage.symbol);
-        try {
-          calculatedPrediction = await apiClient.calculatePrediction(
-            parsedMessage.symbol,
-            parsedMessage.timeframeDays || 7
-          );
-        } catch (error: any) {
-          console.warn('[AIService] Error calculando predicción:', error.message);
-        }
-      }
+      const calculatedPrediction = await apiClient.calculatePrediction(symbol, timeframeDays);
 
-      // Si tenemos una predicción calculada, formatearla
       if (calculatedPrediction) {
-        console.log('[AIService] Usando predicción calculada del backend');
+        console.log('[AIService] Predicción calculada del backend');
         return this.formatPredictionResponse(calculatedPrediction);
       }
 
       // Si no hay predicción, responder con mensaje genérico
       return {
-        message: this.getGenericResponse(userMessage, parsedMessage),
+        message: `⚠️ No se pudo obtener datos para ${symbol}. El backend puede estar desconectado o el símbolo no está disponible.`,
       };
     } catch (error: any) {
       console.error('[AIService] Error:', error);
@@ -143,31 +127,13 @@ ${directionEmoji} Predicción: ${directionText} (${prediction.predictedChange >=
   /**
    * Genera una respuesta genérica cuando no se puede calcular predicción
    */
-  private getGenericResponse(userMessage: string, parsedMessage: any): string {
-    if (parsedMessage?.isFinancialRequest && !parsedMessage.symbol) {
-      return '🔍 No pude identificar el activo. Por favor especifica el símbolo o nombre del activo que quieres analizar.\n\nEjemplos:\n• "Analiza AAPL"\n• "¿Qué opinas de Bitcoin?"\n• "Predicción para Tesla"';
-    }
-    
-    if (parsedMessage?.isFinancialRequest) {
-      return `⚠️ No se pudo obtener datos para ${parsedMessage.symbol}. El backend puede estar desconectado o el símbolo no está disponible.\n\nVerifica que el backend esté corriendo en http://localhost:3001`;
-    }
-    
-    return `👋 Soy tu asistente de inversiones. Puedo analizar acciones, criptomonedas, índices y más.\n\nPrueba preguntando:\n• "Analiza Apple"\n• "¿Qué opinas de BTC?"\n• "Predicción para el S&P 500"`;
-  }
-
   /**
-   * Obtiene un análisis rápido de un activo
+   * Obtiene un análisis rápido de un activo (interfaz pública)
+   * @param asset - Símbolo del activo (ej: "AAPL", "BTC-USD")
+   * @param _assetType - Tipo de activo (ignorado, el backend lo detecta)
    */
   async getQuickAnalysis(asset: string, _assetType: string): Promise<ParsedAIResponse> {
-    const prompt = `Analiza ${asset}`;
-    return this.analyzeAsset(prompt);
-  }
-
-  /**
-   * Alias para compatibilidad
-   */
-  async sendMessage(userMessage: string): Promise<ParsedAIResponse> {
-    return this.analyzeAsset(userMessage);
+    return this.analyzeBySymbol(asset);
   }
 
   /**
