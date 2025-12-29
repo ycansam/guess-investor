@@ -483,16 +483,19 @@ export default function AssetDetailScreen() {
         
         setPredictionData(predPoints);
       } else {
-        // No hay predicción cacheada, resetear
+        // No hay predicción cacheada, calcular automáticamente
         setPrediction(null);
         setFullPrediction(null);
         setPredictionFromCache(false);
         setPredictionData([]);
+        
+        // Llamar handlePredict automáticamente
+        handlePredict();
       }
     };
     
     loadCachedPrediction();
-  }, [symbol, selectedTimeframe, lastPriceForPrediction, lastTimestamp, longtermPredictionDays]);
+  }, [symbol, selectedTimeframe, lastPriceForPrediction, lastTimestamp, longtermPredictionDays, handlePredict]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -808,22 +811,12 @@ export default function AssetDetailScreen() {
                 )}
               </View>
 
-              {/* Botón Predecir */}
-              {!prediction && (
-                <TouchableOpacity
-                  style={styles.predictButton}
-                  onPress={handlePredict}
-                  disabled={predicting}
-                >
-                  {predicting ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="sparkles" size={20} color="#fff" />
-                      <Text style={styles.predictButtonText}>Predecir</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+              {/* Indicador de carga de predicción */}
+              {predicting && !prediction && (
+                <View style={styles.predictingIndicator}>
+                  <ActivityIndicator size="small" color="#818cf8" />
+                  <Text style={styles.predictingText}>Calculando predicción...</Text>
+                </View>
               )}
             </>
           ) : (
@@ -1047,21 +1040,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
   },
-  predictButton: {
+  predictingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#6366f1',
     paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
     marginTop: 20,
   },
-  predictButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
+  predictingText: {
+    fontSize: 14,
+    color: '#818cf8',
   },
   predictionInfo: {
     backgroundColor: '#111111',
