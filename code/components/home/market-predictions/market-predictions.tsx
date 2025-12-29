@@ -29,7 +29,6 @@ import {
     TrainingPrediction,
     TrainingTimeframe,
 } from '../../../services/training-cache-service';
-import { useChatStore } from '../../../store/chat-store';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
 
@@ -93,7 +92,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
-  const { sendMessage } = useChatStore();
   const { 
     predictions,
     handleClearPredictions,
@@ -209,13 +207,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     setPredictingSymbol(asset.symbol);
 
     try {
-      // Construir mensaje para el chat que genere una predicción
-      const timeframeDesc = TIMEFRAME_INFO[timeframe].description;
-      const message = `Analiza ${asset.name} (${asset.symbol}) para ${timeframeDesc.toLowerCase()}. Dame tu predicción con dirección, % de cambio esperado y confianza.`;
-
-      // Enviar mensaje al chat (esto generará una predicción)
-      await sendMessage(message);
-
       // Obtener predicción real del backend
       const timeframeDays = timeframe === 'intraday' ? 1 : timeframe === 'swing' ? 7 : 30;
       const calculatedPrediction = await apiClient.calculatePrediction(
@@ -273,7 +264,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } finally {
       setPredictingSymbol(null);
     }
-  }, [getCachedPrediction, sendMessage, onPredictionMade]);
+  }, [getCachedPrediction, onPredictionMade]);
 
 
 
@@ -407,12 +398,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
         setPredictingSymbol(asset.symbol);
 
-        // Construir mensaje para el chat
-        const timeframeDesc = TIMEFRAME_INFO[selectedTimeframe].description;
-        const message = `Analiza ${asset.name} (${asset.symbol}) para ${timeframeDesc.toLowerCase()}. Dame tu predicción con dirección, % de cambio esperado y confianza.`;
-
-        await sendMessage(message);
-
         // Obtener predicción real del backend
         const timeframeDays = selectedTimeframe === 'intraday' ? 1 : selectedTimeframe === 'swing' ? 7 : 30;
         const calculatedPrediction = await apiClient.calculatePrediction(
@@ -473,7 +458,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     setSelectedSymbols(new Set());
 
     console.log(`Predicciones completadas: ${successCount} creadas${errorCount > 0 ? `, ${errorCount} errores` : ''}`);
-  }, [displayedAssets, selectedSymbols, selectedTimeframe, getCachedPrediction, sendMessage, onPredictionMade]);
+  }, [displayedAssets, selectedSymbols, selectedTimeframe, getCachedPrediction, onPredictionMade]);
 
   // Eliminar predicciones seleccionadas
   const deleteSelected = useCallback(async () => {

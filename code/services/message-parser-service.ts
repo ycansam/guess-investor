@@ -121,7 +121,7 @@ class MessageParserService {
 
     const asset = symbolLookupService.findAsset(message);
     if (asset) {
-      return { name: asset.name, symbol: asset.symbol, type: asset.type };
+      return { name: message, symbol: asset.symbol, type: asset.type };
     }
 
     return null;

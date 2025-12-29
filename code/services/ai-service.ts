@@ -2,7 +2,7 @@
  * Servicio de IA - Usa exclusivamente el backend para predicciones
  * No hay integración con APIs externas de IA (Gemini, OpenAI, etc.)
  */
-import { ChatMessage, ParsedAIResponse } from '../types';
+import { ParsedAIResponse } from '../types';
 import { apiClient, CalculatedPrediction } from './api-client';
 import { messageParserService } from './message-parser-service';
 
@@ -11,11 +11,10 @@ import { messageParserService } from './message-parser-service';
  */
 class AIService {
   /**
-   * Envía un mensaje y obtiene una respuesta basada en el backend
+   * Analiza un activo y retorna la predicción
    */
-  async sendMessage(
-    userMessage: string,
-    _conversationHistory: ChatMessage[] = []
+  async analyzeAsset(
+    userMessage: string
   ): Promise<ParsedAIResponse> {
     try {
       // 1. Parsear el mensaje para extraer activo y timeframe
@@ -161,7 +160,14 @@ ${directionEmoji} Predicción: ${directionText} (${prediction.predictedChange >=
    */
   async getQuickAnalysis(asset: string, _assetType: string): Promise<ParsedAIResponse> {
     const prompt = `Analiza ${asset}`;
-    return this.sendMessage(prompt);
+    return this.analyzeAsset(prompt);
+  }
+
+  /**
+   * Alias para compatibilidad
+   */
+  async sendMessage(userMessage: string): Promise<ParsedAIResponse> {
+    return this.analyzeAsset(userMessage);
   }
 
   /**

@@ -25,10 +25,10 @@ export function Home() {
   const [migrationChecked, setMigrationChecked] = useState(false);
 
   const {
-    messages,
-    isLoading,
     predictions,
-    handleSendMessage,
+    isAnalyzing,
+    error,
+    handleAnalyzeAsset,
     handleClearPredictions,
     handleRemovePrediction,
   } = useHome();

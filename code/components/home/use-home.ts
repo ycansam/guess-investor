@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useChatStore } from '../../store/chat-store';
+import { usePredictionStore } from '../../store/prediction-store';
 
 
 
@@ -8,28 +8,23 @@ import { useChatStore } from '../../store/chat-store';
  */
 export function useHome() {
   const {
-    messages,
-    isLoading,
     predictions,
-    sendMessage,
-    clearMessages,
+    isAnalyzing,
+    error,
+    analyzeAsset,
     clearPredictions,
     removePrediction,
     loadPredictions,
-  } = useChatStore();
+  } = usePredictionStore();
 
   // Cargar predicciones guardadas al montar
   useEffect(() => {
-    // Cargar predicciones desde IndexedDB
+    // Cargar predicciones desde AsyncStorage
     loadPredictions();
   }, []);
 
-  const handleSendMessage = async (content: string) => {
-    await sendMessage(content);
-  };
-
-  const handleClearChat = () => {
-    clearMessages();
+  const handleAnalyzeAsset = async (asset: string, assetType: string) => {
+    return analyzeAsset(asset, assetType);
   };
 
   const handleClearPredictions = () => {
@@ -41,11 +36,10 @@ export function useHome() {
   };
 
   return {
-    messages,
-    isLoading,
     predictions,
-    handleSendMessage,
-    handleClearChat,
+    isAnalyzing,
+    error,
+    handleAnalyzeAsset,
     handleClearPredictions,
     handleRemovePrediction,
   };
