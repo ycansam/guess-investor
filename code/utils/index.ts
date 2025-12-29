@@ -1,6 +1,3 @@
-// Utilidades de IA
-export { getErrorMessage, parseAIResponse } from './ai-response-utils';
-
 // Utilidades de texto
 export { extractDirectSymbols, extractWords, normalizeText } from './text-utils';
 
@@ -9,3 +6,4 @@ export { formatMarketDataForAI } from './format-market-data';
 
 // Mappers de datos
 export { createMarketDataFromYahoo } from './yahoo-data-mapper';
+

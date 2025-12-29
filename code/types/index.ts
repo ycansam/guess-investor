@@ -214,11 +214,6 @@ export interface PredictionState {
   lastAnalysis: Date | null;
 }
 
-export interface AppConfig {
-  maxTokens: number;
-  temperature: number;
-}
-
 // Tipo para la respuesta de la IA parseada
 export interface ParsedAIResponse {
   message: string;
