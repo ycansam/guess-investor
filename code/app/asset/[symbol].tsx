@@ -686,6 +686,22 @@ export default function AssetDetailScreen() {
           {assetData && (
             <Text style={styles.name} numberOfLines={1}>{assetData.name}</Text>
           )}
+          {/* Badge de tipo de trading */}
+          <View style={[
+            styles.tradingTypeBadge,
+            selectedTimeframe === 'intraday' && styles.tradingTypeBadgeIntraday,
+            selectedTimeframe === 'swing' && styles.tradingTypeBadgeSwing,
+            selectedTimeframe === 'longterm' && styles.tradingTypeBadgeLongterm,
+          ]}>
+            <Ionicons 
+              name={selectedTimeframe === 'intraday' ? 'flash' : selectedTimeframe === 'swing' ? 'trending-up' : 'time'} 
+              size={10} 
+              color="#fff" 
+            />
+            <Text style={styles.tradingTypeBadgeText}>
+              {TIMEFRAME_CONFIG[selectedTimeframe].label}
+            </Text>
+          </View>
         </View>
         {assetData && (
           <View style={styles.priceContainer}>
@@ -1182,5 +1198,30 @@ const styles = StyleSheet.create({
   },
   analysisContainer: {
     marginTop: 16,
+  },
+  tradingTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  tradingTypeBadgeIntraday: {
+    backgroundColor: '#f97316', // naranja
+  },
+  tradingTypeBadgeSwing: {
+    backgroundColor: '#3b82f6', // azul
+  },
+  tradingTypeBadgeLongterm: {
+    backgroundColor: '#22c55e', // verde
+  },
+  tradingTypeBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
+    textTransform: 'uppercase',
   },
 });
