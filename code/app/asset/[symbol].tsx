@@ -7,14 +7,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
@@ -73,6 +73,16 @@ const TIMEFRAME_CONFIG = {
 // Subintérvalos para largo plazo
 const LONGTERM_RANGES = ['1m', '3m'] as const;
 const LONGTERM_PREDICTIONS = [15, 30, 90] as const;
+
+// Helper para obtener el timeframe efectivo (incluyendo días para longterm)
+function getEffectiveTimeframe(timeframe: ChartTimeframe, longtermDays?: number): TrainingTimeframe {
+  if (timeframe === 'longterm' && longtermDays) {
+    // Para largo plazo, usamos el timeframe base pero lo diferenciaremos en el cache
+    // mediante el campo predictionDays en el objeto cacheado
+    return 'longterm';
+  }
+  return timeframe as TrainingTimeframe;
+}
 
 // Helper para convertir CalculatedPrediction o TrainingPrediction a InvestmentPrediction
 function toInvestmentPrediction(
@@ -191,6 +201,9 @@ export default function AssetDetailScreen() {
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
   const [priceInEur, setPriceInEur] = useState<number | null>(null);
 
+  // Ref para trackear los días de longterm anteriores
+  const prevLongtermDaysRef = React.useRef<number>(longtermPredictionDays);
+
   // Cargar datos del activo
   const loadAssetData = useCallback(async () => {
     if (!symbol) return;
@@ -239,10 +252,6 @@ export default function AssetDetailScreen() {
       if (selectedTimeframe === 'longterm') {
         range = longtermHistoryRange === '1m' ? '1mo' : '3mo';
       }
-
-      // Limpiar predicción anterior al cambiar timeframe
-      setPrediction(null);
-      setPredictionData([]);
 
       // Obtener datos históricos con el intervalo correcto
       const historical = await apiClient.getHistory(symbol, range, interval);
@@ -322,7 +331,7 @@ export default function AssetDetailScreen() {
 
   // Calcular predicción
   const handlePredict = useCallback(async () => {
-    if (!symbol || lastPriceForPrediction === 0) return;
+    if (!symbol || lastPriceForPrediction === 0 || predicting) return;
 
     setPredicting(true);
     try {
@@ -418,7 +427,7 @@ export default function AssetDetailScreen() {
       console.error('[AssetDetail] Error calculating prediction:', error);
     }
     setPredicting(false);
-  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction, lastTimestamp, assetData?.name]);
+  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction, assetData?.name, predicting]);
 
   useEffect(() => {
     loadAssetData();
@@ -431,7 +440,22 @@ export default function AssetDetailScreen() {
   // Cargar predicción cacheada cuando cambia el timeframe
   useEffect(() => {
     const loadCachedPrediction = async () => {
-      if (!symbol || lastPriceForPrediction === 0) return;
+      if (!symbol || lastPriceForPrediction === 0 || predicting) return;
+      
+      // Detectar si cambió longtermPredictionDays (solo para longterm)
+      const longtermDaysChanged = selectedTimeframe === 'longterm' && 
+        prevLongtermDaysRef.current !== longtermPredictionDays;
+      prevLongtermDaysRef.current = longtermPredictionDays;
+      
+      // Si cambió los días de predicción en longterm, recalcular directamente
+      if (longtermDaysChanged) {
+        setPrediction(null);
+        setFullPrediction(null);
+        setPredictionFromCache(false);
+        setPredictionData([]);
+        handlePredict();
+        return;
+      }
       
       await trainingCacheService.init();
       const cached = await trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
@@ -442,6 +466,7 @@ export default function AssetDetailScreen() {
           confidence: cached.confidence,
           targetPrice: cached.targetPrice
         });
+        
         setPrediction({
           change: cached.predictedChange,
           confidence: cached.confidence,
@@ -458,6 +483,26 @@ export default function AssetDetailScreen() {
         let predictionDays = config.predictionDays;
         if (selectedTimeframe === 'longterm') {
           predictionDays = longtermPredictionDays;
+        }
+        
+        // Asegurar que la predicción cacheada está trackeada en el backend
+        // El backend detectará duplicados y no guardará dos veces
+        const assetType = symbol.includes('-USD') || symbol.includes('-EUR') ? 'crypto' : 'stock';
+        try {
+          await predictionTrackingService.trackPrediction({
+            symbol,
+            asset: cached.name || symbol,
+            assetType,
+            direction: cached.direction,
+            predictedChange: cached.predictedChange,
+            confidence: cached.confidence,
+            currentPrice: cached.currentPrice,
+            timeframe: selectedTimeframe,
+            timeframeDays: predictionDays,
+            volatility: cached.analysisData?.historical?.volatility,
+          });
+        } catch (trackError) {
+          console.warn('[AssetDetail] Error tracking cached prediction:', trackError);
         }
         
         const predPoints: ChartDataPoint[] = [];
@@ -495,7 +540,8 @@ export default function AssetDetailScreen() {
     };
     
     loadCachedPrediction();
-  }, [symbol, selectedTimeframe, lastPriceForPrediction, lastTimestamp, longtermPredictionDays, handlePredict]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, selectedTimeframe, lastPriceForPrediction, longtermPredictionDays]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {

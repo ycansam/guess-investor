@@ -77,6 +77,7 @@ export const predictionController = {
   /**
    * POST /api/predictions/track
    * Registrar una predicción para tracking (desde el frontend)
+   * Evita duplicados: si ya existe una predicción reciente para el mismo symbol+timeframeDays, la retorna
    */
   track: asyncHandler(async (req: Request, res: Response) => {
     const {
@@ -103,12 +104,32 @@ export const predictionController = {
       throw BadRequestError('symbol, direction and currentPrice are required');
     }
 
+    const normalizedSymbol = symbol.toUpperCase();
+    const days = timeframeDays || 1;
+
+    // Verificar si ya existe una predicción reciente para evitar duplicados
+    const existing = await predictionRepository.findRecentDuplicate(normalizedSymbol, days);
+    if (existing) {
+      console.log(`[PredictionController] Predicción duplicada detectada para ${normalizedSymbol} ${days}d, retornando existente`);
+      res.status(200).json({
+        success: true,
+        duplicate: true,
+        data: {
+          id: existing.id,
+          symbol: existing.symbol,
+          direction: existing.direction,
+          expiresAt: existing.expiresAt.toISOString(),
+        },
+      });
+      return;
+    }
+
     const saved = await predictionRepository.create({
-      symbol: symbol.toUpperCase(),
+      symbol: normalizedSymbol,
       asset,
       assetType: assetType || 'stock',
       timeframe: timeframe || '1 día',
-      timeframeDays: timeframeDays || 1,
+      timeframeDays: days,
       direction,
       predictedChange: predictedChange || 0,
       confidence: confidence || 50,

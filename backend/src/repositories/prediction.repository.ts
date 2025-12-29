@@ -128,6 +128,24 @@ export const predictionRepository = {
   },
 
   /**
+   * Buscar predicción reciente duplicada (misma combinación symbol+timeframeDays en las últimas 4 horas)
+   */
+  async findRecentDuplicate(symbol: string, timeframeDays: number): Promise<Prediction | null> {
+    const fourHoursAgo = new Date();
+    fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
+    
+    return prisma.prediction.findFirst({
+      where: {
+        symbol: symbol.toUpperCase(),
+        timeframeDays,
+        createdAt: { gte: fourHoursAgo },
+        verified: false, // Solo predicciones no verificadas
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  },
+
+  /**
    * Obtener predicción por ID
    */
   async findById(id: string): Promise<Prediction | null> {
