@@ -1,10 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { aiService } from '../services/ai-service';
+import { apiClient } from '../services/api-client';
 import { predictionTrackingService } from '../services/prediction-tracking-service';
 import { InvestmentPrediction, PredictionState } from '../types';
-
-const PREDICTIONS_STORAGE_KEY = 'predictions-data';
 
 // Generar ID único
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -15,8 +13,8 @@ interface PredictionStore extends PredictionState {
   
   // Acciones de predicciones
   addPrediction: (prediction: InvestmentPrediction) => void;
-  removePrediction: (id: string) => void;
-  clearPredictions: () => void;
+  removePrediction: (id: string) => Promise<void>;
+  clearPredictions: () => Promise<void>;
   loadPredictions: () => Promise<void>;
   setError: (error: string | null) => void;
   
@@ -36,71 +34,78 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
     set({ error });
   },
 
-  // Añadir predicción y guardar en AsyncStorage
+  // Añadir predicción al estado local (backend ya lo guarda via predictionTrackingService)
   addPrediction: (prediction) => {
-    set((state) => {
-      const newPredictions = [prediction, ...state.predictions];
-      // Guardar en AsyncStorage de forma asíncrona
-      AsyncStorage.setItem(PREDICTIONS_STORAGE_KEY, JSON.stringify({
-        predictions: newPredictions,
-        lastAnalysis: new Date(),
-      })).catch(err => console.error('[PredictionStore] Error guardando predicciones:', err));
-      return {
-        predictions: newPredictions,
-        lastAnalysis: new Date(),
-      };
-    });
+    set((state) => ({
+      predictions: [prediction, ...state.predictions],
+      lastAnalysis: new Date(),
+    }));
   },
 
-  // Eliminar una predicción por ID
-  removePrediction: (id) => {
-    set((state) => {
-      const newPredictions = state.predictions.filter((p) => p.id !== id);
-      // Guardar en AsyncStorage de forma asíncrona
-      AsyncStorage.setItem(PREDICTIONS_STORAGE_KEY, JSON.stringify({
-        predictions: newPredictions,
-        lastAnalysis: state.lastAnalysis,
-      })).catch(err => console.error('[PredictionStore] Error guardando predicciones:', err));
-      return {
-        predictions: newPredictions,
-      };
-    });
+  // Eliminar una predicción por ID (del backend y estado local)
+  removePrediction: async (id) => {
+    try {
+      await apiClient.deletePrediction(id);
+      set((state) => ({
+        predictions: state.predictions.filter((p) => p.id !== id),
+      }));
+    } catch (err) {
+      console.error('[PredictionStore] Error eliminando predicción:', err);
+      // Eliminar localmente aunque falle el backend
+      set((state) => ({
+        predictions: state.predictions.filter((p) => p.id !== id),
+      }));
+    }
   },
 
-  // Limpiar predicciones y borrar de AsyncStorage
-  clearPredictions: () => {
-    AsyncStorage.removeItem(PREDICTIONS_STORAGE_KEY)
-      .catch(err => console.error('[PredictionStore] Error eliminando predicciones:', err));
+  // Limpiar predicciones (del backend y estado local)
+  clearPredictions: async () => {
+    try {
+      await apiClient.clearAllPredictions();
+    } catch (err) {
+      console.error('[PredictionStore] Error limpiando predicciones:', err);
+    }
     set({ predictions: [], lastAnalysis: null });
   },
 
-  // Cargar predicciones desde AsyncStorage al iniciar
+  // Cargar predicciones desde el backend al iniciar
   loadPredictions: async () => {
-    console.log('[PredictionStore] Iniciando carga de predicciones...');
+    console.log('[PredictionStore] Iniciando carga de predicciones desde backend...');
     try {
-      const stored = await AsyncStorage.getItem(PREDICTIONS_STORAGE_KEY);
+      const { predictions: backendPredictions } = await apiClient.getAllPredictions({ limit: 100 });
       
-      if (stored) {
-        const data = JSON.parse(stored) as {
-          predictions: InvestmentPrediction[];
-          lastAnalysis: string | null;
-        };
+      if (backendPredictions && backendPredictions.length > 0) {
+        console.log(`[PredictionStore] Cargadas ${backendPredictions.length} predicciones del backend`);
         
-        if (data && data.predictions) {
-          console.log(`[PredictionStore] Cargadas ${data.predictions.length} predicciones`);
-          set({
-            predictions: data.predictions.map((p) => ({
-              ...p,
-              createdAt: new Date(p.createdAt),
-            })),
-            lastAnalysis: data.lastAnalysis ? new Date(data.lastAnalysis) : null,
-          });
-        }
+        // Mapear predicciones del backend al formato del frontend
+        const mappedPredictions: InvestmentPrediction[] = backendPredictions.map((p: any) => ({
+          id: p.id,
+          asset: p.asset || p.symbol,
+          symbol: p.symbol,
+          assetType: p.assetType || 'stock',
+          direction: p.direction || 'neutral',
+          confidence: p.confidence || 50,
+          timeframe: p.timeframe || 'No especificado',
+          predictedChange: p.predictedChange,
+          currentPrice: p.currentPrice,
+          predictedPriceMin: p.predictedPriceMin,
+          predictedPriceMax: p.predictedPriceMax,
+          reasoning: p.reasoning || '',
+          analysisData: p.analysisData,
+          createdAt: new Date(p.createdAt),
+        }));
+        
+        set({
+          predictions: mappedPredictions,
+          lastAnalysis: mappedPredictions[0]?.createdAt || null,
+        });
       } else {
-        console.log('[PredictionStore] No hay predicciones guardadas');
+        console.log('[PredictionStore] No hay predicciones en el backend');
+        set({ predictions: [] });
       }
     } catch (error) {
-      console.error('[PredictionStore] Error cargando predicciones:', error);
+      console.error('[PredictionStore] Error cargando predicciones del backend:', error);
+      set({ predictions: [] });
     }
   },
 
@@ -134,6 +139,7 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
         addPrediction(prediction);
         
         // Registrar predicción para tracking (comparación con resultados reales)
+        // Esto guarda en el backend automáticamente
         if (prediction.symbol && prediction.currentPrice) {
           // Extraer scores de factores y pesos del analysisData
           const factorScores: Record<string, number> = {};
@@ -150,7 +156,8 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
             Object.assign(factorWeightsUsed, prediction.analysisData.factorBreakdown.weightsUsed);
           }
           
-          predictionTrackingService.trackPrediction({
+          // El ID de la predicción trackeada se usa para sincronizar
+          const trackedPrediction = await predictionTrackingService.trackPrediction({
             symbol: prediction.symbol,
             asset: prediction.asset,
             assetType: prediction.assetType,
@@ -166,7 +173,12 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
             volatility: prediction.analysisData?.historical?.volatility,
             // Meta-learning: Uncertainty tracking
             uncertaintyScore: prediction.analysisData?.uncertainty?.score,
-          }).catch(err => console.error('[Tracking] Error registrando predicción:', err));
+          });
+          
+          // Actualizar el ID local con el del backend para sincronización
+          if (trackedPrediction?.id) {
+            prediction.id = trackedPrediction.id;
+          }
         }
         
         return prediction;

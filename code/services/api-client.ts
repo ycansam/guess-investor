@@ -403,6 +403,13 @@ export const apiClient = {
   },
 
   /**
+   * Eliminar una predicción por ID
+   */
+  deletePrediction: (id: string): Promise<{ deleted: boolean }> => {
+    return del(`/predictions/${id}`);
+  },
+
+  /**
    * Limpiar TODAS las predicciones (zona de peligro)
    */
   clearAllPredictions: (): Promise<{ deleted: number }> => {

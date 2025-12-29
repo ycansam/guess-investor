@@ -17,9 +17,8 @@ export function useHome() {
     loadPredictions,
   } = usePredictionStore();
 
-  // Cargar predicciones guardadas al montar
+  // Cargar predicciones guardadas al montar (desde backend)
   useEffect(() => {
-    // Cargar predicciones desde AsyncStorage
     loadPredictions();
   }, []);
 
@@ -27,12 +26,12 @@ export function useHome() {
     return analyzeAsset(asset, assetType);
   };
 
-  const handleClearPredictions = () => {
-    clearPredictions();
+  const handleClearPredictions = async () => {
+    await clearPredictions();
   };
 
-  const handleRemovePrediction = (id: string) => {
-    removePrediction(id);
+  const handleRemovePrediction = async (id: string) => {
+    await removePrediction(id);
   };
 
   return {
