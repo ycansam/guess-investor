@@ -23,6 +23,7 @@ import {
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { MarketAsset, marketDataService } from '../../../services/market-data-service';
+import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
     TIMEFRAME_INFO,
     trainingCacheService,
@@ -439,6 +440,27 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           analysisData: calculatedPrediction || undefined, // Guardar análisis completo
           createdAt: new Date(),
         });
+
+        // Registrar predicción para tracking de estadísticas ML
+        try {
+          await predictionTrackingService.trackPrediction({
+            symbol: asset.symbol,
+            asset: asset.name,
+            assetType: 'stock',
+            direction,
+            predictedChange,
+            predictedPriceMin: asset.price! * (1 + (predictedChange - 2) / 100),
+            predictedPriceMax: asset.price! * (1 + (predictedChange + 2) / 100),
+            confidence,
+            currentPrice: asset.price!,
+            timeframe: TIMEFRAME_INFO[selectedTimeframe].label,
+            timeframeDays,
+            volatility: calculatedPrediction?.historical?.volatility,
+          });
+          console.log(`[MarketPredictions] Tracking registrado para ${asset.symbol}`);
+        } catch (trackError) {
+          console.error(`[MarketPredictions] Error en tracking de ${asset.symbol}:`, trackError);
+        }
 
         if (onPredictionMade) {
           onPredictionMade(prediction);

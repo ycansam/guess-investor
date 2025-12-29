@@ -7,6 +7,23 @@ import { InvestmentPrediction, PredictionState } from '../types';
 // Generar ID único
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
+// Parsear timeframe string a días
+const parseTimeframeToDays = (timeframe: string): number => {
+  if (!timeframe) return 7;
+  const lower = timeframe.toLowerCase();
+  
+  // Buscar números en el string
+  const match = lower.match(/(\d+)/);
+  const num = match ? parseInt(match[1]) : 1;
+  
+  if (lower.includes('hora')) return 1; // Mínimo 1 día
+  if (lower.includes('día') || lower.includes('dia') || lower.includes('day')) return num;
+  if (lower.includes('semana') || lower.includes('week')) return num * 7;
+  if (lower.includes('mes') || lower.includes('month')) return num * 30;
+  
+  return 7; // Default 7 días
+};
+
 interface PredictionStore extends PredictionState {
   // Estado
   error: string | null;
@@ -141,6 +158,8 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
         // Registrar predicción para tracking (comparación con resultados reales)
         // Esto guarda en el backend automáticamente
         if (prediction.symbol && prediction.currentPrice) {
+          console.log('[PredictionStore] Registrando predicción para tracking:', prediction.symbol);
+          
           // Extraer scores de factores y pesos del analysisData
           const factorScores: Record<string, number> = {};
           const factorWeightsUsed: Record<string, number> = {};
@@ -156,29 +175,40 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
             Object.assign(factorWeightsUsed, prediction.analysisData.factorBreakdown.weightsUsed);
           }
           
-          // El ID de la predicción trackeada se usa para sincronizar
-          const trackedPrediction = await predictionTrackingService.trackPrediction({
-            symbol: prediction.symbol,
-            asset: prediction.asset,
-            assetType: prediction.assetType,
-            direction: prediction.direction,
-            predictedChange: prediction.predictedChange || 0,
-            predictedPriceMin: prediction.predictedPriceMin || prediction.currentPrice,
-            predictedPriceMax: prediction.predictedPriceMax || prediction.currentPrice,
-            confidence: prediction.confidence,
-            currentPrice: prediction.currentPrice,
-            timeframe: prediction.timeframe,
-            factorScores,
-            factorWeightsUsed,
-            volatility: prediction.analysisData?.historical?.volatility,
-            // Meta-learning: Uncertainty tracking
-            uncertaintyScore: prediction.analysisData?.uncertainty?.score,
-          });
+          // Parsear timeframe a días
+          const timeframeDays = parseTimeframeToDays(prediction.timeframe);
           
-          // Actualizar el ID local con el del backend para sincronización
-          if (trackedPrediction?.id) {
-            prediction.id = trackedPrediction.id;
+          try {
+            // El ID de la predicción trackeada se usa para sincronizar
+            const trackedPrediction = await predictionTrackingService.trackPrediction({
+              symbol: prediction.symbol,
+              asset: prediction.asset,
+              assetType: prediction.assetType,
+              direction: prediction.direction,
+              predictedChange: prediction.predictedChange || 0,
+              predictedPriceMin: prediction.predictedPriceMin || prediction.currentPrice,
+              predictedPriceMax: prediction.predictedPriceMax || prediction.currentPrice,
+              confidence: prediction.confidence,
+              currentPrice: prediction.currentPrice,
+              timeframe: prediction.timeframe,
+              timeframeDays,
+              factorScores,
+              factorWeightsUsed,
+              volatility: prediction.analysisData?.historical?.volatility,
+              uncertaintyScore: prediction.analysisData?.uncertainty?.score,
+            });
+            
+            console.log('[PredictionStore] Predicción registrada con ID:', trackedPrediction?.id);
+            
+            // Actualizar el ID local con el del backend para sincronización
+            if (trackedPrediction?.id) {
+              prediction.id = trackedPrediction.id;
+            }
+          } catch (trackError: any) {
+            console.error('[PredictionStore] Error registrando tracking:', trackError.message);
           }
+        } else {
+          console.warn('[PredictionStore] Predicción sin symbol o currentPrice, no se registra tracking');
         }
         
         return prediction;

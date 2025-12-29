@@ -324,10 +324,35 @@ export const apiClient = {
   },
 
   /**
-   * Crear y guardar predicción
+   * Crear y guardar predicción (recalcula todo)
    */
   createPrediction: (symbol: string, days: number = 1): Promise<CalculatedPrediction & { id: string }> => {
     return post('/predictions', { symbol, days });
+  },
+
+  /**
+   * Registrar predicción ya calculada para tracking
+   */
+  trackPrediction: (data: {
+    symbol: string;
+    asset?: string;
+    assetType?: string;
+    direction: string;
+    predictedChange: number;
+    predictedPriceMin?: number;
+    predictedPriceMax?: number;
+    confidence: number;
+    currentPrice: number;
+    timeframe?: string;
+    timeframeDays?: number;
+    volatility?: number;
+    volatilityCategory?: string;
+    factorBreakdown?: any;
+    factorWeights?: any;
+    uncertaintyScore?: number;
+    uncertaintyData?: any;
+  }): Promise<{ id: string; symbol: string; direction: string; expiresAt: string }> => {
+    return post('/predictions/track', data);
   },
 
   /**
