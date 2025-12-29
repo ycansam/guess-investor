@@ -491,8 +491,23 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       return;
     }
 
+    // Eliminar del training cache
     const items = toDelete.map(p => ({ symbol: p.symbol, timeframe: p.timeframe }));
     const removed = await trainingCacheService.removeMultiple(items);
+    
+    // También eliminar del tracking de estadísticas ML (por símbolo)
+    for (const prediction of toDelete) {
+      try {
+        // Obtener predicciones del símbolo en el backend y eliminarlas
+        const { predictions } = await apiClient.getAllPredictions({ limit: 100 });
+        const backendPredictions = predictions.filter((p: any) => p.symbol === prediction.symbol);
+        for (const bp of backendPredictions) {
+          await apiClient.deletePrediction(bp.id);
+        }
+      } catch (err) {
+        console.error(`[MarketPredictions] Error eliminando tracking de ${prediction.symbol}:`, err);
+      }
+    }
     
     const deletedUpdatedPredictions = await trainingCacheService.getAllActive();
     setCachedPredictions(deletedUpdatedPredictions);

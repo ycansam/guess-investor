@@ -20,6 +20,7 @@ import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
 import { apiClient, CalculatedPrediction } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
+import { predictionTrackingService } from '../../services/prediction-tracking-service';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
 import { AssetType, InvestmentPrediction } from '../../types';
 
@@ -368,6 +369,24 @@ export default function AssetDetailScreen() {
           analysisData: pred,
           createdAt: new Date(),
         });
+
+        // Registrar predicción en el backend para estadísticas ML
+        try {
+          await predictionTrackingService.trackPrediction({
+            symbol,
+            asset: assetData?.name || symbol,
+            assetType,
+            direction: pred.direction,
+            predictedChange: pred.predictedChange,
+            confidence: pred.confidence,
+            currentPrice: lastPriceForPrediction,
+            timeframe: selectedTimeframe,
+            timeframeDays: predictionDays,
+            volatility: pred.historical?.volatility,
+          });
+        } catch (trackError) {
+          console.warn('[AssetDetail] Error tracking prediction:', trackError);
+        }
 
         // Crear puntos de predicción
         // La predicción comienza desde el momento actual
