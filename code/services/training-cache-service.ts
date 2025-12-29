@@ -24,11 +24,11 @@ export interface TrainingPrediction {
   expiresAt: Date;
 }
 
-// Duraciones de cache según timeframe
+// Duraciones de cache según timeframe (mínimo 15 minutos para evitar recálculos frecuentes)
 const CACHE_DURATIONS: Record<TrainingTimeframe, number> = {
-  intraday: 4 * 60 * 60 * 1000,    // 4 horas
-  swing: 3 * 24 * 60 * 60 * 1000,  // 3 días
-  longterm: 14 * 24 * 60 * 60 * 1000, // 14 días
+  intraday: 15 * 60 * 1000,         // 15 minutos
+  swing: 15 * 60 * 1000,            // 15 minutos
+  longterm: 15 * 60 * 1000,         // 15 minutos
 };
 
 // Descripción de timeframes
@@ -36,17 +36,17 @@ export const TIMEFRAME_INFO: Record<TrainingTimeframe, { label: string; descript
   intraday: { 
     label: 'Intradía', 
     description: 'Movimiento en las próximas 1-4 horas',
-    duration: '4h'
+    duration: '15m'
   },
   swing: { 
     label: 'Swing', 
     description: 'Movimiento en 2-7 días',
-    duration: '3d'
+    duration: '15m'
   },
   longterm: { 
     label: 'Largo Plazo', 
     description: 'Movimiento en 2-4 semanas',
-    duration: '14d'
+    duration: '15m'
   },
 };
 

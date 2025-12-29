@@ -6,6 +6,7 @@
 import { config } from '../../config/index.js';
 import { logger } from '../../middleware/logger.js';
 import { AssetQuote, HistoricalDataPoint } from '../../models/index.js';
+import { historyCacheService } from './history-cache.service.js';
 
 const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance';
 const RAPIDAPI_HOST = 'yahoo-finance15.p.rapidapi.com';
@@ -64,56 +65,111 @@ export const yahooService = {
   },
 
   /**
-   * Obtener datos históricos
+   * Obtener datos históricos con caché inteligente
+   * - Cachea por 2 semanas
+   * - Solo pide datos nuevos si faltan
    */
   async getHistory(
     symbol: string,
     range: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' = '1mo',
     interval: '1m' | '5m' | '15m' | '1h' | '1d' = '1d'
   ): Promise<HistoricalDataPoint[]> {
-    const cacheKey = `history:${symbol}:${range}:${interval}`;
-    const cached = getCached<HistoricalDataPoint[]>(cacheKey);
-    if (cached) return cached;
-
+    // Verificar caché inteligente primero
+    const smartCached = historyCacheService.getCached(symbol, interval, range);
+    
+    if (smartCached && !smartCached.needsUpdate) {
+      // Caché válida y no necesita actualización
+      logger.debug(`[Yahoo] Using cached history for ${symbol} (${smartCached.data.length} points)`);
+      return this.filterByRange(smartCached.data, range);
+    }
+    
+    // Si hay caché pero necesita actualización, intentar solo obtener datos nuevos
+    if (smartCached && smartCached.needsUpdate) {
+      try {
+        const newData = await this.fetchHistoryFromApi(symbol, '5d', interval);
+        if (newData.length > 0) {
+          const combined = historyCacheService.update(symbol, interval, newData);
+          logger.info(`[Yahoo] Updated history cache for ${symbol} with ${newData.length} new points`);
+          return this.filterByRange(combined, range);
+        }
+      } catch (error) {
+        // Si falla la actualización, usar caché existente
+        logger.warn(`[Yahoo] Failed to update history for ${symbol}, using cache`);
+        return this.filterByRange(smartCached.data, range);
+      }
+    }
+    
+    // No hay caché, obtener todo
     try {
-      const url = `${YAHOO_BASE_URL}/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Yahoo API error: ${response.status}`);
+      const history = await this.fetchHistoryFromApi(symbol, range, interval);
+      if (history.length > 0) {
+        historyCacheService.set(symbol, interval, history);
+        logger.info(`[Yahoo] Fetched and cached ${history.length} historical points for ${symbol}`);
       }
-
-      const json: any = await response.json();
-      const result = json.chart?.result?.[0];
-
-      if (!result) {
-        return [];
-      }
-
-      const timestamps = result.timestamp || [];
-      const quotes = result.indicators?.quote?.[0] || {};
-
-      const history: HistoricalDataPoint[] = timestamps.map((ts: number, i: number) => ({
-        timestamp: ts * 1000, // Convertir a ms
-        open: quotes.open?.[i] || 0,
-        high: quotes.high?.[i] || 0,
-        low: quotes.low?.[i] || 0,
-        close: quotes.close?.[i] || 0,
-        volume: quotes.volume?.[i] || 0,
-      })).filter((p: HistoricalDataPoint) => p.close > 0);
-
-      setCache(cacheKey, history, config.cache.history);
-      logger.info(`[Yahoo] Fetched ${history.length} historical points for ${symbol}`);
       return history;
     } catch (error) {
       logger.error(`[Yahoo] Error fetching history for ${symbol}:`, error);
       return [];
     }
+  },
+  
+  /**
+   * Filtrar datos por rango temporal
+   */
+  filterByRange(data: HistoricalDataPoint[], range: string): HistoricalDataPoint[] {
+    const now = Date.now();
+    const rangeMap: Record<string, number> = {
+      '1d': 1,
+      '5d': 5,
+      '1mo': 30,
+      '3mo': 90,
+      '6mo': 180,
+      '1y': 365,
+    };
+    const days = rangeMap[range] || 30;
+    const startTime = now - days * 24 * 60 * 60 * 1000;
+    
+    return data.filter(d => d.timestamp >= startTime);
+  },
+  
+  /**
+   * Fetch directo a la API de Yahoo
+   */
+  async fetchHistoryFromApi(
+    symbol: string,
+    range: string,
+    interval: string
+  ): Promise<HistoricalDataPoint[]> {
+    const url = `${YAHOO_BASE_URL}/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Yahoo API error: ${response.status}`);
+    }
+
+    const json: any = await response.json();
+    const result = json.chart?.result?.[0];
+
+    if (!result) {
+      return [];
+    }
+
+    const timestamps = result.timestamp || [];
+    const quotes = result.indicators?.quote?.[0] || {};
+
+    return timestamps.map((ts: number, i: number) => ({
+      timestamp: ts * 1000, // Convertir a ms
+      open: quotes.open?.[i] || 0,
+      high: quotes.high?.[i] || 0,
+      low: quotes.low?.[i] || 0,
+      close: quotes.close?.[i] || 0,
+      volume: quotes.volume?.[i] || 0,
+    })).filter((p: HistoricalDataPoint) => p.close > 0);
   },
 
   /**

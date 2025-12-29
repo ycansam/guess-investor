@@ -180,6 +180,10 @@ function toInvestmentPrediction(
   return null;
 }
 
+// Cache local para datos del gráfico (evita peticiones repetidas)
+const chartDataCache = new Map<string, { data: any[]; timestamp: number; eurRate: number }>();
+const CHART_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
 export default function AssetDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
@@ -242,17 +246,61 @@ export default function AssetDetailScreen() {
   const loadChartData = useCallback(async () => {
     if (!symbol) return;
 
+    const config = TIMEFRAME_CONFIG[selectedTimeframe];
+    let range = config.historyRange;
+    let interval = config.historyInterval;
+
+    // Ajustar para largo plazo
+    if (selectedTimeframe === 'longterm') {
+      range = longtermHistoryRange === '1m' ? '1mo' : '3mo';
+    }
+
+    // Generar key de cache
+    const cacheKey = `${symbol}:${selectedTimeframe}:${range}:${interval}`;
+    const cached = chartDataCache.get(cacheKey);
+    const now = Date.now();
+
+    // Si hay cache válido, usarlo inmediatamente
+    if (cached && (now - cached.timestamp) < CHART_CACHE_DURATION) {
+      const { data: prices, eurRate: rate } = cached;
+      setEurExchangeRate(rate);
+      
+      const lastPrice = prices[prices.length - 1];
+      const safeRate = (rate && !isNaN(rate)) ? rate : 1;
+      setLastPriceForPrediction(lastPrice.close * safeRate);
+      setLastTimestamp(lastPrice.timestamp);
+      
+      // Crear datos para el gráfico desde cache
+      let lastShownDate = '';
+      const giftedData: ChartDataPoint[] = prices.map((p: any, idx: number) => {
+        const date = new Date(p.timestamp);
+        const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
+        const isLastPoint = idx === prices.length - 1;
+        
+        let label = '';
+        if (dateStr !== lastShownDate) {
+          label = dateStr;
+          lastShownDate = dateStr;
+        } else if (isLastPoint && label === '') {
+          label = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
+        const value = p.close * safeRate;
+        return {
+          value: isNaN(value) ? 0 : value,
+          label,
+          timestamp: p.timestamp,
+          isPrediction: false,
+        };
+      });
+      
+      setChartData(giftedData);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const config = TIMEFRAME_CONFIG[selectedTimeframe];
-      let range = config.historyRange;
-      let interval = config.historyInterval;
-
-      // Ajustar para largo plazo
-      if (selectedTimeframe === 'longterm') {
-        range = longtermHistoryRange === '1m' ? '1mo' : '3mo';
-      }
-
       // Obtener datos históricos con el intervalo correcto
       const historical = await apiClient.getHistory(symbol, range, interval);
 
@@ -283,8 +331,12 @@ export default function AssetDetailScreen() {
 
         if (prices.length === 0) {
           setChartData([]);
+          setLoading(false);
           return;
         }
+
+        // Guardar en cache
+        chartDataCache.set(cacheKey, { data: prices, timestamp: now, eurRate: rate });
 
         // Guardar último precio y timestamp para predicción (en EUR)
         const lastPrice = prices[prices.length - 1];
