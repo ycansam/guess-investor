@@ -686,22 +686,22 @@ export default function AssetDetailScreen() {
           {assetData && (
             <Text style={styles.name} numberOfLines={1}>{assetData.name}</Text>
           )}
-          {/* Badge de tipo de trading */}
-          <View style={[
-            styles.tradingTypeBadge,
-            selectedTimeframe === 'intraday' && styles.tradingTypeBadgeIntraday,
-            selectedTimeframe === 'swing' && styles.tradingTypeBadgeSwing,
-            selectedTimeframe === 'longterm' && styles.tradingTypeBadgeLongterm,
-          ]}>
-            <Ionicons 
-              name={selectedTimeframe === 'intraday' ? 'flash' : selectedTimeframe === 'swing' ? 'trending-up' : 'time'} 
-              size={10} 
-              color="#fff" 
-            />
-            <Text style={styles.tradingTypeBadgeText}>
-              {TIMEFRAME_CONFIG[selectedTimeframe].label}
-            </Text>
-          </View>
+          {/* Badge de tipo de activo */}
+          {(() => {
+            const isCrypto = symbol?.includes('-USD') || symbol?.includes('-EUR');
+            const isForex = symbol?.includes('=X');
+            const assetTypeInfo = isCrypto 
+              ? { label: 'Crypto', icon: 'logo-bitcoin' as const, style: styles.assetTypeBadgeCrypto }
+              : isForex
+              ? { label: 'Forex', icon: 'swap-horizontal' as const, style: styles.assetTypeBadgeForex }
+              : { label: 'Acción', icon: 'business' as const, style: styles.assetTypeBadgeStock };
+            return (
+              <View style={[styles.assetTypeBadge, assetTypeInfo.style]}>
+                <Ionicons name={assetTypeInfo.icon} size={10} color="#fff" />
+                <Text style={styles.assetTypeBadgeText}>{assetTypeInfo.label}</Text>
+              </View>
+            );
+          })()}
         </View>
         {assetData && (
           <View style={styles.priceContainer}>
@@ -1199,7 +1199,7 @@ const styles = StyleSheet.create({
   analysisContainer: {
     marginTop: 16,
   },
-  tradingTypeBadge: {
+  assetTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -1209,16 +1209,16 @@ const styles = StyleSheet.create({
     marginTop: 6,
     alignSelf: 'flex-start',
   },
-  tradingTypeBadgeIntraday: {
-    backgroundColor: '#f97316', // naranja
+  assetTypeBadgeCrypto: {
+    backgroundColor: '#f59e0b', // naranja/dorado para crypto
   },
-  tradingTypeBadgeSwing: {
-    backgroundColor: '#3b82f6', // azul
+  assetTypeBadgeStock: {
+    backgroundColor: '#3b82f6', // azul para acciones
   },
-  tradingTypeBadgeLongterm: {
-    backgroundColor: '#22c55e', // verde
+  assetTypeBadgeForex: {
+    backgroundColor: '#10b981', // verde para forex
   },
-  tradingTypeBadgeText: {
+  assetTypeBadgeText: {
     fontSize: 10,
     fontWeight: '600',
     color: '#fff',

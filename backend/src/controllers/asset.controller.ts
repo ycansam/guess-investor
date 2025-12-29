@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { searchTradeRepublicAssets } from '../data/trade-republic-assets.js';
 import { asyncHandler, NotFoundError } from '../middleware/error-handler.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 
@@ -50,7 +51,7 @@ export const assetController = {
 
   /**
    * GET /api/assets/search
-   * Buscar activos
+   * Buscar activos (combina Yahoo Finance + Trade Republic)
    */
   search: asyncHandler(async (req: Request, res: Response) => {
     const { q } = req.query;
@@ -60,11 +61,46 @@ export const assetController = {
       return;
     }
 
-    const results = await yahooService.search(q);
+    // Buscar en paralelo: Yahoo Finance + Trade Republic
+    const [yahooResults, trAssets] = await Promise.all([
+      yahooService.search(q),
+      Promise.resolve(searchTradeRepublicAssets(q)),
+    ]);
 
+    // Convertir activos de Trade Republic al formato de respuesta
+    const trResults = trAssets.map(asset => ({
+      symbol: asset.symbol,
+      name: asset.name,
+      type: asset.type,
+      exchange: 'Trade Republic',
+    }));
+
+    // Combinar resultados evitando duplicados (priorizar Trade Republic)
+    const seenSymbols = new Set<string>();
+    const combined: Array<{ symbol: string; name: string; type: string; exchange?: string }> = [];
+
+    // Primero los de Trade Republic (tienen mejor nombre/descripción)
+    for (const result of trResults) {
+      const key = result.symbol.toUpperCase();
+      if (!seenSymbols.has(key)) {
+        seenSymbols.add(key);
+        combined.push(result);
+      }
+    }
+
+    // Luego los de Yahoo Finance
+    for (const result of yahooResults) {
+      const key = result.symbol.toUpperCase();
+      if (!seenSymbols.has(key)) {
+        seenSymbols.add(key);
+        combined.push(result);
+      }
+    }
+
+    // Limitar a 20 resultados
     res.json({
       success: true,
-      data: results,
+      data: combined.slice(0, 20),
     });
   }),
 };
