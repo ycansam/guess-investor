@@ -26,6 +26,14 @@ export const tradeRepublicAssets: TradeRepublicAsset[] = [
     keywords: ['gold', 'oro', 'physical gold', 'ishares', 'oro fisico', 'physical'],
   },
   {
+    symbol: 'EGLN.L',
+    name: 'iShares Physical Gold ETC USD (Acc)',
+    type: 'ETC',
+    isin: 'IE00B4ND3602',
+    category: 'gold',
+    keywords: ['gold', 'oro', 'physical gold', 'ishares', 'oro fisico', 'physical', 'usd', 'acc', 'accumulating'],
+  },
+  {
     symbol: '4GLD.DE',
     name: 'Xetra-Gold',
     type: 'ETC',

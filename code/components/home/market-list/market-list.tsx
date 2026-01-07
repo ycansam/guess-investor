@@ -78,20 +78,88 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
   // Favoritos y predicciones
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [predictedSymbols, setPredictedSymbols] = useState<Set<string>>(new Set());
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
+  
+  // Categorías (cargadas dinámicamente)
+  const [categories, setCategories] = useState<AssetCategory[]>([]);
 
   // Cargar favoritos y predicciones
   const loadFavoritesAndPredictions = useCallback(async () => {
     try {
       await favoritesService.init();
-      setFavorites(new Set(favoritesService.getAll()));
+      const favSymbols = favoritesService.getAll();
+      console.log('[MarketList] Favorites loaded:', favSymbols);
+      setFavorites(new Set(favSymbols));
       
       await trainingCacheService.init();
       const predictions = await trainingCacheService.getAllActive();
       const symbols = new Set(predictions.map(p => p.symbol));
+      console.log('[MarketList] Predictions loaded:', symbols.size);
       setPredictedSymbols(symbols);
+      setFavoritesLoaded(true);
     } catch (error) {
       console.error('Error loading favorites/predictions:', error);
+      setFavoritesLoaded(true); // Marcar como cargado aunque falle
     }
+  }, []);
+
+  // Función para aplicar ordenamiento (favoritos siempre primero, luego predicciones)
+  const applySorting = useCallback((assets: MarketAsset[], sortType: SortType, predSymbols: Set<string>, favs: Set<string>) => {
+    let sorted = [...assets];
+    
+    // Aplicar ordenamiento base según el tipo
+    switch (sortType) {
+      case 'predicted':
+        sorted.sort((a, b) => {
+          // Primero favoritos
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          // Luego predicciones
+          const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
+          const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
+          if (aHasPred !== bHasPred) return bHasPred - aHasPred;
+          return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+        });
+        break;
+      case 'gainers':
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+        });
+        break;
+      case 'losers':
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return (a.changePercent ?? 999) - (b.changePercent ?? 999);
+        });
+        break;
+      case 'popular':
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          if (a.price && !b.price) return -1;
+          if (!a.price && b.price) return 1;
+          return 0;
+        });
+        break;
+      case 'bullish':
+        sorted = sorted.filter(a => (a.changePercent ?? 0) > 0);
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return (b.changePercent ?? 0) - (a.changePercent ?? 0);
+        });
+        break;
+    }
+    
+    return sorted;
   }, []);
 
   // Cargar datos inicial
@@ -102,17 +170,47 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
         setPage(1);
       }
       
-      const result = await marketDataService.getAssetsPaginated(
-        1,
-        selectedCategory || undefined,
-        debouncedSearchQuery
+      // 1. Obtener los símbolos favoritos
+      const favoriteSymbols = Array.from(favorites);
+      
+      // 2. Obtener precios de favoritos en paralelo con los activos paginados
+      const [favoriteAssets, result] = await Promise.all([
+        // Obtener datos de favoritos
+        favoriteSymbols.length > 0 
+          ? marketDataService.getAssetsBySymbols(favoriteSymbols)
+          : Promise.resolve([]),
+        // Obtener activos paginados normal
+        marketDataService.getAssetsPaginated(
+          1,
+          selectedCategory || undefined,
+          debouncedSearchQuery
+        )
+      ]);
+      
+      // 3. Combinar: favoritos primero, luego el resto sin duplicados
+      const favoriteSymbolSet = new Set(favoriteSymbols.map(s => s.toUpperCase()));
+      const nonFavoriteAssets = result.assets.filter(
+        a => !favoriteSymbolSet.has(a.symbol.toUpperCase())
       );
       
-      // Aplicar ordenamiento inicial
-      const sorted = applySorting(result.assets, sortBy, predictedSymbols);
+      // 4. Ordenar favoritos por predicciones
+      const sortedFavorites = [...favoriteAssets].sort((a, b) => {
+        const aHasPred = predictedSymbols.has(a.symbol) ? 1 : 0;
+        const bHasPred = predictedSymbols.has(b.symbol) ? 1 : 0;
+        if (aHasPred !== bHasPred) return bHasPred - aHasPred;
+        return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+      });
       
-      setAllAssets(sorted);
-      setDisplayedAssets(sorted);
+      // 5. Aplicar ordenamiento al resto según el tipo seleccionado
+      const sortedRest = applySorting(nonFavoriteAssets, sortBy, predictedSymbols, new Set());
+      
+      // 6. Combinar: favoritos primero, luego el resto
+      const combined = [...sortedFavorites, ...sortedRest];
+      
+      console.log(`[MarketList] Loaded ${sortedFavorites.length} favorites + ${sortedRest.length} others`);
+      
+      setAllAssets(combined);
+      setDisplayedAssets(combined);
       setHasMore(result.hasMore);
       setLastUpdate(new Date());
       setPage(1);
@@ -121,42 +219,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, debouncedSearchQuery, sortBy, predictedSymbols]);
-
-  // Función para aplicar ordenamiento
-  const applySorting = useCallback((assets: MarketAsset[], sortType: SortType, predSymbols: Set<string>) => {
-    let sorted = [...assets];
-    
-    switch (sortType) {
-      case 'predicted':
-        sorted.sort((a, b) => {
-          const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
-          const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
-          if (aHasPred !== bHasPred) return bHasPred - aHasPred;
-          return (b.changePercent ?? -999) - (a.changePercent ?? -999);
-        });
-        break;
-      case 'gainers':
-        sorted.sort((a, b) => (b.changePercent ?? -999) - (a.changePercent ?? -999));
-        break;
-      case 'losers':
-        sorted.sort((a, b) => (a.changePercent ?? 999) - (b.changePercent ?? 999));
-        break;
-      case 'popular':
-        sorted.sort((a, b) => {
-          if (a.price && !b.price) return -1;
-          if (!a.price && b.price) return 1;
-          return 0;
-        });
-        break;
-      case 'bullish':
-        sorted = sorted.filter(a => (a.changePercent ?? 0) > 0);
-        sorted.sort((a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0));
-        break;
-    }
-    
-    return sorted;
-  }, []);
+  }, [selectedCategory, debouncedSearchQuery, sortBy, predictedSymbols, favorites, applySorting]);
 
   // Cargar más datos (infinite scroll)
   const loadMore = useCallback(async () => {
@@ -172,7 +235,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
       );
       
       // Aplicar el mismo ordenamiento a los nuevos datos
-      const sortedNew = applySorting(result.assets, sortBy, predictedSymbols);
+      const sortedNew = applySorting(result.assets, sortBy, predictedSymbols, favorites);
       
       setDisplayedAssets(prev => [...prev, ...sortedNew]);
       setHasMore(result.hasMore);
@@ -182,12 +245,12 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, page, selectedCategory, debouncedSearchQuery, sortBy, predictedSymbols, applySorting]);
+  }, [loadingMore, hasMore, page, selectedCategory, debouncedSearchQuery, sortBy, predictedSymbols, favorites, applySorting]);
 
+  // Cargar favoritos al inicio
   useEffect(() => {
     loadFavoritesAndPredictions();
-    loadData();
-  }, []);
+  }, [loadFavoritesAndPredictions]);
 
   // Debounce para la búsqueda (evita perder foco)
   useEffect(() => {
@@ -197,19 +260,20 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Recargar cuando cambian filtros (usa debouncedSearchQuery)
+  // Cargar datos cuando favoritos están listos o cambian filtros
   useEffect(() => {
-    // No mostrar loading al buscar para evitar perder foco
+    if (!favoritesLoaded) return; // Esperar a que carguen favoritos
     loadData();
-  }, [selectedCategory, debouncedSearchQuery]);
+  }, [selectedCategory, debouncedSearchQuery, favoritesLoaded]);
 
-  // Reordenar cuando cambia el sortBy (sin recargar datos)
+  // Reordenar cuando cambia el sortBy, favoritos o predicciones (sin recargar datos)
   useEffect(() => {
-    if (displayedAssets.length > 0) {
-      const sorted = applySorting(displayedAssets, sortBy, predictedSymbols);
+    if (displayedAssets.length > 0 && favoritesLoaded) {
+      console.log('[MarketList] Reordering with favorites:', favorites.size, 'predictions:', predictedSymbols.size);
+      const sorted = applySorting(displayedAssets, sortBy, predictedSymbols, favorites);
       setDisplayedAssets(sorted);
     }
-  }, [sortBy]);
+  }, [sortBy, favorites, predictedSymbols, favoritesLoaded]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -225,8 +289,14 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
     onFavoritesChange?.();
   }, [onFavoritesChange]);
 
-  // Categorías disponibles
-  const categories = useMemo(() => marketDataService.getCategories(), []);
+  // Cargar categorías dinámicamente
+  useEffect(() => {
+    const loadCategories = async () => {
+      const cats = await marketDataService.getCategories();
+      setCategories(cats);
+    };
+    loadCategories();
+  }, []);
 
   const renderAsset = ({ item }: { item: MarketAsset }) => {
     const isFavorite = favorites.has(item.symbol);

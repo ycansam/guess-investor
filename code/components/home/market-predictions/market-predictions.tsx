@@ -7,28 +7,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -113,7 +113,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
   }, []);
 
-  // Cargar datos inicial con paginación
+  // Cargar datos inicial con paginación (favoritos primero)
   const loadData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
@@ -121,14 +121,36 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         setPage(1);
       }
       
-      const result = await marketDataService.getAssetsPaginated(
-        1,
-        undefined,
-        debouncedSearchQuery
+      // 1. Obtener los símbolos favoritos
+      const favSymbols = Array.from(favoriteSymbols);
+      
+      // 2. Obtener precios de favoritos en paralelo con los activos paginados
+      const [favoriteAssets, result] = await Promise.all([
+        // Obtener datos de favoritos
+        favSymbols.length > 0 
+          ? marketDataService.getAssetsBySymbols(favSymbols)
+          : Promise.resolve([]),
+        // Obtener activos paginados normal
+        marketDataService.getAssetsPaginated(
+          1,
+          undefined,
+          debouncedSearchQuery
+        )
+      ]);
+      
+      // 3. Combinar: favoritos primero, luego el resto sin duplicados
+      const favoriteSymbolSet = new Set(favSymbols.map(s => s.toUpperCase()));
+      const nonFavoriteAssets = result.assets.filter(
+        a => !favoriteSymbolSet.has(a.symbol.toUpperCase())
       );
       
-      setAllAssets(result.assets);
-      setDisplayedAssets(result.assets);
+      // 4. Combinar: favoritos primero, luego el resto
+      const combined = [...favoriteAssets, ...nonFavoriteAssets];
+      
+      console.log(`[MarketPredictions] Loaded ${favoriteAssets.length} favorites + ${nonFavoriteAssets.length} others`);
+      
+      setAllAssets(combined);
+      setDisplayedAssets(combined);
       setHasMore(result.hasMore);
       setLastUpdate(new Date());
       setPage(1);
@@ -137,7 +159,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, favoriteSymbols]);
 
   // Cargar más datos (infinite scroll)
   const loadMore = useCallback(async () => {
@@ -162,15 +184,31 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
   }, [loadingMore, hasMore, page, debouncedSearchQuery]);
 
+  // Estado para saber si favoritos están cargados
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
+
+  // Cargar favoritos primero
   useEffect(() => {
-    loadFavoritesAndPredictions();
-    loadData();
-  }, []);
+    const init = async () => {
+      await loadFavoritesAndPredictions();
+      setFavoritesLoaded(true);
+    };
+    init();
+  }, [loadFavoritesAndPredictions]);
+
+  // Cargar datos cuando favoritos están listos
+  useEffect(() => {
+    if (favoritesLoaded) {
+      loadData();
+    }
+  }, [favoritesLoaded, debouncedSearchQuery]);
 
   // Recargar cuando cambia la búsqueda
   useEffect(() => {
-    loadData();
-  }, [debouncedSearchQuery]);
+    if (favoritesLoaded) {
+      loadData();
+    }
+  }, [debouncedSearchQuery, favoritesLoaded]);
 
   // Cargar recomendaciones de timeframe solo cuando el usuario interactúa
   // NO se cargan automáticamente al montar para evitar peticiones innecesarias
@@ -686,44 +724,9 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     setFavoriteSymbols(new Set(favoritesService.getAll()));
   }, []);
 
-  // Header con selector de timeframe
+  // Header con selector de timeframe (sin buscador)
   const renderHeader = () => (
     <View>
-      {/* Título y hora con botón de análisis */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>🧠 Predicciones IA</Text>
-        <View style={styles.headerActions}>
-          {lastUpdate && (
-            <Text style={styles.lastUpdate}>
-              {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {/* Descripción */}
-      <Text style={styles.description}>
-        Entrena la IA haciendo predicciones. Las predicciones se cachean durante su período de validez.
-      </Text>
-
-      {/* Búsqueda */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar predicción o favorito..."
-          placeholderTextColor="#6b7280"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={20} color="#6b7280" />
-          </TouchableOpacity>
-        )}
-      </View>
 
       {/* Selector de timeframe */}
       <View style={styles.timeframeContainer}>
@@ -893,11 +896,50 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         onClose={() => setSelectedPrediction(null)}
       />
 
+      {/* Header fijo con título y búsqueda */}
+      <View style={styles.fixedHeader}>
+        {/* Título y hora */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>🧠 Predicciones IA</Text>
+          <View style={styles.headerActions}>
+            {lastUpdate && (
+              <Text style={styles.lastUpdate}>
+                {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* Descripción */}
+        <Text style={styles.description}>
+          Entrena la IA haciendo predicciones. Las predicciones se cachean durante su período de validez.
+        </Text>
+
+        {/* Búsqueda - fuera del FlatList para mantener foco */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar predicción o favorito..."
+            placeholderTextColor="#6b7280"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <FlatList
         data={sortedAssets}
         extraData={sortBy}
         renderItem={renderAsset}
-        keyExtractor={(item, index) => `${sortBy}-${index}-${item.symbol}`}
+        keyExtractor={(item) => item.symbol}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={loadingMore ? (
           <View style={styles.loadingFooter}>
@@ -945,6 +987,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f0f',
+  },
+  fixedHeader: {
+    backgroundColor: '#0f0f0f',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
   },
   listContent: {
     paddingBottom: 20,

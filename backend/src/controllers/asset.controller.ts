@@ -1,9 +1,29 @@
 import { Request, Response } from 'express';
-import { searchTradeRepublicAssets } from '../data/trade-republic-assets.js';
+import { searchTradeRepublicAssets, tradeRepublicAssets } from '../data/trade-republic-assets.js';
 import { asyncHandler, NotFoundError } from '../middleware/error-handler.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 
 export const assetController = {
+  /**
+   * GET /api/assets
+   * Obtener lista de todos los activos disponibles
+   */
+  getAll: asyncHandler(async (_req: Request, res: Response) => {
+    // Devolver todos los activos de Trade Republic formateados
+    const assets = tradeRepublicAssets.map(asset => ({
+      symbol: asset.symbol,
+      name: asset.name,
+      type: asset.type.toLowerCase(),
+      category: asset.category || 'other',
+      icon: getAssetIcon(asset.category, asset.type),
+    }));
+
+    res.json({
+      success: true,
+      data: assets,
+    });
+  }),
+
   /**
    * GET /api/assets/:symbol/quote
    * Obtener cotización actual
@@ -104,3 +124,36 @@ export const assetController = {
     });
   }),
 };
+
+// Helper para obtener icono según categoría/tipo
+function getAssetIcon(category?: string, type?: string): string {
+  const iconMap: Record<string, string> = {
+    // Categorías
+    gold: '🥇',
+    silver: '🥈',
+    platinum: '💎',
+    palladium: '⚪',
+    metals: '🏆',
+    oil: '🛢️',
+    gas: '🔥',
+    world: '🌍',
+    usa: '🇺🇸',
+    europe: '🇪🇺',
+    emerging: '🌏',
+    tech: '💻',
+    bonds: '📜',
+    dividend: '💰',
+    'clean-energy': '☀️',
+    esg: '🌱',
+    'small-cap': '📈',
+    semiconductors: '🔬',
+    crypto: '₿',
+    'stock-eu': '🏢',
+    // Tipos
+    etc: '📊',
+    etf: '📈',
+    stock: '🏢',
+  };
+  
+  return iconMap[category || ''] || iconMap[type?.toLowerCase() || ''] || '📊';
+}

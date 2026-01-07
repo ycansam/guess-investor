@@ -246,6 +246,13 @@ export const apiClient = {
   // -------------------------------------------------------------------------
   
   /**
+   * Obtener lista completa de activos disponibles
+   */
+  getAllAssets: (): Promise<Array<{ symbol: string; name: string; type: string; category: string; icon: string }>> => {
+    return get('/assets');
+  },
+
+  /**
    * Buscar activos por nombre o símbolo
    */
   searchAssets: (query: string): Promise<SearchResult[]> => {

@@ -3,6 +3,9 @@ import { assetController } from '../controllers/asset.controller.js';
 
 const router = Router();
 
+// GET /api/assets - Lista completa de activos
+router.get('/', assetController.getAll);
+
 // GET /api/assets/search?q=AAPL
 router.get('/search', assetController.search);
 
