@@ -71,7 +71,7 @@ export function MarketList({ onFavoritesChange }: MarketListProps) {
   // Filtros y búsqueda
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortType>('predicted');
+  const [sortBy, setSortBy] = useState<SortType>('popular');
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory | null>(null);
   const searchInputRef = useRef<any>(null);
   

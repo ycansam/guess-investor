@@ -239,14 +239,16 @@ class MarketDataService {
           category: a.category,
         }));
 
-        // Combinar con lista local (backend primero, luego local sin duplicados)
-        const symbolSet = new Set(converted.map(a => a.symbol.toUpperCase()));
-        const localNonDups = ALL_ASSETS.filter(a => !symbolSet.has(a.symbol.toUpperCase()));
+        // Combinar: primero los populares locales, luego los del backend que no estén
+        // Esto asegura que Apple, Microsoft, etc. aparezcan primero
+        const localSymbolSet = new Set(ALL_ASSETS.map(a => a.symbol.toUpperCase()));
+        const backendOnlyAssets = converted.filter(a => !localSymbolSet.has(a.symbol.toUpperCase()));
         
-        dynamicAssets = [...converted, ...localNonDups];
+        // Lista local primero (populares), luego los extras del backend
+        dynamicAssets = [...ALL_ASSETS, ...backendOnlyAssets];
         dynamicAssetsTimestamp = now;
         
-        console.log(`[MarketData] Loaded ${converted.length} from backend + ${localNonDups.length} local = ${dynamicAssets.length} total`);
+        console.log(`[MarketData] Loaded ${ALL_ASSETS.length} local (popular) + ${backendOnlyAssets.length} backend-only = ${dynamicAssets.length} total`);
         
         return dynamicAssets;
       } catch (error) {
