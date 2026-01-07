@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiClient } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
+import { trainingCacheService } from '../services/training-cache-service';
 
 interface TrackingStatsCardProps {
   onClose?: () => void;
@@ -15,6 +16,7 @@ interface TrackingStatsCardProps {
 export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose }) => {
   const [stats, setStats] = useState<TrackingStats | null>(null);
   const [pendingPredictions, setPendingPredictions] = useState<any[]>([]);
+  const [activePredictionsCount, setActivePredictionsCount] = useState(0); // Predicciones activas del frontend
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -33,9 +35,14 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       const statsData = await apiClient.getPredictionStats();
       setStats(statsData);
       
-      // Cargar predicciones pendientes
+      // Cargar predicciones pendientes del backend (para lista)
       const pendingData = await apiClient.getPendingPredictions();
       setPendingPredictions(pendingData);
+      
+      // Cargar predicciones activas del frontend (training cache)
+      await trainingCacheService.init();
+      const activePredictions = await trainingCacheService.getAllActive();
+      setActivePredictionsCount(activePredictions.length);
       
       // Cargar historial verificado
       const verifiedData = await apiClient.getVerifiedPredictions(20);
@@ -162,13 +169,13 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
           {/* Sistema de Estabilidad ML */}
           <SystemStabilityCard stats={stats} />
 
-          {/* Resumen general */}
+          {/* Resumen general - Total calculado dinámicamente */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>📈 Resumen</Text>
             <View style={styles.statsRow}>
-              <StatBox label="Total" value={`${stats.total}`} color="#3b82f6" />
+              <StatBox label="Total" value={`${stats.verified + activePredictionsCount}`} color="#3b82f6" />
               <StatBox label="Verificadas" value={`${stats.verified}`} color="#10b981" />
-              <StatBox label="Pendientes" value={`${stats.pending}`} color="#f59e0b" />
+              <StatBox label="Pendientes" value={`${activePredictionsCount}`} color="#f59e0b" />
             </View>
           </View>
 
