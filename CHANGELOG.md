@@ -1,8 +1,24 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 29 de diciembre de 2025  
-**Versión:** `1.4.0`  
-**Commit actual:** `develop`
+**Última actualización:** 7 de enero de 2026  
+**Versión:** `1.5.0`  
+**Commit actual:** `319fa84`
+
+---
+
+## [1.5.0] - 7 de enero de 2026
+
+### Commits
+- `319fa84` ordenado popular por defecto
+- `6d4f62f` fixed bug
+- `c24f6a9` añadido dinamismo buscador
+
+### Cambios
+- Lista de activos dinámica desde backend (`GET /api/assets`)
+- Favoritos aparecen primero en buscadores
+- Estadísticas ML calculadas desde frontend
+- Fix: TextInput ya no pierde foco
+- Ordenamiento por "Popular" por defecto
 
 ---
 

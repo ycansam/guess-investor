@@ -251,6 +251,19 @@ export const predictionRepository = {
   },
 
   /**
+   * Actualizar solo scores de una predicción (para recálculos)
+   */
+  async updateScores(id: string, data: { accuracyScore: number; quality: string }): Promise<Prediction> {
+    return prisma.prediction.update({
+      where: { id },
+      data: {
+        accuracyScore: data.accuracyScore,
+        quality: data.quality,
+      },
+    });
+  },
+
+  /**
    * Obtener estadísticas completas de predicciones
    */
   async getStats(): Promise<PredictionStats> {

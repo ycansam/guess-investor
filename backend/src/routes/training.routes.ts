@@ -57,6 +57,9 @@ router.delete('/weights', trainingController.resetWeights);
 // GET /api/training/export - Exportar todos los datos
 router.get('/export', trainingController.export);
 
+// POST /api/training/retrain-ensemble - Re-entrenar pesos del ensemble
+router.post('/retrain-ensemble', trainingController.retrainEnsemble);
+
 // =============================================================================
 // PYTHON ML INTEGRATION
 // =============================================================================

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
+import { ensembleService } from '../services/prediction/ensemble.service.js';
 
 // ============================================================================
 // CONTROLADOR DE TRAINING
@@ -231,6 +232,23 @@ export const trainingController = {
       success: true,
       reset: true,
       data: saved,
+    });
+  }),
+
+  /**
+   * POST /api/training/retrain-ensemble
+   * Re-entrenar pesos del ensemble con los nuevos accuracyScores
+   */
+  retrainEnsemble: asyncHandler(async (_req: Request, res: Response) => {
+    await ensembleService.updateEnsembleWeights();
+    
+    // Obtener los nuevos pesos
+    const weights = await trainingRepository.getLearnedWeights();
+    
+    res.json({
+      success: true,
+      message: 'Ensemble weights retrained successfully',
+      data: weights,
     });
   }),
 

@@ -313,25 +313,51 @@ export const predictionController = {
     
     const priceError = Math.abs(actualChange - prediction.predictedChange);
     
-    // Calcular precisión del cambio (0-100)
-    let changeAccuracy = 0;
-    if (Math.abs(prediction.predictedChange) > 0.1) {
-      const fulfillmentRatio = Math.abs(actualChange) / Math.abs(prediction.predictedChange);
-      if (directionCorrect) {
-        changeAccuracy = Math.min(100, fulfillmentRatio * 100);
+    // Calcular accuracy score con énfasis en dirección
+    // - Acertar dirección es lo MÁS importante (no pierdes dinero)
+    // - Fallar dirección es GRAVE (pierdes dinero)
+    // - La magnitud del cambio es secundaria
+    
+    let accuracyScore = 0;
+    
+    if (directionCorrect) {
+      // Acertó la dirección: base de 50 puntos garantizados
+      // + hasta 50 puntos extra por precisión en la magnitud
+      const predictedMag = Math.abs(prediction.predictedChange);
+      const actualMag = Math.abs(actualChange);
+      
+      if (predictedMag < 0.1 && actualMag < 0.5) {
+        // Predijo neutral y fue neutral
+        accuracyScore = 100;
+      } else if (predictedMag > 0.1) {
+        // Calcular qué tan cerca estuvo de la magnitud predicha
+        const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
+        const magAccuracy = Math.max(0, 1 - magError);
+        accuracyScore = 50 + (magAccuracy * 50); // 50-100 puntos
       } else {
-        changeAccuracy = Math.max(0, (1 - fulfillmentRatio) * 50);
+        // Predijo algo pequeño y se movió en la dirección correcta
+        accuracyScore = 60;
       }
-    } else if (Math.abs(actualChange) < 0.5) {
-      changeAccuracy = 100; // Predijo neutral y fue neutral
+    } else {
+      // Falló la dirección: esto es lo GRAVE
+      // Solo puede rescatar algo si el movimiento fue muy pequeño (casi neutral)
+      const actualMag = Math.abs(actualChange);
+      if (actualMag < 0.5) {
+        // El mercado apenas se movió, error menor
+        accuracyScore = 40;
+      } else if (actualMag < 1) {
+        // Movimiento pequeño en contra
+        accuracyScore = 20;
+      } else {
+        // Movimiento significativo en dirección contraria = FALLO
+        accuracyScore = Math.max(0, 15 - actualMag); // 0-15 puntos max
+      }
     }
     
-    // Accuracy score combinado
-    const directionWeight = 0.6;
-    const changeWeight = 0.4;
-    const accuracyScore = 
-      (directionCorrect ? 100 : 0) * directionWeight + 
-      changeAccuracy * changeWeight;
+    accuracyScore = Math.round(Math.max(0, Math.min(100, accuracyScore)));
+    
+    // changeAccuracy para compatibilidad (solo la precisión de magnitud)
+    let changeAccuracy = directionCorrect ? Math.min(100, (1 - priceError / 10) * 100) : 0;
     
     // Clasificar calidad
     let quality: 'excellent' | 'good' | 'poor' | 'failed';
@@ -599,6 +625,98 @@ export const getTrackRecord = asyncHandler(async (req: Request, res: Response) =
     data: {
       symbol: trackRecord,
       global: globalRecord,
+    },
+  });
+});
+
+/**
+ * POST /api/predictions/recalculate-scores
+ * Recalcular accuracyScore y quality de todas las predicciones verificadas
+ * con la nueva fórmula que prioriza la dirección
+ */
+export const recalculateScores = asyncHandler(async (_req: Request, res: Response) => {
+  const { predictions: verified } = await predictionRepository.findAll({
+    verified: true,
+    limit: 10000,
+  });
+
+  let updated = 0;
+  const results: Array<{ id: string; symbol: string; oldScore: number; newScore: number; oldQuality: string; newQuality: string }> = [];
+
+  for (const prediction of verified) {
+    if (!prediction.actualChange || prediction.predictedChange === null) continue;
+
+    const actualChange = prediction.actualChange;
+    const predictedChange = prediction.predictedChange;
+    const directionCorrect = prediction.directionCorrect;
+
+    // Nueva fórmula de accuracyScore
+    let newAccuracyScore = 0;
+    
+    if (directionCorrect) {
+      const predictedMag = Math.abs(predictedChange);
+      const actualMag = Math.abs(actualChange);
+      
+      if (predictedMag < 0.1 && actualMag < 0.5) {
+        newAccuracyScore = 100;
+      } else if (predictedMag > 0.1) {
+        const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
+        const magAccuracy = Math.max(0, 1 - magError);
+        newAccuracyScore = 50 + (magAccuracy * 50);
+      } else {
+        newAccuracyScore = 60;
+      }
+    } else {
+      const actualMag = Math.abs(actualChange);
+      if (actualMag < 0.5) {
+        newAccuracyScore = 40;
+      } else if (actualMag < 1) {
+        newAccuracyScore = 20;
+      } else {
+        newAccuracyScore = Math.max(0, 15 - actualMag);
+      }
+    }
+    
+    newAccuracyScore = Math.round(Math.max(0, Math.min(100, newAccuracyScore)));
+    
+    // Determinar nueva calidad
+    let newQuality: 'excellent' | 'good' | 'poor' | 'failed';
+    if (newAccuracyScore >= 75) newQuality = 'excellent';
+    else if (newAccuracyScore >= 50) newQuality = 'good';
+    else if (newAccuracyScore >= 25) newQuality = 'poor';
+    else newQuality = 'failed';
+
+    const oldScore = prediction.accuracyScore || 0;
+    const oldQuality = prediction.quality || 'failed';
+
+    if (oldScore !== newAccuracyScore || oldQuality !== newQuality) {
+      await predictionRepository.updateScores(prediction.id, {
+        accuracyScore: newAccuracyScore,
+        quality: newQuality,
+      });
+      
+      results.push({
+        id: prediction.id,
+        symbol: prediction.symbol,
+        oldScore,
+        newScore: newAccuracyScore,
+        oldQuality,
+        newQuality,
+      });
+      updated++;
+    }
+  }
+
+  // Limpiar cache del track record
+  trackRecordService.clearCache();
+
+  res.json({
+    success: true,
+    message: `Recalculated ${updated} predictions`,
+    data: {
+      total: verified.length,
+      updated,
+      changes: results,
     },
   });
 });
