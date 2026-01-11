@@ -50,12 +50,13 @@ export function getLastMarketDay(date: Date): Date {
  * 1. Si la predicción ya expiró normalmente
  * 2. Si la predicción expira en fin de semana y el viernes ya cerró
  * 3. Si estamos en fin de semana y la predicción expira el lunes siguiente
- *    (ya que el último precio disponible es el del viernes)
+ * 4. La predicción debe haber sido creada ANTES del cierre del mercado
+ *    para poder verificarse (no puedes verificar predicciones hechas después del cierre)
  * 
  * Hora de cierre: 4 PM ET = 21:00 UTC (invierno) / 20:00 UTC (verano)
  * Usamos 21:00 UTC para ser conservadores
  */
-export function isMarketClosedForPrediction(expiresAt: Date): boolean {
+export function isMarketClosedForPrediction(expiresAt: Date, createdAt?: Date): boolean {
   const now = new Date();
   
   // Si la predicción ya expiró normalmente
@@ -63,7 +64,6 @@ export function isMarketClosedForPrediction(expiresAt: Date): boolean {
     return true;
   }
   
-  const nowDay = now.getDay();
   const expiresDay = expiresAt.getDay();
   
   // Caso 1: La predicción expira en fin de semana
@@ -71,20 +71,30 @@ export function isMarketClosedForPrediction(expiresAt: Date): boolean {
     const lastMarketDay = getLastMarketDay(expiresAt);
     const marketCloseTime = new Date(lastMarketDay);
     marketCloseTime.setUTCHours(21, 0, 0, 0);
-    return now >= marketCloseTime;
+    
+    // Solo verificar si el mercado cerró Y la predicción fue creada antes del cierre
+    if (now >= marketCloseTime) {
+      // Si tenemos createdAt, verificar que fue creada antes del cierre
+      if (createdAt && createdAt > marketCloseTime) {
+        return false; // Predicción creada después del cierre, no verificar aún
+      }
+      return true;
+    }
+    return false;
   }
   
   // Caso 2: Estamos en fin de semana y la predicción expira el próximo lunes
-  // El mercado cerró el viernes, así que ya podemos verificar
   if (isWeekend(now) && expiresDay === 1) {
-    // Verificar que el lunes es el próximo día hábil (no dentro de una semana)
     const lastFriday = getLastMarketDay(now);
     const marketCloseTime = new Date(lastFriday);
     marketCloseTime.setUTCHours(21, 0, 0, 0);
     
-    // Si el viernes ya cerró, podemos verificar
     if (now >= marketCloseTime) {
-      // Verificar que la expiración es dentro de los próximos 3 días (este fin de semana)
+      // Si tenemos createdAt, verificar que fue creada antes del cierre
+      if (createdAt && createdAt > marketCloseTime) {
+        return false; // Predicción creada después del cierre, no verificar aún
+      }
+      // Verificar que la expiración es dentro de los próximos 3 días
       const diffDays = Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       return diffDays <= 2;
     }

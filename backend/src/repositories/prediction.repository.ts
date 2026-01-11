@@ -219,7 +219,8 @@ export const predictionRepository = {
     });
     
     // Filtrar las que ya pueden verificarse (expiradas O mercado cerrado para fin de semana)
-    return unverified.filter(p => isMarketClosedForPrediction(p.expiresAt));
+    // Pasar createdAt para evitar verificar predicciones hechas después del cierre
+    return unverified.filter(p => isMarketClosedForPrediction(p.expiresAt, p.createdAt));
   },
 
   /**
@@ -233,7 +234,7 @@ export const predictionRepository = {
     });
     
     // Filtrar las que aún están activas (mercado no ha cerrado para ellas)
-    return unverified.filter(p => !isMarketClosedForPrediction(p.expiresAt));
+    return unverified.filter(p => !isMarketClosedForPrediction(p.expiresAt, p.createdAt));
   },
 
   /**
@@ -299,11 +300,11 @@ export const predictionRepository = {
     // Obtener predicciones no verificadas para calcular pending/active con lógica de mercado
     const unverified = await prisma.prediction.findMany({
       where: { verified: false },
-      select: { expiresAt: true },
+      select: { expiresAt: true, createdAt: true },
     });
     
-    const pendingCount = unverified.filter(p => isMarketClosedForPrediction(p.expiresAt)).length;
-    const activeCount = unverified.filter(p => !isMarketClosedForPrediction(p.expiresAt)).length;
+    const pendingCount = unverified.filter(p => isMarketClosedForPrediction(p.expiresAt, p.createdAt)).length;
+    const activeCount = unverified.filter(p => !isMarketClosedForPrediction(p.expiresAt, p.createdAt)).length;
     
     const [total, verified] = await Promise.all([
       prisma.prediction.count(),
