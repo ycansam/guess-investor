@@ -384,6 +384,13 @@ export const apiClient = {
   },
 
   /**
+   * Obtener predicciones activas (no expiradas)
+   */
+  getActivePredictions: (): Promise<any[]> => {
+    return get('/predictions/active');
+  },
+
+  /**
    * Verificar predicción con precio actual
    */
   verifyPrediction: (id: string, actualPrice: number): Promise<any> => {

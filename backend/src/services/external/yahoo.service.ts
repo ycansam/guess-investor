@@ -12,6 +12,87 @@ const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance';
 const RAPIDAPI_HOST = 'yahoo-finance15.p.rapidapi.com';
 const RAPIDAPI_BASE = 'https://yahoo-finance15.p.rapidapi.com/api/v1/markets';
 
+/**
+ * Utilidades de mercado - horarios y días
+ * Mercado NYSE/NASDAQ: Lunes-Viernes, 9:30 AM - 4:00 PM ET
+ */
+
+/**
+ * Verificar si una fecha es fin de semana
+ */
+export function isWeekend(date: Date): boolean {
+  const day = date.getDay();
+  return day === 0 || day === 6; // Domingo = 0, Sábado = 6
+}
+
+/**
+ * Obtener el último día de mercado (viernes si es fin de semana)
+ * Para predicciones que expiran en sábado/domingo, el mercado cerró el viernes
+ */
+export function getLastMarketDay(date: Date): Date {
+  const result = new Date(date);
+  const day = result.getDay();
+  
+  if (day === 0) {
+    // Domingo -> retroceder 2 días (viernes)
+    result.setDate(result.getDate() - 2);
+  } else if (day === 6) {
+    // Sábado -> retroceder 1 día (viernes)
+    result.setDate(result.getDate() - 1);
+  }
+  
+  return result;
+}
+
+/**
+ * Verificar si el mercado está cerrado para una predicción
+ * Considera:
+ * 1. Si la predicción ya expiró normalmente
+ * 2. Si la predicción expira en fin de semana y el viernes ya cerró
+ * 3. Si estamos en fin de semana y la predicción expira el lunes siguiente
+ *    (ya que el último precio disponible es el del viernes)
+ * 
+ * Hora de cierre: 4 PM ET = 21:00 UTC (invierno) / 20:00 UTC (verano)
+ * Usamos 21:00 UTC para ser conservadores
+ */
+export function isMarketClosedForPrediction(expiresAt: Date): boolean {
+  const now = new Date();
+  
+  // Si la predicción ya expiró normalmente
+  if (expiresAt <= now) {
+    return true;
+  }
+  
+  const nowDay = now.getDay();
+  const expiresDay = expiresAt.getDay();
+  
+  // Caso 1: La predicción expira en fin de semana
+  if (isWeekend(expiresAt)) {
+    const lastMarketDay = getLastMarketDay(expiresAt);
+    const marketCloseTime = new Date(lastMarketDay);
+    marketCloseTime.setUTCHours(21, 0, 0, 0);
+    return now >= marketCloseTime;
+  }
+  
+  // Caso 2: Estamos en fin de semana y la predicción expira el próximo lunes
+  // El mercado cerró el viernes, así que ya podemos verificar
+  if (isWeekend(now) && expiresDay === 1) {
+    // Verificar que el lunes es el próximo día hábil (no dentro de una semana)
+    const lastFriday = getLastMarketDay(now);
+    const marketCloseTime = new Date(lastFriday);
+    marketCloseTime.setUTCHours(21, 0, 0, 0);
+    
+    // Si el viernes ya cerró, podemos verificar
+    if (now >= marketCloseTime) {
+      // Verificar que la expiración es dentro de los próximos 3 días (este fin de semana)
+      const diffDays = Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays <= 2;
+    }
+  }
+  
+  return false;
+}
+
 // Cache en memoria simple
 const cache = new Map<string, { data: unknown; expiresAt: number }>();
 
@@ -276,6 +357,61 @@ export const yahooService = {
       }));
     } catch {
       return [];
+    }
+  },
+
+  /**
+   * Obtener precio de cierre de una fecha específica
+   * Si la fecha es fin de semana o festivo, devuelve el cierre del último día de mercado anterior
+   */
+  async getPriceAtDate(symbol: string, targetDate: Date): Promise<{ price: number; actualDate: Date } | null> {
+    try {
+      // Obtener historial de los últimos 10 días para tener margen con festivos
+      const history = await this.getHistory(symbol, '1mo', '1d');
+      
+      if (history.length === 0) {
+        logger.warn(`[Yahoo] No history found for ${symbol} to get price at date`);
+        return null;
+      }
+      
+      // Normalizar target date a inicio del día
+      const targetDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+      
+      // Buscar el día exacto o el día de mercado más cercano anterior
+      let closestPoint: HistoricalDataPoint | null = null;
+      
+      for (const point of history) {
+        const pointDate = new Date(point.timestamp);
+        const pointDay = new Date(pointDate.getFullYear(), pointDate.getMonth(), pointDate.getDate());
+        
+        // Si encontramos el día exacto, usarlo
+        if (pointDay.getTime() === targetDay.getTime()) {
+          closestPoint = point;
+          break;
+        }
+        
+        // Si el punto es anterior o igual al target y es más reciente que el anterior encontrado
+        if (pointDay <= targetDay) {
+          if (!closestPoint || pointDay > new Date(closestPoint.timestamp)) {
+            closestPoint = point;
+          }
+        }
+      }
+      
+      if (!closestPoint) {
+        logger.warn(`[Yahoo] Could not find price for ${symbol} at or before ${targetDate.toISOString()}`);
+        return null;
+      }
+      
+      logger.info(`[Yahoo] Price for ${symbol} at ${targetDate.toISOString().split('T')[0]}: ${closestPoint.close} (actual date: ${new Date(closestPoint.timestamp).toISOString().split('T')[0]})`);
+      
+      return {
+        price: closestPoint.close,
+        actualDate: new Date(closestPoint.timestamp),
+      };
+    } catch (error) {
+      logger.error(`[Yahoo] Error getting price at date for ${symbol}:`, error);
+      return null;
     }
   },
 

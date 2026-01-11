@@ -1,5 +1,6 @@
 import { Prediction } from '@prisma/client';
 import { prisma } from '../config/database.js';
+import { isMarketClosedForPrediction } from '../services/external/yahoo.service.js';
 
 // ============================================================================
 // TIPOS
@@ -50,6 +51,7 @@ export interface PredictionStats {
   total: number;
   verified: number;
   pending: number;
+  active: number;
   directionAccuracy: number;
   avgAccuracyScore: number;
   avgPriceError: number;
@@ -82,14 +84,30 @@ export const predictionRepository = {
    */
   async create(data: CreatePredictionData): Promise<Prediction> {
     const timeframeDays = data.timeframeDays || 1;
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + timeframeDays);
+    const now = new Date();
+    let expiresAt: Date;
     
-    // Ajustar a día hábil si es acción
-    if (data.assetType === 'stock') {
+    if (timeframeDays === 1) {
+      // Para predicciones intradía: expirar al cierre del PRÓXIMO día de mercado (17:30 España = 16:30 UTC)
+      expiresAt = new Date(now);
+      expiresAt.setDate(expiresAt.getDate() + 1); // Siempre el día siguiente
+      expiresAt.setUTCHours(16, 30, 0, 0); // 17:30 hora España (CET)
+      
+      // Ajustar fines de semana: si cae en fin de semana, mover al lunes
       const day = expiresAt.getDay();
       if (day === 0) expiresAt.setDate(expiresAt.getDate() + 1); // Domingo -> Lunes
       if (day === 6) expiresAt.setDate(expiresAt.getDate() + 2); // Sábado -> Lunes
+    } else {
+      // Para predicciones de más días: sumar días completos
+      expiresAt = new Date(now);
+      expiresAt.setDate(expiresAt.getDate() + timeframeDays);
+      
+      // Ajustar a día hábil si es acción
+      if (data.assetType === 'stock') {
+        const day = expiresAt.getDay();
+        if (day === 0) expiresAt.setDate(expiresAt.getDate() + 1);
+        if (day === 6) expiresAt.setDate(expiresAt.getDate() + 2);
+      }
     }
 
     const targetPrice = data.targetPrice || 
@@ -192,29 +210,34 @@ export const predictionRepository = {
   },
 
   /**
-   * Obtener predicciones pendientes de verificar (expiradas pero no verificadas)
+   * Obtener predicciones pendientes de verificar
+   * Incluye:
+   * - Predicciones ya expiradas (expiresAt <= ahora)
+   * - Predicciones que expiran en fin de semana cuando el mercado ya cerró (viernes 4 PM ET)
    */
   async findPendingVerification(): Promise<Prediction[]> {
-    return prisma.prediction.findMany({
-      where: {
-        verified: false,
-        expiresAt: { lte: new Date() },
-      },
+    // Obtener todas las predicciones no verificadas
+    const unverified = await prisma.prediction.findMany({
+      where: { verified: false },
       orderBy: { expiresAt: 'asc' },
     });
+    
+    // Filtrar las que ya pueden verificarse (expiradas O mercado cerrado para fin de semana)
+    return unverified.filter(p => isMarketClosedForPrediction(p.expiresAt));
   },
 
   /**
-   * Obtener predicciones activas (no expiradas)
+   * Obtener predicciones activas (no expiradas y mercado aún no cerrado)
    */
   async findActive(): Promise<Prediction[]> {
-    return prisma.prediction.findMany({
-      where: {
-        verified: false,
-        expiresAt: { gt: new Date() },
-      },
+    // Obtener todas las predicciones no verificadas
+    const unverified = await prisma.prediction.findMany({
+      where: { verified: false },
       orderBy: { expiresAt: 'asc' },
     });
+    
+    // Filtrar las que aún están activas (mercado no ha cerrado para ellas)
+    return unverified.filter(p => !isMarketClosedForPrediction(p.expiresAt));
   },
 
   /**
@@ -253,12 +276,22 @@ export const predictionRepository = {
   /**
    * Actualizar solo scores de una predicción (para recálculos)
    */
-  async updateScores(id: string, data: { accuracyScore: number; quality: string }): Promise<Prediction> {
+  async updateScores(
+    id: string,
+    data: {
+      accuracyScore: number;
+      quality: string;
+      directionCorrect?: boolean;
+      actualDirection?: 'up' | 'down' | 'neutral';
+    }
+  ): Promise<Prediction> {
     return prisma.prediction.update({
       where: { id },
       data: {
         accuracyScore: data.accuracyScore,
         quality: data.quality,
+        ...(data.directionCorrect !== undefined ? { directionCorrect: data.directionCorrect } : {}),
+        ...(data.actualDirection ? { actualDirection: data.actualDirection } : {}),
       },
     });
   },
@@ -267,10 +300,18 @@ export const predictionRepository = {
    * Obtener estadísticas completas de predicciones
    */
   async getStats(): Promise<PredictionStats> {
-    const [total, verified, pending] = await Promise.all([
+    // Obtener predicciones no verificadas para calcular pending/active con lógica de mercado
+    const unverified = await prisma.prediction.findMany({
+      where: { verified: false },
+      select: { expiresAt: true },
+    });
+    
+    const pendingCount = unverified.filter(p => isMarketClosedForPrediction(p.expiresAt)).length;
+    const activeCount = unverified.filter(p => !isMarketClosedForPrediction(p.expiresAt)).length;
+    
+    const [total, verified] = await Promise.all([
       prisma.prediction.count(),
       prisma.prediction.count({ where: { verified: true } }),
-      prisma.prediction.count({ where: { verified: false, expiresAt: { lte: new Date() } } }),
     ]);
 
     // Estadísticas de verificadas
@@ -354,7 +395,8 @@ export const predictionRepository = {
     return {
       total,
       verified: verifiedPredictions.length,
-      pending,
+      pending: pendingCount,
+      active: activeCount,
       directionAccuracy: verifiedPredictions.length > 0 
         ? (correctDirection / verifiedPredictions.length) * 100 
         : 0,

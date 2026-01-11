@@ -7,7 +7,6 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiClient } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
-import { trainingCacheService } from '../services/training-cache-service';
 
 interface TrackingStatsCardProps {
   onClose?: () => void;
@@ -16,7 +15,7 @@ interface TrackingStatsCardProps {
 export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose }) => {
   const [stats, setStats] = useState<TrackingStats | null>(null);
   const [pendingPredictions, setPendingPredictions] = useState<any[]>([]);
-  const [activePredictionsCount, setActivePredictionsCount] = useState(0); // Predicciones activas del frontend
+  const [activePredictions, setActivePredictions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -39,10 +38,9 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       const pendingData = await apiClient.getPendingPredictions();
       setPendingPredictions(pendingData);
       
-      // Cargar predicciones activas del frontend (training cache)
-      await trainingCacheService.init();
-      const activePredictions = await trainingCacheService.getAllActive();
-      setActivePredictionsCount(activePredictions.length);
+      // Cargar predicciones activas del backend (no expiradas)
+      const activeData = await apiClient.getActivePredictions();
+      setActivePredictions(activeData);
       
       // Cargar historial verificado
       const verifiedData = await apiClient.getVerifiedPredictions(20);
@@ -173,9 +171,10 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
           <View style={styles.card}>
             <Text style={styles.cardTitle}>📈 Resumen</Text>
             <View style={styles.statsRow}>
-              <StatBox label="Total" value={`${stats.verified + activePredictionsCount}`} color="#3b82f6" />
+              <StatBox label="Total" value={`${stats.total}`} color="#3b82f6" />
               <StatBox label="Verificadas" value={`${stats.verified}`} color="#10b981" />
-              <StatBox label="Pendientes" value={`${activePredictionsCount}`} color="#f59e0b" />
+              <StatBox label="Activas" value={`${stats.active || 0}`} color="#8b5cf6" />
+              <StatBox label="Pendientes" value={`${stats.pending}`} color="#f59e0b" />
             </View>
           </View>
 
@@ -277,7 +276,12 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
             </View>
           )}
 
-          {/* Predicciones pendientes */}
+          {/* Predicciones activas (no expiradas) */}
+          {activePredictions.length > 0 && (
+            <ActivePredictionsSection predictions={activePredictions} />
+          )}
+
+          {/* Predicciones pendientes (expiradas, listas para verificar) */}
           {pendingPredictions.length > 0 && (
             <PendingPredictionsSection predictions={pendingPredictions} />
           )}
@@ -560,7 +564,75 @@ const StatBox: React.FC<{ label: string; value: string; color: string }> = ({ la
   </View>
 );
 
-// Predicciones pendientes
+// Predicciones activas (no expiradas)
+const ActivePredictionsSection: React.FC<{ predictions: any[] }> = ({ predictions }) => {
+  const getTimeRemaining = (expiresAt: string) => {
+    const now = new Date();
+    const expires = new Date(expiresAt);
+    const diffMs = expires.getTime() - now.getTime();
+    
+    if (diffMs <= 0) return { text: 'Expirada', color: '#ef4444' };
+    
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffDays > 0) {
+      return { text: `${diffDays}d ${diffHours % 24}h`, color: '#8b5cf6' };
+    } else if (diffHours > 0) {
+      return { text: `${diffHours}h`, color: diffHours <= 4 ? '#f59e0b' : '#8b5cf6' };
+    } else {
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      return { text: `${diffMins}min`, color: '#f59e0b' };
+    }
+  };
+
+  const getDirectionIcon = (direction: string) => {
+    switch (direction) {
+      case 'up': return '📈';
+      case 'down': return '📉';
+      default: return '➡️';
+    }
+  };
+
+  if (predictions.length === 0) return null;
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>🎯 Predicciones Activas</Text>
+      <Text style={styles.cardSubtitle}>Esperando expiración para verificar</Text>
+      <View style={styles.pendingList}>
+        {predictions.slice(0, 8).map((pred, index) => {
+          const timeInfo = getTimeRemaining(pred.expiresAt);
+          return (
+            <View key={pred.id || index} style={styles.pendingItem}>
+              <View style={styles.pendingLeft}>
+                <Text style={styles.pendingSymbol}>{pred.symbol}</Text>
+                <Text style={styles.pendingDirection}>
+                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(1)}%
+                </Text>
+              </View>
+              <View style={styles.pendingRight}>
+                <View style={[styles.timeBadge, { backgroundColor: timeInfo.color + '20' }]}>
+                  <Text style={[styles.timeText, { color: timeInfo.color }]}>
+                    ⏱ {timeInfo.text}
+                  </Text>
+                </View>
+                <Text style={styles.pendingDate}>
+                  {pred.timeframe}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+        {predictions.length > 8 && (
+          <Text style={styles.moreText}>+{predictions.length - 8} más...</Text>
+        )}
+      </View>
+    </View>
+  );
+};
+
+// Predicciones pendientes (expiradas, listas para verificar)
 const PendingPredictionsSection: React.FC<{ predictions: any[] }> = ({ predictions }) => {
   const getMarketCloseInfo = (expiresAt: string, symbol: string) => {
     const now = new Date();
