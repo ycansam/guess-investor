@@ -88,15 +88,11 @@ export const predictionRepository = {
     let expiresAt: Date;
     
     if (timeframeDays === 1) {
-      // Para predicciones intradía: expirar al cierre del PRÓXIMO día de mercado (17:30 España = 16:30 UTC)
+      // Para predicciones intradía: expirar al cierre del día siguiente (17:30 España = 16:30 UTC)
+      // Sin salto de fin de semana - la verificación usará el precio del último día de mercado
       expiresAt = new Date(now);
       expiresAt.setDate(expiresAt.getDate() + 1); // Siempre el día siguiente
       expiresAt.setUTCHours(16, 30, 0, 0); // 17:30 hora España (CET)
-      
-      // Ajustar fines de semana: si cae en fin de semana, mover al lunes
-      const day = expiresAt.getDay();
-      if (day === 0) expiresAt.setDate(expiresAt.getDate() + 1); // Domingo -> Lunes
-      if (day === 6) expiresAt.setDate(expiresAt.getDate() + 2); // Sábado -> Lunes
     } else {
       // Para predicciones de más días: sumar días completos
       expiresAt = new Date(now);
