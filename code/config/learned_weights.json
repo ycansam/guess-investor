@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "updated_at": "2026-01-11T16:31:19.406818",
-  "training_samples": 193,
+  "updated_at": "2026-01-13T22:25:03.372790",
+  "training_samples": 353,
   "weights": {
     "intraday": {
       "trend": 0.2,

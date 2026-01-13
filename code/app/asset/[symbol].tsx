@@ -7,17 +7,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
+import { PredictionHistoryCard } from '../../components/prediction-history';
 import { apiClient, CalculatedPrediction } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
 import { predictionTrackingService } from '../../services/prediction-tracking-service';
@@ -983,6 +984,13 @@ export default function AssetDetailScreen() {
           </View>
         )}
 
+        {/* Historial de predicciones anteriores */}
+        {symbol && (
+          <View style={styles.historyContainer}>
+            <PredictionHistoryCard symbol={symbol} maxItems={15} />
+          </View>
+        )}
+
         {/* Espaciado inferior */}
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -1197,6 +1205,9 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   analysisContainer: {
+    marginTop: 16,
+  },
+  historyContainer: {
     marginTop: 16,
   },
   assetTypeBadge: {
