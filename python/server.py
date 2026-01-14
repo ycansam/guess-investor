@@ -28,7 +28,7 @@ from src.config import (
     EARLY_STOPPING_PATIENCE
 )
 from src.models import WeightOptimizer, LossFunction, VerifiedPrediction, AssetClassifier, get_classifier
-from src.utils import save_weights, append_training_result
+from src.utils import save_weights, append_training_result, load_weights
 
 # Archivo donde guardar las predicciones recibidas
 PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
@@ -270,16 +270,26 @@ class TrainingHandler(BaseHTTPRequestHandler):
                 'error': f'Predicciones válidas insuficientes: {len(predictions)}/5'
             }
         
+        # Cargar pesos previos si existen (para continuar aprendiendo)
+        existing_weights = load_weights(WEIGHTS_FILE)
+        if existing_weights:
+            print(f"[Server] 📦 Cargando pesos previos desde {WEIGHTS_FILE}")
+        else:
+            print(f"[Server] 🆕 Iniciando con pesos por defecto")
+        
         # Crear optimizador y entrenar
         loss_fn = LossFunction()
         optimizer = WeightOptimizer(
             learning_rate=DEFAULT_LEARNING_RATE,
             momentum=DEFAULT_MOMENTUM,
-            weights=None
+            weights=existing_weights  # Usar pesos previos si existen
         )
         optimizer.loss_fn = loss_fn
         
         print(f"\n[Server] 🧠 Entrenando con {len(predictions)} predicciones...")
+        
+        # Guardar pesos iniciales para comparar
+        weights_before = {tf: dict(optimizer.weights[tf]) for tf in optimizer.weights}
         
         # Entrenar por timeframe
         results = {}
@@ -303,6 +313,21 @@ class TrainingHandler(BaseHTTPRequestHandler):
                         'improvement': round(improvement, 1),
                     }
                     print(f"   ✓ {timeframe}: {initial_loss:.4f} → {final_loss:.4f} ({improvement:+.1f}%)")
+        
+        # Mostrar cambios en pesos
+        print(f"\n[Server] 📊 Cambios en pesos:")
+        for tf in ['intraday', 'swing', 'long']:
+            changes = []
+            for factor in optimizer.weights[tf]:
+                before = weights_before[tf][factor]
+                after = optimizer.weights[tf][factor]
+                delta = after - before
+                if abs(delta) > 0.0001:
+                    changes.append(f"{factor}: {before:.4f}→{after:.4f} ({delta:+.4f})")
+            if changes:
+                print(f"   {tf}: {', '.join(changes[:3])}{'...' if len(changes) > 3 else ''}")
+            else:
+                print(f"   {tf}: sin cambios significativos")
         
         # Guardar pesos
         save_weights(

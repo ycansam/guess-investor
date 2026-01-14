@@ -28,7 +28,8 @@ interface PythonPrediction {
   accuracy_score: number;
   created_at: string;
   verified_at: string;
-  factor_weights?: Record<string, number>;
+  factor_scores?: Record<string, number>;  // Scores de cada factor
+  factor_weights?: Record<string, number>; // Pesos usados
 }
 
 interface PythonWeights {
@@ -129,26 +130,67 @@ export const pythonTrainingService = {
       }
 
       // Convertir al formato que espera Python
-      const predictions: PythonPrediction[] = verified.map(p => ({
-        id: p.id,
-        symbol: p.symbol,
-        asset_type: p.assetType || 'stock',
-        timeframe: p.timeframe || '1 día',
-        timeframe_days: p.timeframeDays,
-        direction: p.direction,
-        predicted_change: p.predictedChange,
-        confidence: p.confidence,
-        current_price: p.currentPrice,
-        actual_price: p.actualPrice!,
-        actual_change: p.actualChange || 0,
-        direction_correct: p.directionCorrect || false,
-        accuracy_score: p.accuracyScore || 0,
-        created_at: p.createdAt.toISOString(),
-        verified_at: p.verifiedAt?.toISOString() || new Date().toISOString(),
-        factor_weights: typeof p.factorWeights === 'object' && p.factorWeights !== null 
-          ? p.factorWeights as Record<string, number> 
-          : undefined,
-      }));
+      const predictions: PythonPrediction[] = verified.map(p => {
+        // Extraer factor_scores del factorBreakdown
+        let factorScores: Record<string, number> | undefined;
+        let factorWeights: Record<string, number> | undefined;
+        
+        if (p.factorBreakdown) {
+          try {
+            const breakdown = typeof p.factorBreakdown === 'string' 
+              ? JSON.parse(p.factorBreakdown) 
+              : p.factorBreakdown;
+            
+            // Extraer scores de availableFactors
+            if (breakdown.availableFactors && Array.isArray(breakdown.availableFactors)) {
+              factorScores = {};
+              for (const f of breakdown.availableFactors) {
+                if (f.name && typeof f.score === 'number') {
+                  factorScores[f.name] = f.score;
+                }
+              }
+            }
+            
+            // Extraer pesos usados
+            if (breakdown.weightsUsed && typeof breakdown.weightsUsed === 'object') {
+              factorWeights = breakdown.weightsUsed;
+            }
+          } catch (e) {
+            // Ignorar errores de parsing
+          }
+        }
+        
+        // Fallback para factor_weights si no estaban en breakdown
+        if (!factorWeights && p.factorWeights) {
+          try {
+            factorWeights = typeof p.factorWeights === 'string'
+              ? JSON.parse(p.factorWeights)
+              : p.factorWeights as Record<string, number>;
+          } catch (e) {
+            // Ignorar
+          }
+        }
+        
+        return {
+          id: p.id,
+          symbol: p.symbol,
+          asset_type: p.assetType || 'stock',
+          timeframe: p.timeframe || '1 día',
+          timeframe_days: p.timeframeDays,
+          direction: p.direction,
+          predicted_change: p.predictedChange,
+          confidence: p.confidence,
+          current_price: p.currentPrice,
+          actual_price: p.actualPrice!,
+          actual_change: p.actualChange || 0,
+          direction_correct: p.directionCorrect || false,
+          accuracy_score: p.accuracyScore || 0,
+          created_at: p.createdAt.toISOString(),
+          verified_at: p.verifiedAt?.toISOString() || new Date().toISOString(),
+          factor_scores: factorScores,
+          factor_weights: factorWeights,
+        };
+      });
 
       // Enviar a Python
       const controller = new AbortController();

@@ -621,6 +621,15 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Track record adjustment for ${symbol}: ${trackRecordAdjustment > 0 ? '+' : ''}${trackRecordAdjustment}% → ${finalConfidence}%`);
     }
     
+    // --- AJUSTE POR DIRECCIÓN PREDICHA (basado en datos históricos) ---
+    // UP=81%, DOWN=53%, NEUTRAL=44% de acierto histórico
+    const directionAdjustment = await trackRecordService.getDirectionAdjustment(direction);
+    if (directionAdjustment.confidenceMultiplier !== 1.0) {
+      const oldConfidence = finalConfidence;
+      finalConfidence = Math.round(Math.max(20, Math.min(95, finalConfidence * directionAdjustment.confidenceMultiplier)));
+      logger.info(`[PredictionCalc] Direction adjustment (${direction}): ${oldConfidence}% → ${finalConfidence}%`);
+    }
+    
     // --- AJUSTE POR CORRELACIÓN DE FACTORES (ML) ---
     // Detecta double-counting y ajusta confianza según coherencia de señales
     const factorScores: Record<string, number> = {};
