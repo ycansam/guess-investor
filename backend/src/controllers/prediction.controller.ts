@@ -58,11 +58,21 @@ function computeVerificationData(prediction: Prediction, actualPrice: number): V
   accuracyScore = Math.round(Math.max(0, Math.min(100, accuracyScore)));
   const changeAccuracy = directionCorrect ? Math.min(100, (1 - priceError / 10) * 100) : 0;
 
-  let quality: 'excellent' | 'good' | 'poor' | 'failed';
-  if (accuracyScore >= 75) quality = 'excellent';
-  else if (accuracyScore >= 50) quality = 'good';
-  else if (accuracyScore >= 25) quality = 'poor';
-  else quality = 'failed';
+  // Calidad basada en dirección + score
+  // 'failed' = dirección incorrecta (sin importar score)
+  // 'very_poor' = dirección correcta pero score < 25
+  let quality: 'excellent' | 'good' | 'poor' | 'very_poor' | 'failed';
+  if (!directionCorrect) {
+    quality = 'failed';
+  } else if (accuracyScore >= 75) {
+    quality = 'excellent';
+  } else if (accuracyScore >= 50) {
+    quality = 'good';
+  } else if (accuracyScore >= 25) {
+    quality = 'poor';
+  } else {
+    quality = 'very_poor';
+  }
 
   return {
     actualPrice,
@@ -661,16 +671,29 @@ export const recalculateScores = asyncHandler(async (_req: Request, res: Respons
     newAccuracyScore = Math.round(Math.max(0, Math.min(100, newAccuracyScore)));
     
     // Determinar nueva calidad
-    let newQuality: 'excellent' | 'good' | 'poor' | 'failed';
-    if (newAccuracyScore >= 75) newQuality = 'excellent';
-    else if (newAccuracyScore >= 50) newQuality = 'good';
-    else if (newAccuracyScore >= 25) newQuality = 'poor';
-    else newQuality = 'failed';
+    // 'failed' = dirección incorrecta, 'very_poor' = dirección correcta pero score < 25
+    let newQuality: 'excellent' | 'good' | 'poor' | 'very_poor' | 'failed';
+    if (!directionCorrect) {
+      newQuality = 'failed';
+    } else if (newAccuracyScore >= 75) {
+      newQuality = 'excellent';
+    } else if (newAccuracyScore >= 50) {
+      newQuality = 'good';
+    } else if (newAccuracyScore >= 25) {
+      newQuality = 'poor';
+    } else {
+      newQuality = 'very_poor';
+    }
 
     const oldScore = prediction.accuracyScore || 0;
     const oldQuality = prediction.quality || 'failed';
 
-    if (oldScore !== newAccuracyScore || oldQuality !== newQuality) {
+    // Siempre actualizar si la quality cambió (para migración a nuevo sistema)
+    // o si el score cambió
+    const qualityChanged = oldQuality !== newQuality;
+    const scoreChanged = oldScore !== newAccuracyScore;
+    
+    if (scoreChanged || qualityChanged) {
       await predictionRepository.updateScores(prediction.id, {
         accuracyScore: newAccuracyScore,
         quality: newQuality,

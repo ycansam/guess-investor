@@ -44,7 +44,7 @@ export interface VerifyPredictionData {
   priceError: number;
   changeAccuracy: number;
   accuracyScore: number;
-  quality: 'excellent' | 'good' | 'poor' | 'failed';
+  quality: 'excellent' | 'good' | 'poor' | 'very_poor' | 'failed';
 }
 
 export interface PredictionStats {
@@ -340,6 +340,7 @@ export const predictionRepository = {
       excellent: verifiedPredictions.filter(p => p.quality === 'excellent').length,
       good: verifiedPredictions.filter(p => p.quality === 'good').length,
       poor: verifiedPredictions.filter(p => p.quality === 'poor').length,
+      veryPoor: verifiedPredictions.filter(p => p.quality === 'very_poor').length,
       failed: verifiedPredictions.filter(p => p.quality === 'failed').length,
     };
 

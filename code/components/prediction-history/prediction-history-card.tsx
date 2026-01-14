@@ -30,7 +30,6 @@ interface SymbolStats {
   byQuality: {
     excellent: number;
     good: number;
-    poor: number;
     failed: number;
   };
 }
@@ -45,7 +44,6 @@ function calculateSymbolStats(predictions: TrackedPrediction[]): SymbolStats {
   const byQuality = {
     excellent: verified.filter(p => p.quality === 'excellent').length,
     good: verified.filter(p => p.quality === 'good').length,
-    poor: verified.filter(p => p.quality === 'poor').length,
     failed: verified.filter(p => p.quality === 'failed').length,
   };
   
@@ -105,7 +103,6 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
     switch (quality) {
       case 'excellent': return '#22c55e';
       case 'good': return '#84cc16';
-      case 'poor': return '#f59e0b';
       case 'failed': return '#ef4444';
       default: return '#6b7280';
     }
@@ -224,14 +221,6 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
                 ]} 
               />
             )}
-            {stats.byQuality.poor > 0 && (
-              <View 
-                style={[
-                  styles.qualitySegment, 
-                  { backgroundColor: '#f59e0b', flex: stats.byQuality.poor }
-                ]} 
-              />
-            )}
             {stats.byQuality.failed > 0 && (
               <View 
                 style={[
@@ -251,12 +240,8 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
               <Text style={styles.qualityLegendText}>{stats.byQuality.good} Bien</Text>
             </View>
             <View style={styles.qualityLegendItem}>
-              <View style={[styles.qualityDot, { backgroundColor: '#f59e0b' }]} />
-              <Text style={styles.qualityLegendText}>{stats.byQuality.poor} Pobre</Text>
-            </View>
-            <View style={styles.qualityLegendItem}>
               <View style={[styles.qualityDot, { backgroundColor: '#ef4444' }]} />
-              <Text style={styles.qualityLegendText}>{stats.byQuality.failed} Fall.</Text>
+              <Text style={styles.qualityLegendText}>{stats.byQuality.failed} Dir.✗</Text>
             </View>
           </View>
         </View>

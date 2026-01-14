@@ -226,21 +226,13 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
                   <Text style={styles.qualityLabel}>Buenas</Text>
                   <Text style={styles.qualitySubLabel}>{'50-75%'}</Text>
                 </View>
-                <View style={[styles.qualityBox, { backgroundColor: '#f59e0b20' }]}>
-                  <Text style={styles.qualityIcon}>⚠️</Text>
-                  <Text style={[styles.qualityValue, { color: '#f59e0b' }]}>
-                    {stats.byQuality.poor}
-                  </Text>
-                  <Text style={styles.qualityLabel}>Pobres</Text>
-                  <Text style={styles.qualitySubLabel}>{'25-50%'}</Text>
-                </View>
                 <View style={[styles.qualityBox, { backgroundColor: '#ef444420' }]}>
                   <Text style={styles.qualityIcon}>❌</Text>
                   <Text style={[styles.qualityValue, { color: '#ef4444' }]}>
                     {stats.byQuality.failed}
                   </Text>
                   <Text style={styles.qualityLabel}>Fallidas</Text>
-                  <Text style={styles.qualitySubLabel}>{'<25%'}</Text>
+                  <Text style={styles.qualitySubLabel}>{'Dir. mal'}</Text>
                 </View>
               </View>
             </View>
@@ -359,7 +351,7 @@ const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
   const getStabilityInfo = () => {
     const verified = stats.verified;
     const qualityPredictions = stats.byQuality.excellent + stats.byQuality.good;
-    const totalQuality = stats.byQuality.excellent + stats.byQuality.good + stats.byQuality.poor + stats.byQuality.failed;
+    const totalQuality = stats.byQuality.excellent + stats.byQuality.good + stats.byQuality.failed;
     const qualityRate = totalQuality > 0 ? (qualityPredictions / totalQuality) * 100 : 0;
 
     let level: 'inicial' | 'aprendiendo' | 'desarrollando' | 'estable' | 'maduro';
