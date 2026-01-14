@@ -55,7 +55,16 @@ class TrainingHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         """GET /status - Obtener estado del servidor"""
-        if self.path == '/status':
+        if self.path == '/health':
+            # Endpoint de health check
+            self._set_headers(200)
+            self.wfile.write(json.dumps({
+                'status': 'ok',
+                'service': 'guess-investor-ml',
+                'timestamp': datetime.now().isoformat()
+            }).encode())
+        
+        elif self.path == '/status':
             status = {
                 'running': True,
                 'timestamp': datetime.now().isoformat(),
