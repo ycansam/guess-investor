@@ -24,6 +24,7 @@ import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
 import { yahooService } from '../external/yahoo.service.js';
+import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
   factorCorrelationService,
   probabilisticModelService,
@@ -315,17 +316,20 @@ const ASSET_GROUP_WEIGHT_MULTIPLIERS: Record<AssetGroup, Record<string, number>>
 };
 
 // --- AJUSTE DE PESOS POR GRUPO DE ACTIVO ---
+// Ahora usa multiplicadores APRENDIDOS del classifierLearningService
 function adjustWeightsForAssetGroup(
   baseWeights: Record<string, number>,
   assetGroup: AssetGroup
 ): Record<string, number> {
-  const multipliers = ASSET_GROUP_WEIGHT_MULTIPLIERS[assetGroup] || ASSET_GROUP_WEIGHT_MULTIPLIERS.default;
+  // Obtener multiplicadores aprendidos (o estáticos si no hay aprendidos)
+  const learnedMultipliers = classifierLearningService.getMultipliers(assetGroup);
+  const multipliers: Record<string, number> = learnedMultipliers || ASSET_GROUP_WEIGHT_MULTIPLIERS[assetGroup] || ASSET_GROUP_WEIGHT_MULTIPLIERS.default;
   
   const adjustedWeights: Record<string, number> = {};
   let totalAdjusted = 0;
   
   for (const [factor, weight] of Object.entries(baseWeights)) {
-    const multiplier = multipliers[factor] || 1.0;
+    const multiplier = (multipliers as Record<string, number>)[factor] || 1.0;
     adjustedWeights[factor] = weight * multiplier;
     totalAdjusted += adjustedWeights[factor];
   }

@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import {
   factorCorrelationService,
   featureEngineeringService,
@@ -13,9 +14,10 @@ const router = Router();
 
 // GET /api/ml/status - Estado de todos los modelos ML
 router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
-  const [rl, probStats] = await Promise.all([
+  const [rl, probStats, classifierDiagnostics] = await Promise.all([
     reinforcementLearningService.getStats(),
     probabilisticModelService.getCalibrationStats(),
+    Promise.resolve(classifierLearningService.getDiagnostics()),
   ]);
 
   res.json({
@@ -28,6 +30,13 @@ router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
       probabilisticModel: {
         ...probStats,
         status: probStats.sampleCount > 0 ? 'calibrating' : 'uncalibrated',
+      },
+      classifierLearning: {
+        isInitialized: classifierDiagnostics.isInitialized,
+        version: classifierDiagnostics.version,
+        totalGroups: classifierDiagnostics.totalGroups,
+        totalSamples: classifierDiagnostics.totalSamples,
+        status: classifierDiagnostics.totalSamples > 0 ? 'learning' : 'static',
       },
       factorCorrelation: { status: 'active' },
       metaLearning: { status: 'active' },
@@ -207,6 +216,10 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
     return diff;
   };
 
+  // Obtener multiplicadores aprendidos (o estáticos si no hay)
+  const learnedMultipliers = classifierLearningService.getAllMultipliers();
+  const classifierStats = classifierLearningService.getStats();
+
   res.json({
     success: true,
     data: {
@@ -223,8 +236,9 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
         swing: calculateDiff(learnedWeights?.swing),
         long: calculateDiff(learnedWeights?.long),
       },
-      assetGroupMultipliers: ASSET_GROUP_MULTIPLIERS,
-      availableAssetGroups: Object.keys(ASSET_GROUP_MULTIPLIERS),
+      assetGroupMultipliers: learnedMultipliers, // Ahora usa los aprendidos
+      assetGroupStats: classifierStats,
+      availableAssetGroups: Object.keys(learnedMultipliers),
     },
   });
 }));
@@ -288,16 +302,12 @@ router.post('/train-from-verified', asyncHandler(async (_req: Request, res: Resp
   for (const pred of verified) {
     try {
       // Entrenar RL
-      const analysisData = pred.analysisData as Record<string, unknown> | null;
-      const historical = analysisData?.historical as { volatility?: number } | undefined;
-      const sentiment = analysisData?.sentiment as { vix?: { value?: number } } | undefined;
-      const factorBreakdown = analysisData?.factorBreakdown as { 
-        signalSummary?: string;
-        availableFactors?: { score: number }[];
-      } | undefined;
+      const historicalData = pred.historicalData ? JSON.parse(pred.historicalData) : null;
+      const sentimentData = pred.sentimentData ? JSON.parse(pred.sentimentData) : null;
+      const factorBreakdown = pred.factorBreakdown ? JSON.parse(pred.factorBreakdown) : null;
       
-      const volatility = historical?.volatility ?? 25;
-      const vix = sentiment?.vix?.value ?? 20;
+      const volatility = historicalData?.volatility ?? pred.volatility ?? 25;
+      const vix = sentimentData?.vix?.value ?? 20;
       const signalSummary = factorBreakdown?.signalSummary ?? 'mixed';
       const avgScore = factorBreakdown?.availableFactors 
         ? factorBreakdown.availableFactors.reduce((sum: number, f: { score: number }) => sum + Math.abs(f.score), 0) / factorBreakdown.availableFactors.length
@@ -368,6 +378,127 @@ router.post('/train-from-verified', asyncHandler(async (_req: Request, res: Resp
       rlStats,
       probStats,
     },
+  });
+}));
+
+// =====================================================================
+// CLASSIFIER LEARNING ENDPOINTS
+// =====================================================================
+
+// GET /api/ml/classifiers/status - Estado del aprendizaje de clasificadores
+router.get('/classifiers/status', asyncHandler(async (_req: Request, res: Response) => {
+  const diagnostics = classifierLearningService.getDiagnostics();
+  
+  res.json({
+    success: true,
+    data: diagnostics,
+  });
+}));
+
+// GET /api/ml/classifiers/multipliers - Obtener todos los multiplicadores aprendidos
+router.get('/classifiers/multipliers', asyncHandler(async (_req: Request, res: Response) => {
+  const multipliers = classifierLearningService.getAllMultipliers();
+  const stats = classifierLearningService.getStats();
+  
+  res.json({
+    success: true,
+    data: {
+      multipliers,
+      stats,
+    },
+  });
+}));
+
+// GET /api/ml/classifiers/:group/multipliers - Multiplicadores de un clasificador específico
+router.get('/classifiers/:group/multipliers', asyncHandler(async (req: Request, res: Response) => {
+  const { group } = req.params;
+  const multipliers = classifierLearningService.getMultipliers(group);
+  const stats = classifierLearningService.getStats();
+  
+  res.json({
+    success: true,
+    data: {
+      assetGroup: group,
+      multipliers,
+      stats: stats[group] || { sampleCount: 0, successRate: 0, avgAccuracy: 0, lastUpdated: null },
+    },
+  });
+}));
+
+// POST /api/ml/classifiers/train - Entrenar clasificadores con predicciones verificadas existentes
+router.post('/classifiers/train', asyncHandler(async (_req: Request, res: Response) => {
+  const { predictionRepository } = await import('../repositories/prediction.repository.js');
+  
+  // Obtener predicciones verificadas
+  const verified = await predictionRepository.findVerified(500);
+  
+  if (verified.length === 0) {
+    res.json({ success: false, error: 'No verified predictions found' });
+    return;
+  }
+  
+  const trainingData: Array<{
+    assetGroup: string;
+    directionCorrect: boolean;
+    accuracyScore: number;
+    factorScores: Record<string, number>;
+    factorWeights: Record<string, number>;
+    predictedChange: number;
+    actualChange: number;
+  }> = [];
+  
+  for (const pred of verified) {
+    try {
+      const factorBreakdown = pred.factorBreakdown ? JSON.parse(pred.factorBreakdown) : null;
+      if (!factorBreakdown?.assetGroup) continue;
+      
+      const factorScores: Record<string, number> = {};
+      const factorWeights: Record<string, number> = {};
+      
+      if (factorBreakdown.availableFactors) {
+        for (const f of factorBreakdown.availableFactors) {
+          factorScores[f.name] = f.score;
+        }
+      }
+      if (factorBreakdown.weightsUsed) {
+        Object.assign(factorWeights, factorBreakdown.weightsUsed);
+      }
+      
+      trainingData.push({
+        assetGroup: factorBreakdown.assetGroup,
+        directionCorrect: pred.directionCorrect || false,
+        accuracyScore: pred.accuracyScore || 0,
+        factorScores,
+        factorWeights,
+        predictedChange: pred.predictedChange,
+        actualChange: pred.actualChange || 0,
+      });
+    } catch (err) {
+      // Skip malformed predictions
+    }
+  }
+  
+  const result = await classifierLearningService.trainFromBatch(trainingData);
+  const diagnostics = classifierLearningService.getDiagnostics();
+  
+  res.json({
+    success: true,
+    data: {
+      ...result,
+      diagnostics,
+    },
+  });
+}));
+
+// POST /api/ml/classifiers/reset - Reiniciar multiplicadores a valores estáticos
+router.post('/classifiers/reset', asyncHandler(async (_req: Request, res: Response) => {
+  await classifierLearningService.reset();
+  const diagnostics = classifierLearningService.getDiagnostics();
+  
+  res.json({
+    success: true,
+    message: 'Classifier multipliers reset to static values',
+    data: diagnostics,
   });
 }));
 

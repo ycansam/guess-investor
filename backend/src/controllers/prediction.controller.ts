@@ -6,6 +6,7 @@ import { predictionRepository, VerifyPredictionData } from '../repositories/pred
 import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
+import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 import { trackRecordService } from '../services/prediction/track-record.service.js';
 
@@ -481,6 +482,37 @@ export const predictionController = {
 
     // Limpiar cache del track record para este símbolo
     trackRecordService.clearCache(prediction.symbol);
+
+    // Aprender de la predicción verificada para ajustar clasificadores
+    try {
+      const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+      if (factorBreakdown?.assetGroup) {
+        const factorScores: Record<string, number> = {};
+        const factorWeights: Record<string, number> = {};
+        
+        if (factorBreakdown.availableFactors) {
+          for (const f of factorBreakdown.availableFactors) {
+            factorScores[f.name] = f.score;
+          }
+        }
+        if (factorBreakdown.weightsUsed) {
+          Object.assign(factorWeights, factorBreakdown.weightsUsed);
+        }
+
+        await classifierLearningService.learnFromVerifiedPrediction({
+          assetGroup: factorBreakdown.assetGroup,
+          directionCorrect: verifyData.directionCorrect,
+          accuracyScore: verifyData.accuracyScore,
+          factorScores,
+          factorWeights,
+          predictedChange: prediction.predictedChange,
+          actualChange: verifyData.actualChange,
+        });
+        console.log(`[Verify] Classifier learning updated for ${factorBreakdown.assetGroup}`);
+      }
+    } catch (err) {
+      console.log('[Verify] Could not update classifier learning:', err);
+    }
 
     // Sincronizar con Python en background (no bloqueante)
     pythonTrainingService.syncAndTrain().catch(err => {
