@@ -356,7 +356,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       } else {
         // Fallback a momentum si el calculador falla
         const momentum = asset.changePercent ?? 0;
-        direction = momentum > 0.5 ? 'up' : momentum < -0.5 ? 'down' : 'neutral';
+        direction = momentum > 0.2 ? 'up' : momentum < -0.2 ? 'down' : 'neutral';
         confidence = Math.round(Math.min(85, Math.max(45, 60 + Math.abs(momentum) * 2)));
         predictedChange = Math.round((direction === 'up' ? Math.abs(momentum) * 0.5 : direction === 'down' ? -Math.abs(momentum) * 0.5 : 0) * 100) / 100;
         reasoning = `Basado en momentum actual (${momentum.toFixed(2)}%)`;
@@ -552,7 +552,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         } else {
           // Fallback a momentum si el calculador falla
           const momentum = asset.changePercent ?? 0;
-          direction = momentum > 0.5 ? 'up' : momentum < -0.5 ? 'down' : 'neutral';
+          direction = momentum > 0.2 ? 'up' : momentum < -0.2 ? 'down' : 'neutral';
           confidence = Math.round(Math.min(85, Math.max(45, 60 + Math.abs(momentum) * 2)));
           predictedChange = Math.round((direction === 'up' ? Math.abs(momentum) * 0.5 : direction === 'down' ? -Math.abs(momentum) * 0.5 : 0) * 100) / 100;
           reasoning = `Basado en momentum actual (${momentum.toFixed(2)}%)`;

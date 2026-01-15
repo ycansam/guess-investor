@@ -778,17 +778,17 @@ export const predictionCalculatorService = {
     );
     
     // Recalcular dirección DESPUÉS de todos los ajustes para que coincida con predictedChange
-    // UMBRAL AJUSTADO: 0.5% para coincidir con el umbral de verificación
-    const DIRECTION_THRESHOLD = 0.5;
+    // UMBRAL AJUSTADO: 0.2% para evitar mostrar como neutral predicciones con dirección clara
+    const DIRECTION_THRESHOLD = 0.2;
     if (expectedChange > DIRECTION_THRESHOLD) direction = 'up';
     else if (expectedChange < -DIRECTION_THRESHOLD) direction = 'down';
     else direction = 'neutral';
     
     // NUEVO: Si hay señal clara de dirección pero cambio pequeño, amplificar
     // Esto evita predicciones en la "zona gris" que casi siempre fallan
-    if (direction !== 'neutral' && Math.abs(expectedChange) < 0.6) {
+    if (direction !== 'neutral' && Math.abs(expectedChange) < 0.3) {
       const sign = expectedChange >= 0 ? 1 : -1;
-      expectedChange = sign * 0.6; // Mínimo 0.6% para direcciones claras
+      expectedChange = sign * 0.3; // Mínimo 0.3% para direcciones claras
       logger.info(`[PredictionCalc] Amplified small prediction to avoid neutral zone: ${expectedChange.toFixed(2)}%`);
     }
     
