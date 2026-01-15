@@ -3,6 +3,7 @@ import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
+import { TopTrendsModal } from '../top-trends';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { FavoritesList } from './favorites-list';
 import { MarketPredictions } from './market-predictions';
@@ -12,6 +13,7 @@ import { useHome } from './use-home';
 export function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('predictions');
   const [showTracking, setShowTracking] = useState(false);
+  const [showTopTrends, setShowTopTrends] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -72,8 +74,17 @@ export function Home() {
 
       <Header 
         title="Guess Investor" 
+        actions={[
+          { icon: '🔥', onPress: () => setShowTopTrends(true) },
+        ]}
         actionIcon="📊"
         onActionPress={() => setShowTracking(true)}
+      />
+
+      {/* Modal de Top Tendencias */}
+      <TopTrendsModal
+        visible={showTopTrends}
+        onClose={() => setShowTopTrends(false)}
       />
 
       {/* Modal de Tracking Stats */}

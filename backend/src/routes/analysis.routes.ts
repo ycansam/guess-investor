@@ -151,4 +151,36 @@ router.get('/trends/:symbol', asyncHandler(async (req: Request, res: Response) =
   });
 }));
 
+/**
+ * GET /api/analysis/top-trends
+ * Ranking de activos por tendencia
+ * Query params:
+ *   - category: 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all' (default: 'all')
+ *   - limit: number (default: 20, max: 50)
+ */
+router.get('/top-trends', asyncHandler(async (req: Request, res: Response) => {
+  const category = (req.query.category as string) || 'all';
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+  
+  const validCategories = ['gainers', 'losers', 'streaks', 'momentum', 'all'];
+  if (!validCategories.includes(category)) {
+    throw BadRequestError(`Invalid category. Must be one of: ${validCategories.join(', ')}`);
+  }
+
+  const trends = await trendsService.getTopTrends(
+    category as 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all',
+    limit
+  );
+
+  res.json({
+    success: true,
+    data: {
+      category,
+      count: trends.length,
+      trends,
+      analyzedAt: new Date().toISOString(),
+    },
+  });
+}));
+
 export const analysisRoutes = router;

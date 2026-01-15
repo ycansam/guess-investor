@@ -7,5 +7,6 @@ export { PredictionCard } from './prediction-card';
 export { PredictionHistoryCard } from './prediction-history';
 export { PredictionsList } from './predictions-list';
 export { QuickActions } from './quick-actions';
+export { TopTrendsModal } from './top-trends';
 export { TrendsModal } from './trends-modal';
 

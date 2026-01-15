@@ -6,6 +6,47 @@
 import { logger } from '../../middleware/logger.js';
 import { yahooService } from './yahoo.service.js';
 
+// Lista de activos populares para escanear
+const POPULAR_ASSETS = [
+  // Tech Giants
+  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA',
+  // Finance
+  'JPM', 'BAC', 'V', 'MA',
+  // Healthcare
+  'JNJ', 'PFE', 'UNH',
+  // Consumer
+  'KO', 'PEP', 'MCD', 'NKE', 'DIS',
+  // Energy
+  'XOM', 'CVX',
+  // ETFs
+  'SPY', 'QQQ', 'IWM', 'VTI',
+  // Crypto
+  'BTC-USD', 'ETH-USD', 'SOL-USD',
+  // European
+  'SAP.DE', 'ASML.AS', 'MC.PA',
+];
+
+export interface TrendRanking {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  streak: {
+    direction: 'up' | 'down' | 'sideways';
+    days: number;
+    totalChange: number;
+  };
+  momentum: {
+    signal: 'bullish' | 'bearish' | 'neutral';
+    strength: 'strong' | 'moderate' | 'weak';
+    score: number; // -10 a +10
+  };
+  change24h: number;
+  change7d: number;
+  change30d: number;
+  trendScore: number; // Score compuesto para ranking
+  trendPrediction: 'continue' | 'reverse' | 'uncertain';
+}
+
 export interface TrendStreak {
   direction: 'up' | 'down' | 'sideways';
   days: number;
@@ -466,4 +507,201 @@ export const trendsService = {
       reasoning: reasons.slice(0, 3).join('. '),
     };
   },
+
+  /**
+   * Obtener ranking de activos por tendencia
+   */
+  async getTopTrends(
+    category: 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all' = 'all',
+    limit: number = 20
+  ): Promise<TrendRanking[]> {
+    const cacheKey = `top-trends:${category}`;
+    const cached = topTrendsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data.slice(0, limit);
+    }
+
+    logger.info(`[TrendsService] Scanning ${POPULAR_ASSETS.length} assets for top trends...`);
+    
+    const rankings: TrendRanking[] = [];
+    const batchSize = 5;
+    
+    // Procesar en lotes para no saturar la API
+    for (let i = 0; i < POPULAR_ASSETS.length; i += batchSize) {
+      const batch = POPULAR_ASSETS.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(symbol => this.analyzeTrendQuick(symbol))
+      );
+      
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          rankings.push(result.value);
+        }
+      }
+      
+      // Pequeña pausa entre lotes
+      if (i + batchSize < POPULAR_ASSETS.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    // Ordenar según categoría
+    let sorted: TrendRanking[];
+    switch (category) {
+      case 'gainers':
+        sorted = rankings
+          .filter(r => r.streak.direction === 'up' || r.change7d > 0)
+          .sort((a, b) => b.trendScore - a.trendScore);
+        break;
+      case 'losers':
+        sorted = rankings
+          .filter(r => r.streak.direction === 'down' || r.change7d < 0)
+          .sort((a, b) => a.trendScore - b.trendScore);
+        break;
+      case 'streaks':
+        sorted = rankings.sort((a, b) => b.streak.days - a.streak.days);
+        break;
+      case 'momentum':
+        sorted = rankings
+          .filter(r => r.momentum.signal !== 'neutral')
+          .sort((a, b) => Math.abs(b.momentum.score) - Math.abs(a.momentum.score));
+        break;
+      default:
+        sorted = rankings.sort((a, b) => Math.abs(b.trendScore) - Math.abs(a.trendScore));
+    }
+    
+    // Guardar en cache
+    topTrendsCache.set(cacheKey, {
+      data: sorted,
+      expiresAt: Date.now() + TOP_TRENDS_CACHE_TTL,
+    });
+    
+    logger.info(`[TrendsService] Found ${sorted.length} assets for category ${category}`);
+    return sorted.slice(0, limit);
+  },
+
+  /**
+   * Análisis rápido para ranking (menos detallado que analyzeTrend)
+   */
+  async analyzeTrendQuick(symbol: string): Promise<TrendRanking | null> {
+    try {
+      // Obtener datos históricos (1 mes es suficiente para ranking)
+      const history = await yahooService.getHistory(symbol, '1mo', '1d');
+      
+      if (!history || history.length < 5) {
+        return null;
+      }
+
+      const prices = history.map(d => d.close);
+      const currentPrice = prices[prices.length - 1];
+      
+      // Calcular cambios
+      const change24h = history.length >= 2 
+        ? ((prices[prices.length - 1] - prices[prices.length - 2]) / prices[prices.length - 2]) * 100 
+        : 0;
+      const change7d = history.length >= 7 
+        ? ((prices[prices.length - 1] - prices[Math.max(0, prices.length - 7)]) / prices[Math.max(0, prices.length - 7)]) * 100 
+        : 0;
+      const change30d = history.length >= 20 
+        ? ((prices[prices.length - 1] - prices[0]) / prices[0]) * 100 
+        : 0;
+      
+      // Calcular racha
+      let streakDays = 0;
+      let streakDirection: 'up' | 'down' | 'sideways' = 'sideways';
+      let streakChange = 0;
+      
+      for (let i = history.length - 1; i > 0; i--) {
+        const dayChange = ((history[i].close - history[i-1].close) / history[i-1].close) * 100;
+        const direction = dayChange > 0.1 ? 'up' : dayChange < -0.1 ? 'down' : 'sideways';
+        
+        if (i === history.length - 1) {
+          streakDirection = direction;
+        }
+        
+        if (direction === streakDirection || direction === 'sideways') {
+          streakDays++;
+          streakChange += dayChange;
+        } else {
+          break;
+        }
+      }
+      
+      // Calcular momentum (simple)
+      const shortMA = this.calculateSMA(prices, 5);
+      const longMA = this.calculateSMA(prices, 20);
+      const momentumScore = shortMA && longMA ? ((shortMA - longMA) / longMA) * 100 : 0;
+      
+      let momentumSignal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+      let momentumStrength: 'strong' | 'moderate' | 'weak' = 'weak';
+      
+      if (momentumScore > 3) {
+        momentumSignal = 'bullish';
+        momentumStrength = momentumScore > 8 ? 'strong' : momentumScore > 5 ? 'moderate' : 'weak';
+      } else if (momentumScore < -3) {
+        momentumSignal = 'bearish';
+        momentumStrength = momentumScore < -8 ? 'strong' : momentumScore < -5 ? 'moderate' : 'weak';
+      }
+      
+      // Calcular trend score compuesto
+      // Combina racha, momentum y cambios recientes
+      const trendScore = (
+        (streakDirection === 'up' ? streakDays * 2 : streakDirection === 'down' ? -streakDays * 2 : 0) +
+        momentumScore * 1.5 +
+        change7d * 0.5 +
+        (change24h > 0 ? 2 : change24h < 0 ? -2 : 0)
+      );
+      
+      // Predicción simple
+      let trendPrediction: 'continue' | 'reverse' | 'uncertain' = 'uncertain';
+      if (streakDays >= 3 && ((streakDirection === 'up' && momentumSignal === 'bullish') ||
+          (streakDirection === 'down' && momentumSignal === 'bearish'))) {
+        trendPrediction = 'continue';
+      } else if (streakDays >= 5 && ((streakDirection === 'up' && momentumSignal === 'bearish') ||
+                 (streakDirection === 'down' && momentumSignal === 'bullish'))) {
+        trendPrediction = 'reverse';
+      }
+      
+      // Obtener nombre del activo
+      const quote = await yahooService.getQuote(symbol);
+      const name = quote?.name || symbol;
+      
+      return {
+        symbol,
+        name,
+        currentPrice,
+        streak: {
+          direction: streakDirection,
+          days: streakDays,
+          totalChange: streakChange,
+        },
+        momentum: {
+          signal: momentumSignal,
+          strength: momentumStrength,
+          score: Math.round(momentumScore * 10) / 10,
+        },
+        change24h: Math.round(change24h * 100) / 100,
+        change7d: Math.round(change7d * 100) / 100,
+        change30d: Math.round(change30d * 100) / 100,
+        trendScore: Math.round(trendScore * 10) / 10,
+        trendPrediction,
+      };
+    } catch (error) {
+      logger.warn(`[TrendsService] Failed to analyze ${symbol}:`, error);
+      return null;
+    }
+  },
+
+  /**
+   * Calcular SMA simple
+   */
+  calculateSMA(prices: number[], period: number): number | null {
+    if (prices.length < period) return null;
+    const slice = prices.slice(-period);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  },
 };
+
+// Cache para top trends (más largo porque es costoso calcular)
+const topTrendsCache = new Map<string, { data: TrendRanking[]; expiresAt: number }>();
+const TOP_TRENDS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos

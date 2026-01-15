@@ -297,6 +297,36 @@ export interface TrendAnalysis {
   analyzedAt: string;
 }
 
+export interface TrendRanking {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  streak: {
+    direction: 'up' | 'down' | 'sideways';
+    days: number;
+    totalChange: number;
+  };
+  momentum: {
+    signal: 'bullish' | 'bearish' | 'neutral';
+    strength: 'strong' | 'moderate' | 'weak';
+    score: number;
+  };
+  change24h: number;
+  change7d: number;
+  change30d: number;
+  trendScore: number;
+  trendPrediction: 'continue' | 'reverse' | 'uncertain';
+}
+
+export type TrendCategory = 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all';
+
+export interface TopTrendsResponse {
+  category: TrendCategory;
+  count: number;
+  trends: TrendRanking[];
+  analyzedAt: string;
+}
+
 // ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
@@ -385,6 +415,15 @@ export const apiClient = {
    */
   getTrends: (symbol: string): Promise<TrendAnalysis | null> => {
     return get(`/analysis/trends/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener ranking de activos por tendencia
+   * @param category - 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all'
+   * @param limit - Número máximo de resultados (max 50)
+   */
+  getTopTrends: (category: TrendCategory = 'all', limit: number = 20): Promise<TopTrendsResponse> => {
+    return get(`/analysis/top-trends?category=${category}&limit=${limit}`);
   },
 
   // -------------------------------------------------------------------------
