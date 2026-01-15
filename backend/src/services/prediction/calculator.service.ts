@@ -25,9 +25,9 @@ import { SentimentData, sentimentService } from '../external/sentiment.service.j
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import {
-    factorCorrelationService,
-    probabilisticModelService,
-    reinforcementLearningService,
+  factorCorrelationService,
+  probabilisticModelService,
+  reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
