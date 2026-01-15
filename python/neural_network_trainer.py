@@ -85,20 +85,21 @@ def prepare_features(predictions: List[Dict]) -> Tuple[np.ndarray, np.ndarray, n
     y_magnitude = []
     
     for pred in predictions:
-        # Extraer factor scores
-        factor_scores = pred.get('factorScores', {})
-        features = [factor_scores.get(f, 50) / 100.0 for f in FACTORS]
+        # Extraer factor scores (rango: -100 a +100, donde 0 es neutro)
+        factor_scores = pred.get('factorScores', pred.get('factor_scores', {}))
+        # Normalizar a rango -1 a +1, usar 0 (neutro) si no hay datos
+        features = [factor_scores.get(f, 0) / 100.0 for f in FACTORS]
         
         # Añadir features adicionales si existen
         if 'confidence' in pred:
             features.append(pred['confidence'] / 100.0)
         else:
-            features.append(0.5)
+            features.append(0.5)  # Confianza default: 50%
         
         if 'volatilityScore' in pred:
             features.append(pred['volatilityScore'] / 100.0)
         else:
-            features.append(0.5)
+            features.append(0.5)  # Volatilidad default: media
         
         # Timeframe encoding (one-hot)
         timeframe = pred.get('timeframe', 'swing')
@@ -421,8 +422,8 @@ def predict_direction(
             return {'error': 'No hay modelo entrenado'}
         scaler_params = metadata.get('direction_scaler')
     
-    # Preparar features
-    features = [factor_scores.get(f, 50) / 100.0 for f in FACTORS]
+    # Preparar features (rango: -100 a +100, donde 0 es neutro)
+    features = [factor_scores.get(f, 0) / 100.0 for f in FACTORS]
     features.append(confidence / 100.0)
     features.append(volatility / 100.0)
     features.append(1.0 if timeframe == 'intraday' else 0.0)
