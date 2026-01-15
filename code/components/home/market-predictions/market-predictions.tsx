@@ -455,8 +455,13 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
   // Ordenar activos - Favoritas primero, luego por ordenamiento
   const sortedAssets = useMemo(() => {
-    // La búsqueda ya se aplica en getAssetsPaginated, no filtrar aquí
-    let sorted = [...displayedAssets];
+    // Deduplicar por símbolo (mantener primera ocurrencia)
+    const seen = new Set<string>();
+    const deduplicated = displayedAssets.filter(a => {
+      if (seen.has(a.symbol)) return false;
+      seen.add(a.symbol);
+      return true;
+    });
 
     // Obtener predicción para un símbolo desde cachedPredictions
     const getPrediction = (symbol: string) => {
@@ -464,8 +469,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     };
 
     // Separar favoritas del resto
-    const favorites = sorted.filter(a => favoriteSymbols.has(a.symbol));
-    const nonFavorites = sorted.filter(a => !favoriteSymbols.has(a.symbol));
+    const favorites = deduplicated.filter(a => favoriteSymbols.has(a.symbol));
+    const nonFavorites = deduplicated.filter(a => !favoriteSymbols.has(a.symbol));
     
     // Aplicar ordenamiento a cada grupo
     const applySorting = (assets: MarketAsset[]) => {
@@ -1080,7 +1085,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         data={sortedAssets}
         extraData={sortBy}
         renderItem={renderAsset}
-        keyExtractor={(item) => item.symbol}
+        keyExtractor={(item, index) => `${item.symbol}-${index}`}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={loadingMore ? (
           <View style={styles.loadingFooter}>
