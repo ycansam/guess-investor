@@ -4,7 +4,7 @@
 
 Aplicación móvil de predicción de inversiones construida con [Expo](https://expo.dev) y React Native.
 
-## 🆕 Novedades v1.6.0
+## 🆕 Novedades v1.4.0
 
 - **Multi-Timeframe**: Soporte completo para predicciones Intraday, Swing (7d) y Long (30d)
 - **Vista de Tendencias**: Nueva página con análisis de mercado

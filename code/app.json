@@ -2,7 +2,7 @@
   "expo": {
     "name": "guess-investor",
     "slug": "guess-investor",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "guessinvestor",

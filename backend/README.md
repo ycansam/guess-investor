@@ -4,7 +4,7 @@
 
 API REST para el servicio de predicción de inversiones con ML avanzado, ensemble de 7 modelos dinámicos y soporte multi-timeframe (Intraday, Swing, Long).
 
-## 🆕 Novedades v1.6.0
+## 🆕 Novedades v1.4.0
 
 - **yahoo-finance2**: Nueva integración para autenticación automática
 - **Multi-Timeframe**: Soporte completo para predicciones Swing (7d) y Long (30d)
