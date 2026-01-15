@@ -5,11 +5,13 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
+  PanResponder,
   Platform,
   RefreshControl,
   ScrollView,
@@ -99,6 +101,53 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   type ExploreSortType = 'predicted' | 'gainers' | 'losers' | 'popular' | 'bullish';
   const [exploreSortBy, setExploreSortBy] = useState<ExploreSortType>('popular');
 
+  // Scrollbar personalizada
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const contentHeightRef = useRef(0);
+  const scrollViewHeightRef = useRef(0);
+  const [scrollbarVisible, setScrollbarVisible] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
+  const isDraggingScrollbar = useRef(false);
+  const lastScrollY = useRef(0);
+
+  // PanResponder para arrastrar la scrollbar
+  const scrollbarPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        isDraggingScrollbar.current = true;
+        // Guardar posición actual del scroll
+        scrollY.stopAnimation((value) => {
+          lastScrollY.current = value;
+        });
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (!isDraggingScrollbar.current) return;
+        
+        const trackHeight = scrollViewHeightRef.current - 16;
+        const scrollableHeight = contentHeightRef.current - scrollViewHeightRef.current;
+        const thumbHeight = Math.max((scrollViewHeightRef.current / contentHeightRef.current) * scrollViewHeightRef.current, 40);
+        
+        // Convertir movimiento del dedo a scroll
+        const scrollRatio = scrollableHeight / (trackHeight - thumbHeight);
+        const newScrollY = lastScrollY.current + (gestureState.dy * scrollRatio);
+        const clampedScrollY = Math.max(0, Math.min(newScrollY, scrollableHeight));
+        
+        flatListRef.current?.scrollToOffset({ 
+          offset: clampedScrollY,
+          animated: false 
+        });
+      },
+      onPanResponderRelease: () => {
+        isDraggingScrollbar.current = false;
+      },
+      onPanResponderTerminate: () => {
+        isDraggingScrollbar.current = false;
+      },
+    })
+  ).current;
+
   const { 
     predictions,
     handleClearPredictions,
@@ -184,7 +233,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     return sorted;
   }, []);
 
-  // Cargar datos inicial con paginación (favoritos primero)
+  // Cargar datos inicial con paginación (favoritos y predicciones primero)
   const loadData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
@@ -195,11 +244,19 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       // 1. Obtener los símbolos favoritos
       const favSymbols = Array.from(favoriteSymbols);
       
-      // 2. Obtener precios de favoritos en paralelo con los activos paginados
-      const [favoriteAssets, result] = await Promise.all([
-        // Obtener datos de favoritos
-        favSymbols.length > 0 
-          ? marketDataService.getAssetsBySymbols(favSymbols)
+      // 2. Obtener símbolos con predicciones activas para el timeframe seleccionado
+      const predictionSymbols = cachedPredictions
+        .filter(p => p.timeframe === selectedTimeframe)
+        .map(p => p.symbol);
+      
+      // 3. Combinar símbolos prioritarios (favoritos + predicciones)
+      const prioritySymbols = [...new Set([...favSymbols, ...predictionSymbols])];
+      
+      // 4. Obtener precios de símbolos prioritarios en paralelo con los activos paginados
+      const [priorityAssets, result] = await Promise.all([
+        // Obtener datos de favoritos y predicciones
+        prioritySymbols.length > 0 
+          ? marketDataService.getAssetsBySymbols(prioritySymbols)
           : Promise.resolve([]),
         // Obtener activos paginados normal
         marketDataService.getAssetsPaginated(
@@ -209,28 +266,31 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         )
       ]);
       
-      // 3. Combinar: favoritos primero, luego el resto sin duplicados
-      const favoriteSymbolSet = new Set(favSymbols.map(s => s.toUpperCase()));
-      const nonFavoriteAssets = result.assets.filter(
-        a => !favoriteSymbolSet.has(a.symbol.toUpperCase())
+      // 5. Combinar: prioritarios primero, luego el resto sin duplicados
+      const prioritySymbolSet = new Set(prioritySymbols.map(s => s.toUpperCase()));
+      const nonPriorityAssets = result.assets.filter(
+        a => !prioritySymbolSet.has(a.symbol.toUpperCase())
       );
       
-      // 4. Ordenar favoritos por predicciones
-      const predSymbols = new Set(cachedPredictions.map(p => p.symbol));
-      const sortedFavorites = [...favoriteAssets].sort((a, b) => {
+      // 6. Ordenar prioritarios: predicciones primero, luego favoritos
+      const predSymbols = new Set(cachedPredictions.filter(p => p.timeframe === selectedTimeframe).map(p => p.symbol));
+      const sortedPriority = [...priorityAssets].sort((a, b) => {
         const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
         const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
         if (aHasPred !== bHasPred) return bHasPred - aHasPred;
+        const aFav = favoriteSymbols.has(a.symbol) ? 1 : 0;
+        const bFav = favoriteSymbols.has(b.symbol) ? 1 : 0;
+        if (aFav !== bFav) return bFav - aFav;
         return (b.changePercent ?? -999) - (a.changePercent ?? -999);
       });
       
-      // 5. Aplicar ordenamiento al resto según el tipo seleccionado
-      const sortedRest = applySorting(nonFavoriteAssets, exploreSortBy, predSymbols, new Set());
+      // 7. Aplicar ordenamiento al resto según el tipo seleccionado
+      const sortedRest = applySorting(nonPriorityAssets, exploreSortBy, predSymbols, new Set());
       
-      // 6. Combinar: favoritos primero, luego el resto
-      const combined = [...sortedFavorites, ...sortedRest];
+      // 8. Combinar: prioritarios primero, luego el resto
+      const combined = [...sortedPriority, ...sortedRest];
       
-      console.log(`[MarketPredictions] Loaded ${favoriteAssets.length} favorites + ${nonFavoriteAssets.length} others`);
+      console.log(`[MarketPredictions] Loaded ${priorityAssets.length} priority (${predictionSymbols.length} predictions + ${favSymbols.length} favorites) + ${nonPriorityAssets.length} others`);
       
       setAllAssets(combined);
       setDisplayedAssets(combined);
@@ -242,7 +302,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchQuery, favoriteSymbols, selectedCategory, exploreSortBy, cachedPredictions, applySorting]);
+  }, [debouncedSearchQuery, favoriteSymbols, selectedCategory, exploreSortBy, cachedPredictions, applySorting, selectedTimeframe]);
 
   // Cargar más datos (infinite scroll)
   const loadMore = useCallback(async () => {
@@ -453,7 +513,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     return selectableAssets.length > 0 && selectableAssets.every(a => selectedSymbols.has(a.symbol));
   }, [selectableAssets, selectedSymbols]);
 
-  // Ordenar activos - Favoritas primero, luego por ordenamiento
+  // Ordenar activos - CON PREDICCIÓN primero, luego Favoritas, luego resto
   const sortedAssets = useMemo(() => {
     // Deduplicar por símbolo (mantener primera ocurrencia)
     const seen = new Set<string>();
@@ -468,9 +528,14 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       return cachedPredictions.find(p => p.symbol === symbol && p.timeframe === selectedTimeframe) || null;
     };
 
-    // Separar favoritas del resto
-    const favorites = deduplicated.filter(a => favoriteSymbols.has(a.symbol));
-    const nonFavorites = deduplicated.filter(a => !favoriteSymbols.has(a.symbol));
+    // Separar en 3 grupos: con predicción, favoritos sin predicción, resto
+    const withPrediction = deduplicated.filter(a => getPrediction(a.symbol) !== null);
+    const favoritesWithoutPrediction = deduplicated.filter(a => 
+      getPrediction(a.symbol) === null && favoriteSymbols.has(a.symbol)
+    );
+    const rest = deduplicated.filter(a => 
+      getPrediction(a.symbol) === null && !favoriteSymbols.has(a.symbol)
+    );
     
     // Aplicar ordenamiento a cada grupo
     const applySorting = (assets: MarketAsset[]) => {
@@ -505,8 +570,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       return sorted;
     };
 
-    // Ordenar cada grupo y combinar (favoritas primero)
-    return [...applySorting(favorites), ...applySorting(nonFavorites)];
+    // Ordenar: primero con predicción, luego favoritos, luego resto
+    return [...applySorting(withPrediction), ...applySorting(favoritesWithoutPrediction), ...applySorting(rest)];
   }, [displayedAssets, sortBy, selectedTimeframe, cachedPredictions, favoriteSymbols]);
 
   // Predecir todos los seleccionados
@@ -1081,50 +1146,90 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         </View>
       </View>
 
-      <FlatList
-        data={sortedAssets}
-        extraData={sortBy}
-        renderItem={renderAsset}
-        keyExtractor={(item, index) => `${item.symbol}-${index}`}
-        ListHeaderComponent={renderHeader}
-        ListFooterComponent={loadingMore ? (
-          <View style={styles.loadingFooter}>
-            <ActivityIndicator size="small" color="#6b7280" />
-            <Text style={styles.loadingText}>Cargando más...</Text>
+      <View style={{ flex: 1 }}>
+        <FlatList
+          ref={flatListRef}
+          data={sortedAssets}
+          extraData={sortBy}
+          renderItem={renderAsset}
+          keyExtractor={(item, index) => `${item.symbol}-${index}`}
+          ListHeaderComponent={renderHeader}
+          ListFooterComponent={loadingMore ? (
+            <View style={styles.loadingFooter}>
+              <ActivityIndicator size="small" color="#6b7280" />
+              <Text style={styles.loadingText}>Cargando más...</Text>
+            </View>
+          ) : null}
+          ListEmptyComponent={
+            loading ? (
+              <View style={styles.emptyContainer}>
+                <ActivityIndicator size="large" color="#3b82f6" />
+                <Text style={styles.loadingText}>Cargando activos...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyIcon}>🔍</Text>
+                <Text style={styles.emptyTitle}>No se encontraron activos</Text>
+                <Text style={styles.emptyText}>
+                  Prueba con otro término de búsqueda
+                </Text>
+              </View>
+            )
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#3b82f6"
+            />
+          }
+          contentContainerStyle={[
+            styles.listContent,
+            isDesktop && styles.listContentDesktop,
+            sortedAssets.length === 0 && styles.emptyListContent,
+          ]}
+          showsVerticalScrollIndicator={false}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
+          onContentSizeChange={(w, h) => {
+            contentHeightRef.current = h;
+            setScrollbarVisible(h > scrollViewHeightRef.current);
+          }}
+          onLayout={(e) => {
+            scrollViewHeightRef.current = e.nativeEvent.layout.height;
+            setScrollbarVisible(contentHeightRef.current > e.nativeEvent.layout.height);
+          }}
+          scrollEventThrottle={16}
+        />
+        
+        {/* Scrollbar personalizada arrastrable */}
+        {scrollbarVisible && (
+          <View
+            style={styles.scrollbarTrack}
+            {...scrollbarPanResponder.panHandlers}
+          >
+            <Animated.View 
+              style={[
+                styles.scrollbarThumb,
+                {
+                  height: Math.max((scrollViewHeightRef.current / contentHeightRef.current) * scrollViewHeightRef.current, 40),
+                  transform: [{
+                    translateY: scrollY.interpolate({
+                      inputRange: [0, Math.max(contentHeightRef.current - scrollViewHeightRef.current, 1)],
+                      outputRange: [0, scrollViewHeightRef.current - 16 - Math.max((scrollViewHeightRef.current / contentHeightRef.current) * scrollViewHeightRef.current, 40)],
+                      extrapolate: 'clamp',
+                    })
+                  }]
+                }
+              ]}
+            />
           </View>
-        ) : null}
-        ListEmptyComponent={
-          loading ? (
-            <View style={styles.emptyContainer}>
-              <ActivityIndicator size="large" color="#3b82f6" />
-              <Text style={styles.loadingText}>Cargando activos...</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>🔍</Text>
-              <Text style={styles.emptyTitle}>No se encontraron activos</Text>
-              <Text style={styles.emptyText}>
-                Prueba con otro término de búsqueda
-              </Text>
-            </View>
-          )
-        }
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.5}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#3b82f6"
-          />
-        }
-        contentContainerStyle={[
-          styles.listContent,
-          isDesktop && styles.listContentDesktop,
-          sortedAssets.length === 0 && styles.emptyListContent,
-        ]}
-        showsVerticalScrollIndicator={false}
-      />
+        )}
+      </View>
     </View>
   );
 }
@@ -1133,6 +1238,26 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f0f',
+  },
+  scrollbarTrack: {
+    position: 'absolute',
+    right: 4,
+    top: 8,
+    bottom: 8,
+    width: 30,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  scrollbarThumb: {
+    width: 8,
+    backgroundColor: '#3b82f6',
+    borderRadius: 4,
+    minHeight: 50,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 5,
   },
   fixedHeader: {
     backgroundColor: '#0f0f0f',

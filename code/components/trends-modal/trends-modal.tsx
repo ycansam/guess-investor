@@ -323,7 +323,7 @@ export function TrendsModal({ visible, onClose, trends, loading, error }: Trends
                   : 'Incierto'}
               </Text>
               <Text style={styles.predictionProb}>
-                {(trends.trendPrediction.probability * 100).toFixed(0)}% probabilidad
+                {trends.trendPrediction.probability.toFixed(0)}% probabilidad
               </Text>
             </View>
             <Text style={styles.predictionReason}>{trends.trendPrediction.reasoning}</Text>
