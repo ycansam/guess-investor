@@ -1,7 +1,7 @@
 # 🎯 Guess Investor
 
-**Última actualización:** 29 de diciembre de 2025  
-**Versión:** 1.4.0
+**Última actualización:** 15 de enero de 2026  
+**Versión:** 1.6.0
 
 **Aplicación de predicción de inversiones con IA híbrida** que combina análisis cuantitativo en tiempo real con machine learning para generar predicciones de precios de activos financieros.
 
@@ -9,7 +9,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-Backend-green?logo=node.js)
 ![Python](https://img.shields.io/badge/Python-ML_Server-green?logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Version](https://img.shields.io/badge/version-1.4.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.6.0-brightgreen)
 
 ---
 

@@ -1,8 +1,88 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 7 de enero de 2026  
-**Versión:** `1.5.0`  
-**Commit actual:** `319fa84`
+**Última actualización:** 15 de enero de 2026  
+**Versión:** `1.6.0`  
+**Commit actual:** `ab127b7`
+
+---
+
+## [1.6.0] - 15 de enero de 2026
+
+### Commits
+- `ab127b7` fixed bug swing predictions
+- `2628282` fixed factors
+- `85bcb2f` factores repetidos
+- `ec0166a` fixes
+- `6652af5` calculator
+- `b688721` añadido clasificador
+- `e4ce40d` fixed weights intraday
+- `4d880f3` añadido bonus
+- `568e11b` added page trends
+- `ac57e9a` añadido modal tendencias
+- `20a1230` fixes
+- `20513c3` añadido direccion
+- `25051af` eliminado pestaña buscador
+- `b02ddc7` fixed cache
+- `dcabc7d` fixed bug
+- `cac0972` ahora se está aplicando el modelo
+- `26426de` fixed UI
+- `80a24c0` added page view predicciones
+- `afb4808` fixed bugs
+- `1cd8beb` añadidos predicciones dias
+- `ad61020` fixed some changes
+- `da43dbc` fixed retraining
+
+### ✨ Nuevas Funcionalidades
+
+#### 🎯 Predicciones Multi-Timeframe
+- **Soporte completo para Swing (7 días) y Largo Plazo (30 días)**
+- Nuevo endpoint `POST /api/training/import-active` para sincronizar predicciones activas
+- Corrección del bug donde predicciones swing no aparecían en la UI
+- Conversión automática de labels (`'Swing'`) a keys (`'swing'`) para consistencia
+
+#### 📊 Yahoo Finance v2 Integration
+- Migración a biblioteca `yahoo-finance2` para autenticación automática
+- Solución al error "Invalid Crumb" de Yahoo Finance
+- Todos los 11 factores ahora retornan datos correctamente
+- Servicios actualizados: `institutional.service.ts`, `financials.service.ts`, `expectations.service.ts`
+
+#### 📈 Vista de Tendencias y Predicciones
+- Nueva página de predicciones con vista detallada
+- Modal de tendencias con análisis de mercado
+- Indicadores de dirección en predicciones
+
+#### 🧮 Mejoras en el Calculador
+- Clasificador de activos mejorado
+- Sistema de bonus para predicciones
+- Pesos intraday optimizados
+- Fix de factores duplicados
+
+### 🐛 Correcciones
+
+- **Swing Predictions Bug**: Las predicciones swing ahora se muestran correctamente en la UI
+- **TrainingCache Sync**: Sincronización entre tablas `Prediction` y `TrainingCache`
+- **Yahoo Finance Auth**: Resuelto error de autenticación con crumbs
+- **Factor Data**: Todos los factores (Competitors, Institutional, Financials, Expectations) ahora funcionan
+- **Cache Issues**: Múltiples correcciones de cache
+- **UI Fixes**: Mejoras generales de interfaz
+
+### 🔧 Cambios Técnicos
+
+#### Backend
+```typescript
+// Nuevo endpoint para importar predicciones activas
+POST /api/training/import-active?timeframeDays=7
+
+// yahoo-finance2 reemplaza implementación manual
+import YahooFinance from 'yahoo-finance2';
+const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+```
+
+#### Frontend
+```typescript
+// Corrección: usar key en lugar de label para timeframe
+timeframe: selectedTimeframe, // 'swing' en lugar de 'Swing'
+```
 
 ---
 

@@ -1,8 +1,15 @@
 # Guess Investor Backend
 
-**Última actualización:** 29 de diciembre de 2025
+**Última actualización:** 15 de enero de 2026
 
-API REST para el servicio de predicción de inversiones con ML avanzado y ensemble de 7 modelos dinámicos.
+API REST para el servicio de predicción de inversiones con ML avanzado, ensemble de 7 modelos dinámicos y soporte multi-timeframe (Intraday, Swing, Long).
+
+## 🆕 Novedades v1.6.0
+
+- **yahoo-finance2**: Nueva integración para autenticación automática
+- **Multi-Timeframe**: Soporte completo para predicciones Swing (7d) y Long (30d)
+- **Import Active**: Nuevo endpoint para sincronizar predicciones activas al cache
+- **11 Factores**: Todos los factores de análisis ahora funcionan correctamente
 
 ## 🚀 Quick Start
 
@@ -78,6 +85,9 @@ GET    /api/predictions/stats       # Estadísticas
 ### Training
 ```
 GET    /api/training/weights         # Ver pesos actuales
+GET    /api/training/cache           # Cache de predicciones activas
+POST   /api/training/import-active   # Importar predicciones activas a cache
+POST   /api/training/sync-cache      # Sincronizar cache con verificadas
 POST   /api/training/start           # Iniciar entrenamiento
 GET    /api/training/python/status   # Estado del servidor Python
 POST   /api/training/python/sync     # Sincronizar con Python

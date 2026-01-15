@@ -1,8 +1,15 @@
 # Guess Investor - App React Native
 
-**Última actualización:** 29 de diciembre de 2025
+**Última actualización:** 15 de enero de 2026
 
 Aplicación móvil de predicción de inversiones construida con [Expo](https://expo.dev) y React Native.
+
+## 🆕 Novedades v1.6.0
+
+- **Multi-Timeframe**: Soporte completo para predicciones Intraday, Swing (7d) y Long (30d)
+- **Vista de Tendencias**: Nueva página con análisis de mercado
+- **Modal de Predicciones**: Vista detallada de predicciones activas
+- **Clasificador Mejorado**: Sistema de bonus para predicciones
 
 ## 🚀 Get Started
 
