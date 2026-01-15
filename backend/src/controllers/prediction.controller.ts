@@ -12,7 +12,22 @@ import { trackRecordService } from '../services/prediction/track-record.service.
 // Mantener un “buffer” evita penalizar ruido intradía.
 const DIRECTION_THRESHOLD_PCT = 0.5;
 
-function computeVerificationData(prediction: Prediction, actualPrice: number): VerifyPredictionData {
+// Bonus por alcanzar objetivo durante el período (multiplicador de score)
+const TARGET_REACHED_BONUS = 1.10; // +10% al score si alcanzó el objetivo
+const TARGET_MARGIN_PCT = 0.5; // Margen mínimo para considerar que "alcanzó" el objetivo
+
+interface PeriodExtremes {
+  high: number;
+  low: number;
+  reachedHigh: Date;
+  reachedLow: Date;
+}
+
+function computeVerificationData(
+  prediction: Prediction, 
+  actualPrice: number,
+  periodExtremes?: PeriodExtremes | null
+): VerifyPredictionData {
   const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
 
   const actualDirection: 'up' | 'down' | 'neutral' =
@@ -29,6 +44,42 @@ function computeVerificationData(prediction: Prediction, actualPrice: number): V
 
   const predictedChange = prediction.predictedChange ?? 0;
   const priceError = Math.abs(actualChange - predictedChange);
+
+  // Verificar si el objetivo fue alcanzado durante el período
+  let targetReached = false;
+  let targetReachedAt: Date | undefined;
+  let periodHigh: number | undefined;
+  let periodLow: number | undefined;
+  
+  if (periodExtremes) {
+    periodHigh = periodExtremes.high;
+    periodLow = periodExtremes.low;
+    
+    // Usar el targetPrice real (no la media del rango)
+    const targetPrice = prediction.targetPrice;
+    const marginAmount = targetPrice * (TARGET_MARGIN_PCT / 100);
+    
+    if (prediction.direction === 'up') {
+      // Si predijo subida, verificar si el high del período superó el objetivo por el margen mínimo
+      if (periodExtremes.high >= targetPrice + marginAmount) {
+        targetReached = true;
+        targetReachedAt = periodExtremes.reachedHigh;
+      }
+    } else if (prediction.direction === 'down') {
+      // Si predijo bajada, verificar si el low del período bajó del objetivo por el margen mínimo
+      if (periodExtremes.low <= targetPrice - marginAmount) {
+        targetReached = true;
+        targetReachedAt = periodExtremes.reachedLow;
+      }
+    } else {
+      // Para neutral, verificar si se mantuvo cerca del precio actual (dentro del 1%)
+      const neutralMargin = prediction.currentPrice * 0.01;
+      if (periodExtremes.high <= prediction.currentPrice + neutralMargin && 
+          periodExtremes.low >= prediction.currentPrice - neutralMargin) {
+        targetReached = true;
+      }
+    }
+  }
 
   let accuracyScore = 0;
   if (directionCorrect) {
@@ -53,6 +104,12 @@ function computeVerificationData(prediction: Prediction, actualPrice: number): V
     } else {
       accuracyScore = Math.max(0, 15 - actualMag);
     }
+  }
+
+  // Aplicar bonus si alcanzó el objetivo durante el período
+  if (targetReached && directionCorrect) {
+    accuracyScore = Math.min(100, accuracyScore * TARGET_REACHED_BONUS);
+    console.log(`[Verify] 🎯 Target reached bonus applied! New score: ${accuracyScore.toFixed(1)}`);
   }
 
   accuracyScore = Math.round(Math.max(0, Math.min(100, accuracyScore)));
@@ -84,6 +141,10 @@ function computeVerificationData(prediction: Prediction, actualPrice: number): V
     changeAccuracy: Math.round(changeAccuracy),
     accuracyScore,
     quality,
+    targetReached,
+    targetReachedAt,
+    periodHigh,
+    periodLow,
   };
 }
 
@@ -387,7 +448,22 @@ export const predictionController = {
       throw BadRequestError('actualPrice must be a positive number');
     }
 
-    const verifyData = computeVerificationData(prediction, actualPrice);
+    // Obtener extremos del período para verificar si alcanzó el objetivo
+    let periodExtremes = null;
+    try {
+      periodExtremes = await yahooService.getPeriodExtremes(
+        prediction.symbol,
+        prediction.createdAt,
+        prediction.expiresAt
+      );
+      if (periodExtremes) {
+        console.log(`[Verify] Period extremes for ${prediction.symbol}: High=${periodExtremes.high}, Low=${periodExtremes.low}`);
+      }
+    } catch (error) {
+      console.log('[Verify] Could not get period extremes, continuing without bonus check');
+    }
+
+    const verifyData = computeVerificationData(prediction, actualPrice, periodExtremes);
 
     const verified = await predictionRepository.verify(id, verifyData);
 

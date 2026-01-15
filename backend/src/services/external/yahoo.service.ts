@@ -426,6 +426,68 @@ export const yahooService = {
   },
 
   /**
+   * Obtener extremos (high/low) del período entre dos fechas
+   * Útil para verificar si el precio objetivo fue alcanzado en algún momento
+   */
+  async getPeriodExtremes(
+    symbol: string, 
+    startDate: Date, 
+    endDate: Date
+  ): Promise<{ high: number; low: number; reachedHigh: Date; reachedLow: Date } | null> {
+    try {
+      const history = await this.getHistory(symbol, '3mo', '1d');
+      
+      if (history.length === 0) {
+        return null;
+      }
+      
+      // Normalizar fechas
+      const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+      const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+      
+      // Filtrar puntos en el rango
+      const inRange = history.filter(point => {
+        const pointDate = new Date(point.timestamp);
+        const pointDay = new Date(pointDate.getFullYear(), pointDate.getMonth(), pointDate.getDate());
+        return pointDay >= startDay && pointDay <= endDay;
+      });
+      
+      if (inRange.length === 0) {
+        return null;
+      }
+      
+      // Encontrar máximo y mínimo
+      let maxHigh = -Infinity;
+      let minLow = Infinity;
+      let reachedHigh = new Date();
+      let reachedLow = new Date();
+      
+      for (const point of inRange) {
+        if (point.high > maxHigh) {
+          maxHigh = point.high;
+          reachedHigh = new Date(point.timestamp);
+        }
+        if (point.low < minLow) {
+          minLow = point.low;
+          reachedLow = new Date(point.timestamp);
+        }
+      }
+      
+      logger.info(`[Yahoo] Period extremes for ${symbol} (${startDay.toISOString().split('T')[0]} to ${endDay.toISOString().split('T')[0]}): High=${maxHigh}, Low=${minLow}`);
+      
+      return {
+        high: maxHigh,
+        low: minLow,
+        reachedHigh,
+        reachedLow,
+      };
+    } catch (error) {
+      logger.error(`[Yahoo] Error getting period extremes for ${symbol}:`, error);
+      return null;
+    }
+  },
+
+  /**
    * Limpiar cache
    */
   clearCache(): void {

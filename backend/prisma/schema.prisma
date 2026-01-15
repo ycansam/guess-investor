@@ -49,6 +49,12 @@ model Prediction {
   accuracyScore     Float?    // 0-100
   quality           String?   // "excellent" | "good" | "poor" | "failed"
   
+  // Bonus por alcanzar objetivo durante el período
+  targetReached     Boolean?  // ¿El precio objetivo fue alcanzado en algún momento?
+  targetReachedAt   DateTime? // ¿Cuándo se alcanzó el objetivo?
+  periodHigh        Float?    // Máximo del período
+  periodLow         Float?    // Mínimo del período
+  
   // Volatilidad para ML
   volatility        Float?    // Volatilidad anualizada del activo (%)
   volatilityCategory String?  // "low" | "medium" | "high"

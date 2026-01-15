@@ -45,6 +45,11 @@ export interface VerifyPredictionData {
   changeAccuracy: number;
   accuracyScore: number;
   quality: 'excellent' | 'good' | 'poor' | 'very_poor' | 'failed';
+  // Bonus por alcanzar objetivo durante el período
+  targetReached?: boolean;
+  targetReachedAt?: Date;
+  periodHigh?: number;
+  periodLow?: number;
 }
 
 export interface PredictionStats {
@@ -266,6 +271,10 @@ export const predictionRepository = {
         changeAccuracy: data.changeAccuracy,
         accuracyScore: data.accuracyScore,
         quality: data.quality,
+        targetReached: data.targetReached,
+        targetReachedAt: data.targetReachedAt,
+        periodHigh: data.periodHigh,
+        periodLow: data.periodLow,
       },
     });
   },
