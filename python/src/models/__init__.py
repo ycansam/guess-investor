@@ -4,6 +4,7 @@ Módulo de modelos
 from .data_models import VerifiedPrediction, TrainingResult, WeightsData
 from .loss_function import LossFunction
 from .optimizer import WeightOptimizer
+from .evolutionary_optimizer import EvolutionaryOptimizer
 from .asset_classifier import AssetClassifier, AssetProfile, get_classifier
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     'WeightsData',
     'LossFunction',
     'WeightOptimizer',
+    'EvolutionaryOptimizer',
     'AssetClassifier',
     'AssetProfile',
     'get_classifier',

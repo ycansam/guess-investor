@@ -27,7 +27,7 @@ from src.config import (
     DEFAULT_LEARNING_RATE, DEFAULT_MOMENTUM, DEFAULT_EPOCHS,
     EARLY_STOPPING_PATIENCE
 )
-from src.models import WeightOptimizer, LossFunction, VerifiedPrediction, AssetClassifier, get_classifier
+from src.models import WeightOptimizer, LossFunction, VerifiedPrediction, AssetClassifier, get_classifier, EvolutionaryOptimizer
 from src.utils import save_weights, append_training_result, load_weights
 
 # Archivo donde guardar las predicciones recibidas
@@ -229,7 +229,7 @@ class TrainingHandler(BaseHTTPRequestHandler):
             return 0
     
     def _train(self) -> dict:
-        """Ejecuta el entrenamiento"""
+        """Ejecuta el entrenamiento usando el optimizador más apropiado"""
         if not PREDICTIONS_FILE.exists():
             return {'success': False, 'error': 'No hay datos de predicciones'}
         
@@ -247,26 +247,27 @@ class TrainingHandler(BaseHTTPRequestHandler):
         predictions = []
         for p in predictions_data:
             try:
+                actual_change = p.get('actual_change', 0)
                 pred = VerifiedPrediction(
                     id=p.get('id', ''),
                     symbol=p.get('symbol', ''),
                     asset_type=p.get('asset_type', 'stock'),
                     timeframe_days=p.get('timeframe_days', 1),
-                    predicted_direction=p.get('predicted_direction', 'neutral'),
+                    predicted_direction=p.get('direction', p.get('predicted_direction', 'neutral')),
                     predicted_change=p.get('predicted_change', 0),
                     predicted_price_min=p.get('predicted_price_min', 0),
                     predicted_price_max=p.get('predicted_price_max', 0),
                     confidence=p.get('confidence', 50),
-                    price_at_prediction=p.get('price_at_prediction', 0),
+                    price_at_prediction=p.get('current_price', p.get('price_at_prediction', 0)),
                     factor_scores=p.get('factor_scores', {}),
                     factor_weights=p.get('factor_weights', {}),
                     actual_price=p.get('actual_price', 0),
-                    actual_change=p.get('actual_change', 0),
-                    actual_direction=p.get('actual_direction', 'neutral'),
+                    actual_change=actual_change,
+                    actual_direction='up' if actual_change > 0 else ('down' if actual_change < 0 else 'neutral'),
                     direction_correct=p.get('direction_correct', False),
-                    price_error=p.get('price_error', 0),
+                    price_error=abs(p.get('predicted_change', 0) - actual_change),
                     within_range=p.get('within_range', False),
-                    prediction_date=p.get('prediction_date', ''),
+                    prediction_date=p.get('created_at', p.get('prediction_date', '')),
                     verified_at=p.get('verified_at', ''),
                 )
                 predictions.append(pred)
@@ -279,81 +280,142 @@ class TrainingHandler(BaseHTTPRequestHandler):
                 'error': f'Predicciones válidas insuficientes: {len(predictions)}/5'
             }
         
-        # Cargar pesos previos si existen (para continuar aprendiendo)
+        # Contar predicciones con factor_scores
+        with_scores = sum(1 for p in predictions if p.factor_scores)
+        score_ratio = with_scores / len(predictions)
+        
+        # Cargar pesos previos si existen
         existing_weights = load_weights(WEIGHTS_FILE)
         if existing_weights:
             print(f"[Server] 📦 Cargando pesos previos desde {WEIGHTS_FILE}")
         else:
             print(f"[Server] 🆕 Iniciando con pesos por defecto")
         
-        # Crear optimizador y entrenar
-        loss_fn = LossFunction()
-        optimizer = WeightOptimizer(
-            learning_rate=DEFAULT_LEARNING_RATE,
-            momentum=DEFAULT_MOMENTUM,
-            weights=existing_weights  # Usar pesos previos si existen
-        )
-        optimizer.loss_fn = loss_fn
-        
         print(f"\n[Server] 🧠 Entrenando con {len(predictions)} predicciones...")
+        print(f"[Server] 📊 Predicciones con factor_scores: {with_scores}/{len(predictions)} ({score_ratio:.1%})")
         
-        # Guardar pesos iniciales para comparar
-        weights_before = {tf: dict(optimizer.weights[tf]) for tf in optimizer.weights}
-        
-        # Entrenar por timeframe
-        results = {}
-        for timeframe in ['intraday', 'swing', 'long']:
-            tf_preds = [p for p in predictions if p.timeframe == timeframe]
-            if len(tf_preds) >= 3:
-                result = optimizer.train(
-                    predictions=tf_preds,
-                    epochs=DEFAULT_EPOCHS,
-                    patience=EARLY_STOPPING_PATIENCE,
-                    verbose=False
-                )
-                if result:
-                    initial_loss = result.initial_loss
-                    final_loss = result.final_loss
-                    improvement = (initial_loss - final_loss) / initial_loss * 100 if initial_loss > 0 else 0
-                    results[timeframe] = {
-                        'samples': len(tf_preds),
-                        'initial_loss': round(initial_loss, 4),
-                        'final_loss': round(final_loss, 4),
-                        'improvement': round(improvement, 1),
+        # Decidir qué optimizador usar
+        # Si menos del 30% tiene factor_scores, usar evolutivo
+        if score_ratio < 0.30:
+            print(f"[Server] 🧬 Usando optimizador EVOLUTIVO (datos sin factor_scores)")
+            optimizer = EvolutionaryOptimizer(
+                weights=existing_weights,
+                learning_rate=0.05,  # Más agresivo para evolución
+                momentum=0.8
+            )
+            
+            # Guardar pesos iniciales
+            weights_before = {tf: dict(optimizer.weights[tf]) for tf in optimizer.TIMEFRAMES}
+            
+            # Aprender
+            result = optimizer.learn_from_predictions(predictions, verbose=True)
+            
+            if result['success']:
+                # Contar cambios
+                changes_count = 0
+                results = {}
+                for tf in optimizer.TIMEFRAMES:
+                    tf_changes = []
+                    for factor in optimizer.weights[tf]:
+                        before = weights_before[tf][factor]
+                        after = optimizer.weights[tf][factor]
+                        delta = after - before
+                        if abs(delta) > 0.0001:
+                            changes_count += 1
+                            tf_changes.append(f"{factor}: {delta:+.4f}")
+                    results[tf] = {
+                        'changes': len(tf_changes),
+                        'details': tf_changes[:3]
                     }
-                    print(f"   ✓ {timeframe}: {initial_loss:.4f} → {final_loss:.4f} ({improvement:+.1f}%)")
-        
-        # Mostrar cambios en pesos
-        print(f"\n[Server] 📊 Cambios en pesos:")
-        for tf in ['intraday', 'swing', 'long']:
-            changes = []
-            for factor in optimizer.weights[tf]:
-                before = weights_before[tf][factor]
-                after = optimizer.weights[tf][factor]
-                delta = after - before
-                if abs(delta) > 0.0001:
-                    changes.append(f"{factor}: {before:.4f}→{after:.4f} ({delta:+.4f})")
-            if changes:
-                print(f"   {tf}: {', '.join(changes[:3])}{'...' if len(changes) > 3 else ''}")
+                
+                # Guardar pesos
+                save_weights(
+                    weights=optimizer.weights,
+                    training_samples=len(predictions),
+                    learning_rate=0.05,
+                    momentum=0.8,
+                    filepath=WEIGHTS_FILE
+                )
+                print(f"[Server] 💾 Pesos evolutivos guardados")
+                
+                return {
+                    'success': True,
+                    'method': 'evolutionary',
+                    'samples_used': len(predictions),
+                    'weights_changed': changes_count,
+                    'accuracy': result['accuracy_before'],
+                    'results': results
+                }
             else:
-                print(f"   {tf}: sin cambios significativos")
+                return {'success': False, 'error': result.get('reason', 'Unknown error')}
         
-        # Guardar pesos
-        save_weights(
-            weights=optimizer.weights,
-            training_samples=len(predictions),
-            learning_rate=DEFAULT_LEARNING_RATE,
-            momentum=DEFAULT_MOMENTUM,
-            filepath=WEIGHTS_FILE
-        )
-        print(f"[Server] 💾 Pesos guardados en {WEIGHTS_FILE}")
-        
-        return {
-            'success': True,
-            'samples_used': len(predictions),
-            'results': results,
-            'weights_saved': str(WEIGHTS_FILE),
-        }
+        else:
+            print(f"[Server] 🎯 Usando optimizador de GRADIENTES (datos con factor_scores)")
+            # Optimizador original basado en gradientes
+            loss_fn = LossFunction()
+            optimizer = WeightOptimizer(
+                learning_rate=DEFAULT_LEARNING_RATE,
+                momentum=DEFAULT_MOMENTUM,
+                weights=existing_weights
+            )
+            optimizer.loss_fn = loss_fn
+            
+            weights_before = {tf: dict(optimizer.weights[tf]) for tf in optimizer.weights}
+            
+            # Entrenar por timeframe
+            results = {}
+            for timeframe in ['intraday', 'swing', 'long']:
+                tf_preds = [p for p in predictions if p.timeframe == timeframe]
+                if len(tf_preds) >= 3:
+                    result = optimizer.train(
+                        predictions=tf_preds,
+                        epochs=DEFAULT_EPOCHS,
+                        patience=EARLY_STOPPING_PATIENCE,
+                        verbose=False
+                    )
+                    if result:
+                        initial_loss = result.initial_loss
+                        final_loss = result.final_loss
+                        improvement = (initial_loss - final_loss) / initial_loss * 100 if initial_loss > 0 else 0
+                        results[timeframe] = {
+                            'samples': len(tf_preds),
+                            'initial_loss': round(initial_loss, 4),
+                            'final_loss': round(final_loss, 4),
+                            'improvement': round(improvement, 1),
+                        }
+                        print(f"   ✓ {timeframe}: {initial_loss:.4f} → {final_loss:.4f} ({improvement:+.1f}%)")
+            
+            # Mostrar cambios
+            print(f"\n[Server] 📊 Cambios en pesos:")
+            for tf in ['intraday', 'swing', 'long']:
+                changes = []
+                for factor in optimizer.weights[tf]:
+                    before = weights_before[tf][factor]
+                    after = optimizer.weights[tf][factor]
+                    delta = after - before
+                    if abs(delta) > 0.0001:
+                        changes.append(f"{factor}: {before:.4f}→{after:.4f}")
+                if changes:
+                    print(f"   {tf}: {', '.join(changes[:3])}{'...' if len(changes) > 3 else ''}")
+                else:
+                    print(f"   {tf}: sin cambios significativos")
+            
+            # Guardar pesos
+            save_weights(
+                weights=optimizer.weights,
+                training_samples=len(predictions),
+                learning_rate=DEFAULT_LEARNING_RATE,
+                momentum=DEFAULT_MOMENTUM,
+                filepath=WEIGHTS_FILE
+            )
+            print(f"[Server] 💾 Pesos guardados en {WEIGHTS_FILE}")
+            
+            return {
+                'success': True,
+                'method': 'gradient',
+                'samples_used': len(predictions),
+                'results': results,
+            }
     
     def log_message(self, format, *args):
         """Personalizar logging"""

@@ -10,7 +10,7 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 # Archivos
-PREDICTIONS_FILE = DATA_DIR / "predictions_data.json"
+PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
 WEIGHTS_FILE = CODE_DIR / "config" / "learned_weights.json"
 TRAINING_LOG_FILE = DATA_DIR / "training_log.json"
 
