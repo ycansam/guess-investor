@@ -585,7 +585,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
             predictedPriceMax: asset.price! * (1 + (predictedChange + 2) / 100),
             confidence,
             currentPrice: asset.price!,
-            timeframe: TIMEFRAME_INFO[selectedTimeframe].label,
+            timeframe: selectedTimeframe, // Usar key (swing) en lugar de label (Swing)
             timeframeDays,
             volatility: calculatedPrediction?.historical?.volatility,
           });

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { prisma } from '../config/database.js';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { predictionRepository } from '../repositories/prediction.repository.js';
 import { trainingRepository } from '../repositories/training.repository.js';
@@ -488,6 +489,107 @@ export const trainingController = {
       success: result.success,
       data: result.weights,
       error: result.error,
+    });
+  }),
+
+  /**
+   * POST /api/training/import-active
+   * Importar predicciones activas (no verificadas, no expiradas) de Prediction a TrainingCache
+   * Útil para restaurar el cache cuando se pierden datos
+   */
+  importActiveToCache: asyncHandler(async (req: Request, res: Response) => {
+    const { timeframeDays } = req.query;
+    
+    // Mapeo de labels a keys (la tabla Prediction usa labels)
+    const labelToKey: Record<string, string> = {
+      'Intradía': 'intraday',
+      'Swing': 'swing',
+      'Largo Plazo': 'longterm',
+      // También soportar keys directamente
+      'intraday': 'intraday',
+      'swing': 'swing',
+      'longterm': 'longterm',
+    };
+    
+    // Mapeo inverso para filtrar por timeframeDays
+    const daysToKey: Record<number, string> = {
+      1: 'intraday',
+      7: 'swing',
+      30: 'longterm',
+    };
+    
+    // Obtener predicciones activas
+    const now = new Date();
+    const where: any = {
+      verified: false,
+      expiresAt: { gt: now },
+    };
+    
+    // Si se especifica timeframeDays, filtrar
+    if (timeframeDays) {
+      where.timeframeDays = parseInt(timeframeDays as string);
+    }
+    
+    const activePredictions = await prisma.prediction.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+    
+    let imported = 0;
+    let skipped = 0;
+    const importedItems: string[] = [];
+    const errors: string[] = [];
+    
+    for (const pred of activePredictions) {
+      try {
+        // Convertir el label del timeframe al key
+        const timeframeKey = labelToKey[pred.timeframe] || daysToKey[pred.timeframeDays] || 'intraday';
+        
+        // Verificar si ya existe en cache
+        const existing = await trainingRepository.getFromCache(pred.symbol, timeframeKey);
+        if (existing) {
+          skipped++;
+          continue;
+        }
+        
+        // Parsear analysisData si existe
+        let analysisData = null;
+        if (pred.factorBreakdown) {
+          try {
+            analysisData = JSON.parse(pred.factorBreakdown);
+          } catch {}
+        }
+        
+        // Guardar en cache
+        await trainingRepository.saveToCache({
+          symbol: pred.symbol,
+          timeframe: timeframeKey,
+          predictedChange: pred.predictedChange,
+          confidence: pred.confidence,
+          direction: pred.direction,
+          currentPrice: pred.currentPrice,
+          targetPrice: pred.targetPrice,
+          analysisData,
+          expiresAt: pred.expiresAt,
+        });
+        
+        imported++;
+        importedItems.push(`${pred.symbol} (${timeframeKey})`);
+      } catch (error: any) {
+        errors.push(`${pred.symbol}: ${error.message}`);
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        found: activePredictions.length,
+        imported,
+        skipped,
+        errors: errors.length,
+        importedItems: importedItems.slice(0, 20), // Mostrar solo primeros 20
+        errorDetails: errors.slice(0, 10),
+      },
     });
   }),
 
