@@ -82,31 +82,67 @@ class AssetClassifier:
     
     # Perfiles conocidos de activos (cache)
     KNOWN_PROFILES: Dict[str, dict] = {
-        # Criptos - alta volatilidad, buenos para intradía/swing
+        # Criptos majors - alta volatilidad
         'BTC-USD': {'type': 'crypto_major', 'base_vol': 45, 'trend_bias': 0.6},
         'ETH-USD': {'type': 'crypto_major', 'base_vol': 55, 'trend_bias': 0.55},
+        'BNB-USD': {'type': 'crypto_major', 'base_vol': 50, 'trend_bias': 0.5},
+        
+        # Criptos alts - muy alta volatilidad
         'SOL-USD': {'type': 'crypto_alt', 'base_vol': 70, 'trend_bias': 0.5},
         'DOGE-USD': {'type': 'crypto_alt', 'base_vol': 80, 'trend_bias': 0.4},
+        'XRP-USD': {'type': 'crypto_alt', 'base_vol': 65, 'trend_bias': 0.45},
+        'ADA-USD': {'type': 'crypto_alt', 'base_vol': 68, 'trend_bias': 0.45},
+        'AVAX-USD': {'type': 'crypto_alt', 'base_vol': 75, 'trend_bias': 0.45},
+        'SHIB-USD': {'type': 'crypto_alt', 'base_vol': 90, 'trend_bias': 0.35},
         
-        # Large caps - baja/media volatilidad, buenos para swing/largo
+        # Large caps tech
         'AAPL': {'type': 'large_cap', 'base_vol': 25, 'trend_bias': 0.65},
         'MSFT': {'type': 'large_cap', 'base_vol': 22, 'trend_bias': 0.7},
         'GOOGL': {'type': 'large_cap', 'base_vol': 28, 'trend_bias': 0.6},
+        'GOOG': {'type': 'large_cap', 'base_vol': 28, 'trend_bias': 0.6},
         'AMZN': {'type': 'large_cap', 'base_vol': 30, 'trend_bias': 0.55},
+        'META': {'type': 'large_cap', 'base_vol': 35, 'trend_bias': 0.55},
+        'NFLX': {'type': 'large_cap', 'base_vol': 38, 'trend_bias': 0.5},
+        
+        # Large caps finance
+        'JPM': {'type': 'large_cap', 'base_vol': 22, 'trend_bias': 0.6},
+        'BAC': {'type': 'large_cap', 'base_vol': 25, 'trend_bias': 0.55},
+        'V': {'type': 'large_cap', 'base_vol': 20, 'trend_bias': 0.65},
+        'MA': {'type': 'large_cap', 'base_vol': 22, 'trend_bias': 0.65},
         
         # High volatility stocks
         'TSLA': {'type': 'high_vol_stock', 'base_vol': 50, 'trend_bias': 0.5},
         'NVDA': {'type': 'high_vol_stock', 'base_vol': 45, 'trend_bias': 0.6},
         'AMD': {'type': 'high_vol_stock', 'base_vol': 48, 'trend_bias': 0.55},
         
-        # ETFs - baja volatilidad, buenos para largo plazo
+        # ETFs - baja volatilidad
         'SPY': {'type': 'etf_index', 'base_vol': 15, 'trend_bias': 0.75},
         'QQQ': {'type': 'etf_index', 'base_vol': 20, 'trend_bias': 0.7},
         'VOO': {'type': 'etf_index', 'base_vol': 14, 'trend_bias': 0.75},
+        'VTI': {'type': 'etf_index', 'base_vol': 15, 'trend_bias': 0.75},
+        'IWM': {'type': 'etf_index', 'base_vol': 22, 'trend_bias': 0.6},
         
-        # Commodities
+        # Commodities - Oro/Plata (baja-media volatilidad)
         'GC=F': {'type': 'commodity', 'base_vol': 12, 'trend_bias': 0.6},
+        'SI=F': {'type': 'commodity', 'base_vol': 22, 'trend_bias': 0.5},
+        'GLD': {'type': 'commodity', 'base_vol': 12, 'trend_bias': 0.6},
+        'SLV': {'type': 'commodity', 'base_vol': 22, 'trend_bias': 0.5},
+        'IAU': {'type': 'commodity', 'base_vol': 12, 'trend_bias': 0.6},
+        
+        # Commodities - Petróleo (alta volatilidad)
         'CL=F': {'type': 'commodity', 'base_vol': 35, 'trend_bias': 0.5},
+        'USO': {'type': 'commodity', 'base_vol': 35, 'trend_bias': 0.5},
+        
+        # Mineras (se comportan como commodity)
+        'NEM': {'type': 'commodity', 'base_vol': 28, 'trend_bias': 0.55},
+        'GOLD': {'type': 'commodity', 'base_vol': 30, 'trend_bias': 0.55},
+        'FNV': {'type': 'commodity', 'base_vol': 22, 'trend_bias': 0.6},
+        'WPM': {'type': 'commodity', 'base_vol': 25, 'trend_bias': 0.55},
+        
+        # ADRs
+        'BABA': {'type': 'adr', 'base_vol': 42, 'trend_bias': 0.45},
+        'TSM': {'type': 'adr', 'base_vol': 30, 'trend_bias': 0.6},
+        'NIO': {'type': 'adr', 'base_vol': 55, 'trend_bias': 0.4},
     }
     
     def __init__(self, cache_file: Optional[Path] = None):

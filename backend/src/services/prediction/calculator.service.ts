@@ -183,17 +183,46 @@ const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
 
 // Mapeo de símbolos conocidos
 const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
+  // Crypto majors
   'BTC-USD': 'crypto_major', 'ETH-USD': 'crypto_major', 'BNB-USD': 'crypto_major',
+  // Crypto alts
   'SOL-USD': 'crypto_alt', 'ADA-USD': 'crypto_alt', 'DOGE-USD': 'crypto_alt', 'XRP-USD': 'crypto_alt',
-  'SPY': 'etf_index', 'QQQ': 'etf_index', 'VOO': 'etf_index',
-  '^GSPC': 'etf_index', '^DJI': 'etf_index', '^IXIC': 'etf_index',
-  'GC=F': 'commodity', 'CL=F': 'commodity', 'SI=F': 'commodity',
-  'GLD': 'commodity', 'SLV': 'commodity', 'USO': 'commodity',
-  'AAPL': 'large_cap_stock', 'MSFT': 'large_cap_stock', 'GOOGL': 'large_cap_stock',
+  'AVAX-USD': 'crypto_alt', 'DOT-USD': 'crypto_alt', 'MATIC-USD': 'crypto_alt', 'LINK-USD': 'crypto_alt',
+  'SHIB-USD': 'crypto_alt', 'LTC-USD': 'crypto_alt', 'UNI-USD': 'crypto_alt',
+  // ETFs e índices
+  'SPY': 'etf_index', 'QQQ': 'etf_index', 'VOO': 'etf_index', 'IWM': 'etf_index', 'DIA': 'etf_index',
+  'VTI': 'etf_index', 'EEM': 'etf_index', 'EFA': 'etf_index', 'VEA': 'etf_index', 'VWO': 'etf_index',
+  '^GSPC': 'etf_index', '^DJI': 'etf_index', '^IXIC': 'etf_index', '^RUT': 'etf_index',
+  // Commodities - Futures
+  'GC=F': 'commodity', 'CL=F': 'commodity', 'SI=F': 'commodity', 'NG=F': 'commodity',
+  'HG=F': 'commodity', 'PL=F': 'commodity', 'PA=F': 'commodity',
+  // Commodities - ETFs de materias primas
+  'GLD': 'commodity', 'SLV': 'commodity', 'USO': 'commodity', 'UNG': 'commodity',
+  'IAU': 'commodity', 'PPLT': 'commodity', 'PALL': 'commodity',
+  // Mineras de oro/plata (se comportan como commodity pero son acciones)
+  'NEM': 'commodity', 'GOLD': 'commodity', 'AEM': 'commodity', 'FNV': 'commodity',
+  'WPM': 'commodity', 'KGC': 'commodity', 'AGI': 'commodity', 'AG': 'commodity',
+  // Large cap tech
+  'AAPL': 'large_cap_stock', 'MSFT': 'large_cap_stock', 'GOOGL': 'large_cap_stock', 'GOOG': 'large_cap_stock',
   'AMZN': 'large_cap_stock', 'META': 'large_cap_stock', 'NVDA': 'large_cap_stock',
-  'TSLA': 'large_cap_stock', 'JPM': 'large_cap_stock',
+  'TSLA': 'large_cap_stock', 'NFLX': 'large_cap_stock', 'CRM': 'large_cap_stock', 'ADBE': 'large_cap_stock',
+  // Large cap finance
+  'JPM': 'large_cap_stock', 'BAC': 'large_cap_stock', 'WFC': 'large_cap_stock', 'GS': 'large_cap_stock',
+  'MS': 'large_cap_stock', 'C': 'large_cap_stock', 'V': 'large_cap_stock', 'MA': 'large_cap_stock',
+  // Large cap otras
+  'JNJ': 'large_cap_stock', 'PG': 'large_cap_stock', 'KO': 'large_cap_stock', 'PEP': 'large_cap_stock',
+  'WMT': 'large_cap_stock', 'HD': 'large_cap_stock', 'DIS': 'large_cap_stock', 'VZ': 'large_cap_stock',
+  // Europa
   'ITX.MC': 'large_cap_stock', 'SAN.MC': 'large_cap_stock', 'BBVA.MC': 'large_cap_stock',
-  'BABA': 'adr', 'TSM': 'adr', 'NIO': 'adr',
+  'IBE.MC': 'large_cap_stock', 'TEF.MC': 'large_cap_stock', 'REP.MC': 'large_cap_stock',
+  // ADRs
+  'BABA': 'adr', 'TSM': 'adr', 'NIO': 'adr', 'PDD': 'adr', 'JD': 'adr',
+  'ASML': 'adr', 'TM': 'adr', 'SNY': 'adr',
+  // REITs
+  'O': 'reit', 'AMT': 'reit', 'PLD': 'reit', 'EQIX': 'reit', 'SPG': 'reit',
+  'VNQ': 'reit', 'SCHH': 'reit',
+  // Forex
+  'EURUSD=X': 'forex', 'GBPUSD=X': 'forex', 'USDJPY=X': 'forex', 'USDCHF=X': 'forex',
 };
 
 // Pesos por defecto según timeframe (11 factores)
@@ -215,6 +244,95 @@ const DEFAULT_WEIGHTS = {
   },
 };
 
+// --- MULTIPLICADORES DE PESO POR GRUPO DE ACTIVO ---
+// Diferentes tipos de activos requieren diferentes combinaciones de factores
+const ASSET_GROUP_WEIGHT_MULTIPLIERS: Record<AssetGroup, Record<string, number>> = {
+  large_cap_stock: {
+    // Acciones grandes: balance de todos los factores, énfasis en institucional y financials
+    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.0,
+    macro: 1.1, competitors: 1.2, forex: 0.8, institutional: 1.4,
+    seasonality: 1.0, financials: 1.3, expectations: 1.2
+  },
+  small_cap_stock: {
+    // Small caps: más técnico/momentum, menos institucional (poco volumen)
+    trend: 1.3, technical: 1.4, sentiment: 1.2, news: 1.3,
+    macro: 0.7, competitors: 1.0, forex: 0.5, institutional: 0.5,
+    seasonality: 0.9, financials: 1.1, expectations: 0.8
+  },
+  crypto_major: {
+    // Bitcoin/Ethereum: técnico + sentiment + macro (correlación con risk-on/off)
+    trend: 1.3, technical: 1.4, sentiment: 1.5, news: 1.2,
+    macro: 1.2, competitors: 0.3, forex: 0.8, institutional: 1.0,
+    seasonality: 0.5, financials: 0.1, expectations: 0.3
+  },
+  crypto_alt: {
+    // Altcoins: muy técnico + sentiment, casi nada de fundamentales
+    trend: 1.5, technical: 1.6, sentiment: 1.8, news: 1.0,
+    macro: 0.5, competitors: 0.2, forex: 0.3, institutional: 0.3,
+    seasonality: 0.4, financials: 0.1, expectations: 0.2
+  },
+  etf_index: {
+    // ETFs/Índices: macro domina, poco técnico individual
+    trend: 0.8, technical: 0.7, sentiment: 0.9, news: 0.8,
+    macro: 1.5, competitors: 0.4, forex: 1.2, institutional: 1.3,
+    seasonality: 1.3, financials: 0.3, expectations: 0.5
+  },
+  commodity: {
+    // Materias primas: macro + forex + seasonality dominan
+    trend: 1.0, technical: 1.1, sentiment: 0.7, news: 0.9,
+    macro: 1.6, competitors: 0.2, forex: 1.5, institutional: 0.8,
+    seasonality: 1.4, financials: 0.1, expectations: 0.3
+  },
+  reit: {
+    // REITs: macro (tasas de interés) + financials
+    trend: 0.9, technical: 0.8, sentiment: 0.6, news: 0.8,
+    macro: 1.6, competitors: 0.9, forex: 0.5, institutional: 1.2,
+    seasonality: 1.0, financials: 1.5, expectations: 1.1
+  },
+  forex: {
+    // Forex: macro absoluto + técnico
+    trend: 1.2, technical: 1.4, sentiment: 0.5, news: 1.0,
+    macro: 1.8, competitors: 0.1, forex: 0.5, institutional: 0.8,
+    seasonality: 0.8, financials: 0.1, expectations: 0.3
+  },
+  adr: {
+    // ADRs: mezcla de factores + forex importante
+    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.1,
+    macro: 1.1, competitors: 1.0, forex: 1.4, institutional: 1.0,
+    seasonality: 0.9, financials: 1.2, expectations: 1.0
+  },
+  default: {
+    // Sin ajuste
+    trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
+    macro: 1.0, competitors: 1.0, forex: 1.0, institutional: 1.0,
+    seasonality: 1.0, financials: 1.0, expectations: 1.0
+  }
+};
+
+// --- AJUSTE DE PESOS POR GRUPO DE ACTIVO ---
+function adjustWeightsForAssetGroup(
+  baseWeights: Record<string, number>,
+  assetGroup: AssetGroup
+): Record<string, number> {
+  const multipliers = ASSET_GROUP_WEIGHT_MULTIPLIERS[assetGroup] || ASSET_GROUP_WEIGHT_MULTIPLIERS.default;
+  
+  const adjustedWeights: Record<string, number> = {};
+  let totalAdjusted = 0;
+  
+  for (const [factor, weight] of Object.entries(baseWeights)) {
+    const multiplier = multipliers[factor] || 1.0;
+    adjustedWeights[factor] = weight * multiplier;
+    totalAdjusted += adjustedWeights[factor];
+  }
+  
+  // Normalizar para que sumen 1
+  for (const factor of Object.keys(adjustedWeights)) {
+    adjustedWeights[factor] = adjustedWeights[factor] / totalAdjusted;
+  }
+  
+  return adjustedWeights;
+}
+
 // --- AJUSTE DE PESOS POR VOLATILIDAD DEL ACTIVO (como en original 5c77276) ---
 function adjustWeightsForVolatility(
   baseWeights: Record<string, number>, 
@@ -229,7 +347,7 @@ function adjustWeightsForVolatility(
       macro: 1.3, competitors: 1.2, forex: 1.1, institutional: 1.4,
       seasonality: 1.2, financials: 1.5, expectations: 1.5
     };
-    logger.info(`[PredictionCalc] Low volatility (${assetVolatility.toFixed(1)}%): prioritizing fundamentals`);
+    logger.debug(`[PredictionCalc] Low volatility (${assetVolatility.toFixed(1)}%): prioritizing fundamentals`);
   } else if (assetVolatility < 50) {
     // Volatilidad media: sin ajuste
     volatilityMultiplier = {
@@ -244,7 +362,7 @@ function adjustWeightsForVolatility(
       macro: 0.7, competitors: 0.8, forex: 0.9, institutional: 0.8,
       seasonality: 0.6, financials: 0.5, expectations: 0.5
     };
-    logger.info(`[PredictionCalc] High volatility (${assetVolatility.toFixed(1)}%): prioritizing technical/sentiment`);
+    logger.debug(`[PredictionCalc] High volatility (${assetVolatility.toFixed(1)}%): prioritizing technical/sentiment`);
   }
   
   // Aplicar multiplicadores y renormalizar
@@ -499,9 +617,18 @@ export const predictionCalculatorService = {
       // Usar pesos por defecto
     }
 
-    // Ajustar pesos según volatilidad del activo (como en original 5c77276)
+    // Detectar grupo del activo ANTES de ajustar pesos
+    const assetGroup = this.detectAssetGroup(symbol, type);
+    logger.info(`[PredictionCalc] Asset group: ${assetGroup} (${ASSET_GROUP_CONFIGS[assetGroup].description})`);
+
+    // Paso 1: Ajustar pesos según GRUPO del activo
+    const groupAdjustedWeights = adjustWeightsForAssetGroup(baseWeights, assetGroup);
+    
+    // Paso 2: Ajustar pesos según VOLATILIDAD del activo
     const assetVolatility = historical.volatility || 20;
-    const weights = adjustWeightsForVolatility(baseWeights, assetVolatility);
+    const weights = adjustWeightsForVolatility(groupAdjustedWeights, assetVolatility);
+    
+    logger.debug(`[PredictionCalc] Weights: group=${assetGroup}, volatility=${assetVolatility.toFixed(1)}%`);
 
     // Definir los 11 factores
     const factors = [
@@ -559,8 +686,7 @@ export const predictionCalculatorService = {
     if (combinedScore > 5) direction = 'up';
     else if (combinedScore < -5) direction = 'down';
 
-    // Detectar grupo de activo y calcular confianza
-    const assetGroup = this.detectAssetGroup(symbol, type);
+    // Calcular confianza (assetGroup ya detectado arriba)
     const groupConfig = ASSET_GROUP_CONFIGS[assetGroup];
     const { confidence, signalSummary, confidenceExplanation } = this.calculateConfidence(
       factors, availableFactors, groupConfig
@@ -778,12 +904,27 @@ export const predictionCalculatorService = {
 
     if (type === 'crypto') {
       const majorCryptos = ['BTC', 'ETH', 'BNB'];
-      const base = symbol.replace('-USD', '').replace('-EUR', '');
+      const base = symbol.replace('-USD', '').replace('-EUR', '').replace('-GBP', '');
       return majorCryptos.includes(base) ? 'crypto_major' : 'crypto_alt';
     }
 
+    // Índices
     if (symbol.startsWith('^')) return 'etf_index';
+    
+    // Futuros de commodities
     if (symbol.endsWith('=F')) return 'commodity';
+    
+    // Forex
+    if (symbol.endsWith('=X')) return 'forex';
+    
+    // ETFs comunes por sufijo o patrón
+    const etfPatterns = ['SPY', 'QQQ', 'VOO', 'VTI', 'IWM', 'EEM', 'VEA', 'VWO', 'VNQ', 'GLD', 'SLV', 'USO'];
+    if (etfPatterns.some(p => symbol.toUpperCase().startsWith(p))) return 'etf_index';
+    
+    // Si tiene extensión de mercado europeo
+    if (symbol.includes('.MC') || symbol.includes('.L') || symbol.includes('.PA') || symbol.includes('.DE')) {
+      return 'large_cap_stock'; // Asumimos large cap para mercados europeos conocidos
+    }
 
     return 'default';
   },
