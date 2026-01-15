@@ -5,13 +5,12 @@ import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { FavoritesList } from './favorites-list';
-import { MarketList } from './market-list';
 import { MarketPredictions } from './market-predictions';
 import { TabBar, TabType } from './tab-bar';
 import { useHome } from './use-home';
 
 export function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>('explore');
+  const [activeTab, setActiveTab] = useState<TabType>('predictions');
   const [showTracking, setShowTracking] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
@@ -60,12 +59,10 @@ export function Home() {
     switch (activeTab) {
       case 'favorites':
         return <FavoritesList onFavoritesChange={handleFavoritesChange} />;
-      case 'explore':
-        return <MarketList onFavoritesChange={handleFavoritesChange} />;
       case 'predictions':
         return <MarketPredictions />;
       default:
-        return <MarketList onFavoritesChange={handleFavoritesChange} />;
+        return <MarketPredictions />;
     }
   };
 

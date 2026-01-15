@@ -7,28 +7,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  useWindowDimensions,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
-import { MarketAsset, marketDataService } from '../../../services/market-data-service';
+import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-  TIMEFRAME_INFO,
-  trainingCacheService,
-  TrainingPrediction,
-  TrainingTimeframe,
+    TIMEFRAME_INFO,
+    trainingCacheService,
+    TrainingPrediction,
+    TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -92,6 +92,12 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [recommendedTimeframes, setRecommendedTimeframes] = useState<Map<string, TrainingTimeframe>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  
+  // Filtros (movidos desde MarketList/Explorar)
+  const [categories, setCategories] = useState<AssetCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<AssetCategory | null>(null);
+  type ExploreSortType = 'predicted' | 'gainers' | 'losers' | 'popular' | 'bullish';
+  const [exploreSortBy, setExploreSortBy] = useState<ExploreSortType>('popular');
 
   const { 
     predictions,
@@ -111,6 +117,71 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } catch (error) {
       console.error('[MarketPredictions] Error loading favorites/predictions:', error);
     }
+  }, []);
+
+  // Cargar categorías dinámicamente
+  useEffect(() => {
+    const loadCategories = async () => {
+      const cats = await marketDataService.getCategories();
+      setCategories(cats);
+    };
+    loadCategories();
+  }, []);
+
+  // Función para aplicar ordenamiento (favoritos siempre primero, luego predicciones)
+  const applySorting = useCallback((assets: MarketAsset[], sortType: ExploreSortType, predSymbols: Set<string>, favs: Set<string>) => {
+    let sorted = [...assets];
+    
+    switch (sortType) {
+      case 'predicted':
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
+          const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
+          if (aHasPred !== bHasPred) return bHasPred - aHasPred;
+          return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+        });
+        break;
+      case 'gainers':
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+        });
+        break;
+      case 'losers':
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return (a.changePercent ?? 999) - (b.changePercent ?? 999);
+        });
+        break;
+      case 'popular':
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          if (a.price && !b.price) return -1;
+          if (!a.price && b.price) return 1;
+          return 0;
+        });
+        break;
+      case 'bullish':
+        sorted = sorted.filter(a => (a.changePercent ?? 0) > 0);
+        sorted.sort((a, b) => {
+          const aFav = favs.has(a.symbol) ? 1 : 0;
+          const bFav = favs.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return (b.changePercent ?? 0) - (a.changePercent ?? 0);
+        });
+        break;
+    }
+    
+    return sorted;
   }, []);
 
   // Cargar datos inicial con paginación (favoritos primero)
@@ -133,7 +204,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         // Obtener activos paginados normal
         marketDataService.getAssetsPaginated(
           1,
-          undefined,
+          selectedCategory || undefined,
           debouncedSearchQuery
         )
       ]);
@@ -144,8 +215,20 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         a => !favoriteSymbolSet.has(a.symbol.toUpperCase())
       );
       
-      // 4. Combinar: favoritos primero, luego el resto
-      const combined = [...favoriteAssets, ...nonFavoriteAssets];
+      // 4. Ordenar favoritos por predicciones
+      const predSymbols = new Set(cachedPredictions.map(p => p.symbol));
+      const sortedFavorites = [...favoriteAssets].sort((a, b) => {
+        const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
+        const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
+        if (aHasPred !== bHasPred) return bHasPred - aHasPred;
+        return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+      });
+      
+      // 5. Aplicar ordenamiento al resto según el tipo seleccionado
+      const sortedRest = applySorting(nonFavoriteAssets, exploreSortBy, predSymbols, new Set());
+      
+      // 6. Combinar: favoritos primero, luego el resto
+      const combined = [...sortedFavorites, ...sortedRest];
       
       console.log(`[MarketPredictions] Loaded ${favoriteAssets.length} favorites + ${nonFavoriteAssets.length} others`);
       
@@ -159,7 +242,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchQuery, favoriteSymbols]);
+  }, [debouncedSearchQuery, favoriteSymbols, selectedCategory, exploreSortBy, cachedPredictions, applySorting]);
 
   // Cargar más datos (infinite scroll)
   const loadMore = useCallback(async () => {
@@ -170,11 +253,15 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       const nextPage = page + 1;
       const result = await marketDataService.getAssetsPaginated(
         nextPage,
-        undefined,
+        selectedCategory || undefined,
         debouncedSearchQuery
       );
       
-      setDisplayedAssets(prev => [...prev, ...result.assets]);
+      // Aplicar el mismo ordenamiento a los nuevos datos
+      const predSymbols = new Set(cachedPredictions.map(p => p.symbol));
+      const sortedNew = applySorting(result.assets, exploreSortBy, predSymbols, favoriteSymbols);
+      
+      setDisplayedAssets(prev => [...prev, ...sortedNew]);
       setHasMore(result.hasMore);
       setPage(nextPage);
     } catch (error) {
@@ -182,7 +269,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, page, debouncedSearchQuery]);
+  }, [loadingMore, hasMore, page, debouncedSearchQuery, selectedCategory, exploreSortBy, cachedPredictions, applySorting, favoriteSymbols]);
 
   // Estado para saber si favoritos están cargados
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
@@ -196,19 +283,21 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     init();
   }, [loadFavoritesAndPredictions]);
 
-  // Cargar datos cuando favoritos están listos
+  // Cargar datos cuando favoritos están listos o cambian filtros
   useEffect(() => {
     if (favoritesLoaded) {
       loadData();
     }
-  }, [favoritesLoaded, debouncedSearchQuery]);
+  }, [favoritesLoaded, debouncedSearchQuery, selectedCategory]);
 
-  // Recargar cuando cambia la búsqueda
+  // Reordenar cuando cambia exploreSortBy (sin recargar datos)
   useEffect(() => {
-    if (favoritesLoaded) {
-      loadData();
+    if (displayedAssets.length > 0 && favoritesLoaded) {
+      const predSymbols = new Set(cachedPredictions.map(p => p.symbol));
+      const sorted = applySorting(displayedAssets, exploreSortBy, predSymbols, favoriteSymbols);
+      setDisplayedAssets(sorted);
     }
-  }, [debouncedSearchQuery, favoritesLoaded]);
+  }, [exploreSortBy]);
 
   // Cargar recomendaciones de timeframe solo cuando el usuario interactúa
   // NO se cargan automáticamente al montar para evitar peticiones innecesarias
@@ -724,9 +813,71 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     setFavoriteSymbols(new Set(favoritesService.getAll()));
   }, []);
 
-  // Header con selector de timeframe (sin buscador)
+  // Opciones de ordenamiento (movidas desde MarketList/Explorar)
+  const EXPLORE_SORT_OPTIONS: { key: ExploreSortType; label: string; icon: string }[] = [
+    { key: 'predicted', label: 'Con predicción', icon: '🎯' },
+    { key: 'gainers', label: 'Subidas', icon: '📈' },
+    { key: 'losers', label: 'Bajadas', icon: '📉' },
+    { key: 'popular', label: 'Popular', icon: '🔥' },
+    { key: 'bullish', label: 'Alcistas', icon: '🐂' },
+  ];
+
+  // Header con filtros de categorías, ordenamiento y selector de timeframe
   const renderHeader = () => (
     <View>
+      {/* Categorías horizontales (movidas desde Explorar) */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoriesContainer}
+        contentContainerStyle={styles.categoriesContent}
+      >
+        <TouchableOpacity
+          style={[styles.categoryChip, !selectedCategory && styles.categoryChipActive]}
+          onPress={() => setSelectedCategory(null)}
+        >
+          <Text style={styles.categoryIcon}>🌐</Text>
+          <Text style={[styles.categoryLabel, !selectedCategory && styles.categoryLabelActive]}>
+            Todos
+          </Text>
+        </TouchableOpacity>
+        {categories.map(cat => (
+          <TouchableOpacity
+            key={cat.category}
+            style={[styles.categoryChip, selectedCategory === cat.category && styles.categoryChipActive]}
+            onPress={() => setSelectedCategory(cat.category)}
+          >
+            <Text style={styles.categoryIcon}>{cat.icon}</Text>
+            <Text style={[
+              styles.categoryLabel, 
+              selectedCategory === cat.category && styles.categoryLabelActive
+            ]}>
+              {cat.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Ordenación de activos (movida desde Explorar) */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.exploreSortContainer}
+        contentContainerStyle={styles.exploreSortContent}
+      >
+        {EXPLORE_SORT_OPTIONS.map(option => (
+          <TouchableOpacity
+            key={option.key}
+            style={[styles.exploreSortChip, exploreSortBy === option.key && styles.exploreSortChipActive]}
+            onPress={() => setExploreSortBy(option.key)}
+          >
+            <Text style={styles.exploreSortIcon}>{option.icon}</Text>
+            <Text style={[styles.exploreSortLabel, exploreSortBy === option.key && styles.exploreSortLabelActive]}>
+              {option.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       {/* Selector de timeframe */}
       <View style={styles.timeframeContainer}>
@@ -1044,6 +1195,71 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     padding: 0,
+  },
+  // Categorías (movidas desde Explorar)
+  categoriesContainer: {
+    marginBottom: 8,
+  },
+  categoriesContent: {
+    paddingHorizontal: 12,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#2e2e2e',
+  },
+  categoryChipActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  categoryIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  categoryLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#a0a0a0',
+  },
+  categoryLabelActive: {
+    color: '#ffffff',
+  },
+  // Ordenación de activos (movida desde Explorar)
+  exploreSortContainer: {
+    marginBottom: 8,
+  },
+  exploreSortContent: {
+    paddingHorizontal: 12,
+  },
+  exploreSortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  exploreSortChipActive: {
+    backgroundColor: '#6366f1',
+  },
+  exploreSortIcon: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  exploreSortLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#a0a0a0',
+  },
+  exploreSortLabelActive: {
+    color: '#ffffff',
   },
   // Timeframe selector
   timeframeContainer: {

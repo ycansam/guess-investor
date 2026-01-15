@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export type TabType = 'favorites' | 'explore' | 'predictions';
+export type TabType = 'favorites' | 'predictions';
 
 interface TabBarProps {
   activeTab: TabType;
@@ -31,20 +31,6 @@ export function TabBar({ activeTab, onTabChange, predictionsCount, favoritesCoun
             <Text style={styles.badgeText}>{favoritesCount > 99 ? '99+' : favoritesCount}</Text>
           </View>
         )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.tab, activeTab === 'explore' && styles.activeTab]}
-        onPress={() => onTabChange('explore')}
-      >
-        <Ionicons
-          name="search-outline"
-          size={18}
-          color={activeTab === 'explore' ? '#6366f1' : '#6b7280'}
-        />
-        <Text style={[styles.tabText, activeTab === 'explore' && styles.activeTabText]}>
-          Explorar
-        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
