@@ -526,7 +526,7 @@ const PredictionHistoryItem: React.FC<{ prediction: any }> = ({ prediction }) =>
         <View style={styles.historyColumn}>
           <Text style={styles.historyLabel}>Predicción</Text>
           <Text style={styles.historyValue}>
-            {directionIcon} {prediction.predictedChange >= 0 ? '+' : ''}{prediction.predictedChange?.toFixed(1)}%
+            {directionIcon} {prediction.predictedChange >= 0 ? '+' : ''}{prediction.predictedChange?.toFixed(2)}%
           </Text>
         </View>
 
@@ -538,7 +538,7 @@ const PredictionHistoryItem: React.FC<{ prediction: any }> = ({ prediction }) =>
               prediction.directionCorrect ? styles.correct : styles.incorrect
             ]}>
               {prediction.actualChange !== undefined
-                ? `${prediction.actualChange >= 0 ? '+' : ''}${prediction.actualChange?.toFixed(1)}%`
+                ? `${prediction.actualChange >= 0 ? '+' : ''}${prediction.actualChange?.toFixed(2)}%`
                 : 'N/A'}
             </Text>
           </View>
@@ -622,7 +622,7 @@ const ActivePredictionsSection: React.FC<{ predictions: any[] }> = ({ prediction
               <View style={styles.pendingLeft}>
                 <Text style={styles.pendingSymbol}>{pred.symbol}</Text>
                 <Text style={styles.pendingDirection}>
-                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(1)}%
+                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(2)}%
                 </Text>
               </View>
               <View style={styles.pendingRight}>
@@ -705,7 +705,7 @@ const PendingPredictionsSection: React.FC<{ predictions: any[] }> = ({ predictio
               <View style={styles.pendingLeft}>
                 <Text style={styles.pendingSymbol}>{pred.symbol}</Text>
                 <Text style={styles.pendingDirection}>
-                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(1)}%
+                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(2)}%
                 </Text>
               </View>
               <View style={styles.pendingRight}>

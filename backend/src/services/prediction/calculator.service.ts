@@ -573,17 +573,18 @@ export const predictionCalculatorService = {
     
     // --- SCALE FACTOR DINÁMICO (como en original 5c77276) ---
     // Más agresivo cuando señales coherentes, conservador cuando hay contradicción
+    // AJUSTADO: Menos conservador para evitar predicciones en zona neutral
     let scaleFactor: number;
     if (confidence >= 75) {
-      scaleFactor = 2.5; // Señales muy coherentes - agresivo
+      scaleFactor = 3.0; // Señales muy coherentes - agresivo
     } else if (confidence >= 65) {
-      scaleFactor = 2.0; // Señales coherentes - moderado
+      scaleFactor = 2.5; // Señales coherentes - moderado-alto
     } else if (confidence >= 55) {
-      scaleFactor = 1.5; // Señales mixtas con dirección
+      scaleFactor = 2.0; // Señales mixtas con dirección
     } else if (confidence >= 45) {
-      scaleFactor = 1.0; // Señales contradictorias - conservador
+      scaleFactor = 1.5; // Señales contradictorias - moderado
     } else {
-      scaleFactor = 0.7; // Muy poca confianza - muy conservador
+      scaleFactor = 1.2; // Muy poca confianza - conservador pero no extremo
     }
     
     const scoreNormalized = combinedScore / 100; // -1 a +1
@@ -651,9 +652,19 @@ export const predictionCalculatorService = {
     );
     
     // Recalcular dirección DESPUÉS de todos los ajustes para que coincida con predictedChange
-    if (expectedChange > 0.1) direction = 'up';
-    else if (expectedChange < -0.1) direction = 'down';
+    // UMBRAL AJUSTADO: 0.5% para coincidir con el umbral de verificación
+    const DIRECTION_THRESHOLD = 0.5;
+    if (expectedChange > DIRECTION_THRESHOLD) direction = 'up';
+    else if (expectedChange < -DIRECTION_THRESHOLD) direction = 'down';
     else direction = 'neutral';
+    
+    // NUEVO: Si hay señal clara de dirección pero cambio pequeño, amplificar
+    // Esto evita predicciones en la "zona gris" que casi siempre fallan
+    if (direction !== 'neutral' && Math.abs(expectedChange) < 0.6) {
+      const sign = expectedChange >= 0 ? 1 : -1;
+      expectedChange = sign * 0.6; // Mínimo 0.6% para direcciones claras
+      logger.info(`[PredictionCalc] Amplified small prediction to avoid neutral zone: ${expectedChange.toFixed(2)}%`);
+    }
     
     logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%, Direction: ${direction}`);
     
