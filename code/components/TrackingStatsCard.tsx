@@ -182,20 +182,26 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
           {stats.verified > 0 && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>🎯 Precisión</Text>
+              <Text style={styles.cardSubtitle}>
+                Cuánto te desvías de lo que predices vs lo que pasa
+              </Text>
               <View style={styles.statsRow}>
                 <StatBox
                   label="Dirección"
                   value={`${stats.directionAccuracy.toFixed(1)}%`}
+                  subtitle="Aciertos ↑↓"
                   color={stats.directionAccuracy >= 60 ? '#10b981' : stats.directionAccuracy >= 50 ? '#f59e0b' : '#ef4444'}
                 />
                 <StatBox
-                  label="Score medio"
+                  label="Score"
                   value={`${stats.avgAccuracyScore.toFixed(0)}`}
+                  subtitle="0-100 pts"
                   color={stats.avgAccuracyScore >= 70 ? '#10b981' : stats.avgAccuracyScore >= 50 ? '#f59e0b' : '#ef4444'}
                 />
                 <StatBox
-                  label="Error prom."
-                  value={`${stats.avgPriceError.toFixed(1)}%`}
+                  label="Desviación"
+                  value={`±${stats.avgPriceError.toFixed(1)}%`}
+                  subtitle="vs predicho"
                   color={stats.avgPriceError <= 2 ? '#10b981' : stats.avgPriceError <= 5 ? '#f59e0b' : '#ef4444'}
                 />
               </View>
@@ -249,6 +255,11 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
                   <Text style={styles.directionValue}>
                     {stats.byDirection.up.correct}/{stats.byDirection.up.total}
                   </Text>
+                  <Text style={styles.directionPercent}>
+                    {stats.byDirection.up.total > 0 
+                      ? `${((stats.byDirection.up.correct / stats.byDirection.up.total) * 100).toFixed(1)}%`
+                      : '-'}
+                  </Text>
                 </View>
                 <View style={styles.directionItem}>
                   <Text style={styles.directionIcon}>📉</Text>
@@ -256,12 +267,22 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
                   <Text style={styles.directionValue}>
                     {stats.byDirection.down.correct}/{stats.byDirection.down.total}
                   </Text>
+                  <Text style={styles.directionPercent}>
+                    {stats.byDirection.down.total > 0 
+                      ? `${((stats.byDirection.down.correct / stats.byDirection.down.total) * 100).toFixed(1)}%`
+                      : '-'}
+                  </Text>
                 </View>
                 <View style={styles.directionItem}>
                   <Text style={styles.directionIcon}>➡️</Text>
                   <Text style={styles.directionLabel}>Laterales</Text>
                   <Text style={styles.directionValue}>
                     {stats.byDirection.neutral.total}
+                  </Text>
+                  <Text style={styles.directionPercent}>
+                    {stats.byDirection.neutral.total > 0 && stats.verified > 0
+                      ? `${((stats.byDirection.neutral.total / stats.verified) * 100).toFixed(1)}%`
+                      : '-'}
                   </Text>
                 </View>
               </View>
@@ -549,10 +570,11 @@ const PredictionHistoryItem: React.FC<{ prediction: any }> = ({ prediction }) =>
 };
 
 // Componentes auxiliares
-const StatBox: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
+const StatBox: React.FC<{ label: string; value: string; color: string; subtitle?: string }> = ({ label, value, color, subtitle }) => (
   <View style={styles.statBox}>
     <Text style={[styles.statValue, { color }]}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
+    {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
   </View>
 );
 
@@ -821,6 +843,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  statSubtitle: {
+    color: '#6b7280',
+    fontSize: 10,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
   qualityGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -872,6 +900,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+    marginTop: 2,
+  },
+  directionPercent: {
+    color: '#6b7280',
+    fontSize: 12,
     marginTop: 2,
   },
   pendingList: {
