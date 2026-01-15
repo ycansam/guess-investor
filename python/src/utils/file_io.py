@@ -55,14 +55,21 @@ def save_weights(
     momentum: float,
     filepath: Path = WEIGHTS_FILE
 ) -> None:
-    """Guarda pesos optimizados a JSON"""
+    """Guarda pesos optimizados a JSON con alta precisión"""
     filepath.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Redondear a 6 decimales para mayor precisión
+    rounded_weights = {}
+    for timeframe, factors in weights.items():
+        rounded_weights[timeframe] = {
+            k: round(v, 6) for k, v in factors.items()
+        }
     
     data = {
         'version': '1.0',
         'updated_at': datetime.now().isoformat(),
         'training_samples': training_samples,
-        'weights': weights,
+        'weights': rounded_weights,
         'metadata': {
             'learning_rate': learning_rate,
             'momentum': momentum,

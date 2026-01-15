@@ -1,6 +1,6 @@
 # 🧠 Sistema de Aprendizaje Automático - Guess Investor
 
-**Última actualización:** 28 de diciembre de 2025
+**Última actualización:** 29 de diciembre de 2025
 
 Este sistema permite que la app aprenda de sus errores y mejore las predicciones con el tiempo.
 El proceso es **completamente automático** - el backend sincroniza predicciones y entrena sin intervención del usuario.
@@ -11,10 +11,11 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         BACKEND Node.js (Puerto 3001)               │
 ├─────────────────────────────────────────────────────────────────────┤
-│  1. Hace predicción con 11 factores + pesos + ML avanzado           │
+│  1. Hace predicción con 11 factores + ensemble de 7 modelos        │
 │  2. Registra predicción en base de datos (Prisma/SQLite)            │
 │  3. Verifica predicciones cuando pasa fecha objetivo                │
 │  4. Sincroniza datos verificados con Python server                  │
+│  5. Obtiene clasificación de activos para optimizar modelos         │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼ (HTTP API)
@@ -24,27 +25,63 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 │  server.py - Servidor HTTP                                          │
 │  ├── POST /train - Entrena con gradient descent                     │
 │  ├── GET /weights - Retorna pesos aprendidos                        │
-│  └── GET /status - Estado del servidor                              │
+│  ├── GET /status - Estado del servidor                              │
+│  ├── GET /classify/{symbol} - Clasificar un activo                  │
+│  ├── GET /profiles - Listar todos los perfiles de activos           │
+│  ├── POST /classify - Clasificar con datos históricos               │
+│  └── POST /classify-batch - Clasificar múltiples activos            │
 │                                                                     │
 │  src/                                                               │
 │  ├── config/settings.py    - Configuración central                  │
 │  ├── models/               - Modelos ML                             │
 │  │   ├── data_models.py    - Dataclasses                            │
 │  │   ├── loss_function.py  - Función de pérdida                     │
-│  │   └── optimizer.py      - Optimizador con momentum               │
+│  │   ├── optimizer.py      - Optimizador con momentum               │
+│  │   └── asset_classifier.py - Clasificador de activos NEW          │
 │  └── utils/file_io.py      - Lectura/escritura de archivos          │
 │                                                                     │
 │  main.py - Entry point con CLI                                      │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
-                                  ▼ (learned_weights.json)
+                                  ▼ (learned_weights.json + asset_profiles.json)
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         BACKEND Node.js                             │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Importa pesos aprendidos a la base de datos (LearnedWeights)       │
+│  Usa perfiles de activos para ajustar el ensemble                   │
 │  Los usa en próximas predicciones                                   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+## Clasificador de Activos
+
+El sistema incluye un **clasificador de activos** que analiza la volatilidad para recomendar:
+
+### Timeframes Recomendados
+
+| Tipo de Activo | Volatilidad | Timeframe |
+|----------------|-------------|-----------|
+| Crypto (BTC, ETH) | Alta (>40%) | Intraday/Swing |
+| Growth stocks (TSLA, NVDA) | Media-Alta | Swing |
+| Blue chips (AAPL, MSFT) | Media | Swing/Long |
+| ETFs (SPY, QQQ) | Baja (<20%) | Long |
+
+### Modelos Recomendados por Tipo
+
+| Tipo de Activo | Modelos Prioritarios |
+|----------------|---------------------|
+| Alta volatilidad | Momentum, Sentiment, Regime |
+| Media volatilidad | Global, Symbol, Momentum |
+| Baja volatilidad | Fundamental, Mean Reversion, Symbol |
+
+### Endpoints de Clasificación
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/classify/{symbol}` | GET | Clasificar un activo (usa cache/perfil conocido) |
+| `/profiles` | GET | Listar todos los perfiles de activos |
+| `/classify` | POST | Clasificar con datos históricos |
+| `/classify-batch` | POST | Clasificar múltiples activos |
 
 ## Instalación
 
@@ -74,6 +111,10 @@ El servidor escucha en `http://localhost:8765`
 | `/status` | GET | Estado del servidor |
 | `/weights` | GET | Retorna pesos actuales |
 | `/train` | POST | Entrena con datos recibidos |
+| `/classify/{symbol}` | GET | Clasificar un activo |
+| `/profiles` | GET | Listar perfiles de activos |
+| `/classify` | POST | Clasificar con datos históricos |
+| `/classify-batch` | POST | Clasificar múltiples activos |
 
 ### Flujo Automático desde Backend
 
@@ -192,6 +233,7 @@ Pesos actuales:
 ```
 python/
 ├── main.py                   # Entry point con CLI
+├── server.py                 # Servidor HTTP (puerto 8765)
 ├── requirements.txt          # Dependencias (solo Python estándar)
 ├── README.md                 # Este archivo
 ├── src/
@@ -203,15 +245,55 @@ python/
 │   │   ├── __init__.py
 │   │   ├── data_models.py    # Dataclasses
 │   │   ├── loss_function.py  # Función de pérdida
-│   │   └── optimizer.py      # Optimizador con momentum
+│   │   ├── optimizer.py      # Optimizador con momentum
+│   │   └── asset_classifier.py  # Clasificador de activos (NEW)
 │   └── utils/
 │       ├── __init__.py
 │       └── file_io.py        # I/O de archivos JSON
 └── data/
     ├── verified_predictions.json  # Datos de la app
     ├── learned_weights.json       # Pesos optimizados
+    ├── asset_profiles.json        # Perfiles de activos (NEW)
     └── training_history.json      # Historial de entrenamientos
 ```
+
+## Clasificador de Activos - Detalles
+
+El clasificador (`asset_classifier.py`) analiza las siguientes métricas:
+
+| Métrica | Descripción |
+|---------|-------------|
+| `daily_volatility` | Volatilidad diaria anualizada (%) |
+| `weekly_volatility` | Volatilidad semanal anualizada (%) |
+| `atr_percent` | Average True Range como % del precio |
+| `avg_daily_range` | Rango diario promedio (high-low) |
+| `gap_frequency` | Frecuencia de gaps en apertura |
+| `trend_persistence` | Qué tan persistentes son las tendencias |
+| `mean_reversion_score` | Tendencia a revertir a la media |
+
+### Umbrales de Volatilidad
+
+```python
+VOLATILITY_THRESHOLDS = {
+    'low': 15,      # < 15% → Long term
+    'medium': 35,   # 15-35% → Swing
+    'high': 60,     # 35-60% → Intraday/Swing
+    'extreme': 100  # > 60% → Muy arriesgado
+}
+```
+
+### Perfiles Conocidos
+
+El clasificador incluye perfiles preconfigurados para activos populares:
+
+| Símbolo | Tipo | Volatilidad | Timeframe |
+|---------|------|-------------|-----------|
+| BTC-USD | Crypto | 65% | Swing |
+| ETH-USD | Crypto | 75% | Intraday |
+| AAPL | Stock | 25% | Swing |
+| TSLA | Stock | 55% | Intraday |
+| SPY | ETF | 15% | Long |
+| NVDA | Stock | 50% | Swing |
 
 ## Requisitos Mínimos
 

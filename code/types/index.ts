@@ -1,13 +1,5 @@
 // Tipos para el sistema de predicciones de inversiones con IA
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: Date;
-  prediction?: InvestmentPrediction;
-}
-
 export interface InvestmentPrediction {
   id: string;
   asset: string;
@@ -216,23 +208,10 @@ export interface MarketData {
   currency?: string;
 }
 
-export interface ChatState {
-  messages: ChatMessage[];
-  isLoading: boolean;
-  error: string | null;
-}
-
 export interface PredictionState {
   predictions: InvestmentPrediction[];
   isAnalyzing: boolean;
   lastAnalysis: Date | null;
-}
-
-export interface AppConfig {
-  geminiApiKey: string;
-  model: string;
-  maxTokens: number;
-  temperature: number;
 }
 
 // Tipo para la respuesta de la IA parseada

@@ -15,6 +15,7 @@ interface TrackingStatsCardProps {
 export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose }) => {
   const [stats, setStats] = useState<TrackingStats | null>(null);
   const [pendingPredictions, setPendingPredictions] = useState<any[]>([]);
+  const [activePredictions, setActivePredictions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -33,9 +34,13 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       const statsData = await apiClient.getPredictionStats();
       setStats(statsData);
       
-      // Cargar predicciones pendientes
+      // Cargar predicciones pendientes del backend (para lista)
       const pendingData = await apiClient.getPendingPredictions();
       setPendingPredictions(pendingData);
+      
+      // Cargar predicciones activas del backend (no expiradas)
+      const activeData = await apiClient.getActivePredictions();
+      setActivePredictions(activeData);
       
       // Cargar historial verificado
       const verifiedData = await apiClient.getVerifiedPredictions(20);
@@ -162,12 +167,13 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
           {/* Sistema de Estabilidad ML */}
           <SystemStabilityCard stats={stats} />
 
-          {/* Resumen general */}
+          {/* Resumen general - Total calculado dinámicamente */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>📈 Resumen</Text>
             <View style={styles.statsRow}>
               <StatBox label="Total" value={`${stats.total}`} color="#3b82f6" />
               <StatBox label="Verificadas" value={`${stats.verified}`} color="#10b981" />
+              <StatBox label="Activas" value={`${stats.active || 0}`} color="#8b5cf6" />
               <StatBox label="Pendientes" value={`${stats.pending}`} color="#f59e0b" />
             </View>
           </View>
@@ -176,20 +182,26 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
           {stats.verified > 0 && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>🎯 Precisión</Text>
+              <Text style={styles.cardSubtitle}>
+                Cuánto te desvías de lo que predices vs lo que pasa
+              </Text>
               <View style={styles.statsRow}>
                 <StatBox
                   label="Dirección"
                   value={`${stats.directionAccuracy.toFixed(1)}%`}
+                  subtitle="Aciertos ↑↓"
                   color={stats.directionAccuracy >= 60 ? '#10b981' : stats.directionAccuracy >= 50 ? '#f59e0b' : '#ef4444'}
                 />
                 <StatBox
-                  label="Score medio"
+                  label="Score"
                   value={`${stats.avgAccuracyScore.toFixed(0)}`}
+                  subtitle="0-100 pts"
                   color={stats.avgAccuracyScore >= 70 ? '#10b981' : stats.avgAccuracyScore >= 50 ? '#f59e0b' : '#ef4444'}
                 />
                 <StatBox
-                  label="Error prom."
-                  value={`${stats.avgPriceError.toFixed(1)}%`}
+                  label="Desviación"
+                  value={`±${stats.avgPriceError.toFixed(1)}%`}
+                  subtitle="vs predicho"
                   color={stats.avgPriceError <= 2 ? '#10b981' : stats.avgPriceError <= 5 ? '#f59e0b' : '#ef4444'}
                 />
               </View>
@@ -220,21 +232,13 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
                   <Text style={styles.qualityLabel}>Buenas</Text>
                   <Text style={styles.qualitySubLabel}>{'50-75%'}</Text>
                 </View>
-                <View style={[styles.qualityBox, { backgroundColor: '#f59e0b20' }]}>
-                  <Text style={styles.qualityIcon}>⚠️</Text>
-                  <Text style={[styles.qualityValue, { color: '#f59e0b' }]}>
-                    {stats.byQuality.poor}
-                  </Text>
-                  <Text style={styles.qualityLabel}>Pobres</Text>
-                  <Text style={styles.qualitySubLabel}>{'25-50%'}</Text>
-                </View>
                 <View style={[styles.qualityBox, { backgroundColor: '#ef444420' }]}>
                   <Text style={styles.qualityIcon}>❌</Text>
                   <Text style={[styles.qualityValue, { color: '#ef4444' }]}>
                     {stats.byQuality.failed}
                   </Text>
                   <Text style={styles.qualityLabel}>Fallidas</Text>
-                  <Text style={styles.qualitySubLabel}>{'<25%'}</Text>
+                  <Text style={styles.qualitySubLabel}>{'Dir. mal'}</Text>
                 </View>
               </View>
             </View>
@@ -251,12 +255,22 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
                   <Text style={styles.directionValue}>
                     {stats.byDirection.up.correct}/{stats.byDirection.up.total}
                   </Text>
+                  <Text style={styles.directionPercent}>
+                    {stats.byDirection.up.total > 0 
+                      ? `${((stats.byDirection.up.correct / stats.byDirection.up.total) * 100).toFixed(1)}%`
+                      : '-'}
+                  </Text>
                 </View>
                 <View style={styles.directionItem}>
                   <Text style={styles.directionIcon}>📉</Text>
                   <Text style={styles.directionLabel}>Bajadas</Text>
                   <Text style={styles.directionValue}>
                     {stats.byDirection.down.correct}/{stats.byDirection.down.total}
+                  </Text>
+                  <Text style={styles.directionPercent}>
+                    {stats.byDirection.down.total > 0 
+                      ? `${((stats.byDirection.down.correct / stats.byDirection.down.total) * 100).toFixed(1)}%`
+                      : '-'}
                   </Text>
                 </View>
                 <View style={styles.directionItem}>
@@ -265,12 +279,22 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
                   <Text style={styles.directionValue}>
                     {stats.byDirection.neutral.total}
                   </Text>
+                  <Text style={styles.directionPercent}>
+                    {stats.byDirection.neutral.total > 0 && stats.verified > 0
+                      ? `${((stats.byDirection.neutral.total / stats.verified) * 100).toFixed(1)}%`
+                      : '-'}
+                  </Text>
                 </View>
               </View>
             </View>
           )}
 
-          {/* Predicciones pendientes */}
+          {/* Predicciones activas (no expiradas) */}
+          {activePredictions.length > 0 && (
+            <ActivePredictionsSection predictions={activePredictions} />
+          )}
+
+          {/* Predicciones pendientes (expiradas, listas para verificar) */}
           {pendingPredictions.length > 0 && (
             <PendingPredictionsSection predictions={pendingPredictions} />
           )}
@@ -348,7 +372,7 @@ const SystemStabilityCard: React.FC<{ stats: TrackingStats }> = ({ stats }) => {
   const getStabilityInfo = () => {
     const verified = stats.verified;
     const qualityPredictions = stats.byQuality.excellent + stats.byQuality.good;
-    const totalQuality = stats.byQuality.excellent + stats.byQuality.good + stats.byQuality.poor + stats.byQuality.failed;
+    const totalQuality = stats.byQuality.excellent + stats.byQuality.good + stats.byQuality.failed;
     const qualityRate = totalQuality > 0 ? (qualityPredictions / totalQuality) * 100 : 0;
 
     let level: 'inicial' | 'aprendiendo' | 'desarrollando' | 'estable' | 'maduro';
@@ -502,7 +526,7 @@ const PredictionHistoryItem: React.FC<{ prediction: any }> = ({ prediction }) =>
         <View style={styles.historyColumn}>
           <Text style={styles.historyLabel}>Predicción</Text>
           <Text style={styles.historyValue}>
-            {directionIcon} {prediction.predictedChange >= 0 ? '+' : ''}{prediction.predictedChange?.toFixed(1)}%
+            {directionIcon} {prediction.predictedChange >= 0 ? '+' : ''}{prediction.predictedChange?.toFixed(2)}%
           </Text>
         </View>
 
@@ -514,7 +538,7 @@ const PredictionHistoryItem: React.FC<{ prediction: any }> = ({ prediction }) =>
               prediction.directionCorrect ? styles.correct : styles.incorrect
             ]}>
               {prediction.actualChange !== undefined
-                ? `${prediction.actualChange >= 0 ? '+' : ''}${prediction.actualChange?.toFixed(1)}%`
+                ? `${prediction.actualChange >= 0 ? '+' : ''}${prediction.actualChange?.toFixed(2)}%`
                 : 'N/A'}
             </Text>
           </View>
@@ -546,14 +570,83 @@ const PredictionHistoryItem: React.FC<{ prediction: any }> = ({ prediction }) =>
 };
 
 // Componentes auxiliares
-const StatBox: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
+const StatBox: React.FC<{ label: string; value: string; color: string; subtitle?: string }> = ({ label, value, color, subtitle }) => (
   <View style={styles.statBox}>
     <Text style={[styles.statValue, { color }]}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
+    {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
   </View>
 );
 
-// Predicciones pendientes
+// Predicciones activas (no expiradas)
+const ActivePredictionsSection: React.FC<{ predictions: any[] }> = ({ predictions }) => {
+  const getTimeRemaining = (expiresAt: string) => {
+    const now = new Date();
+    const expires = new Date(expiresAt);
+    const diffMs = expires.getTime() - now.getTime();
+    
+    if (diffMs <= 0) return { text: 'Expirada', color: '#ef4444' };
+    
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffDays > 0) {
+      return { text: `${diffDays}d ${diffHours % 24}h`, color: '#8b5cf6' };
+    } else if (diffHours > 0) {
+      return { text: `${diffHours}h`, color: diffHours <= 4 ? '#f59e0b' : '#8b5cf6' };
+    } else {
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      return { text: `${diffMins}min`, color: '#f59e0b' };
+    }
+  };
+
+  const getDirectionIcon = (direction: string) => {
+    switch (direction) {
+      case 'up': return '📈';
+      case 'down': return '📉';
+      default: return '➡️';
+    }
+  };
+
+  if (predictions.length === 0) return null;
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>🎯 Predicciones Activas</Text>
+      <Text style={styles.cardSubtitle}>Esperando expiración para verificar</Text>
+      <View style={styles.pendingList}>
+        {predictions.slice(0, 8).map((pred, index) => {
+          const timeInfo = getTimeRemaining(pred.expiresAt);
+          return (
+            <View key={pred.id || index} style={styles.pendingItem}>
+              <View style={styles.pendingLeft}>
+                <Text style={styles.pendingSymbol}>{pred.symbol}</Text>
+                <Text style={styles.pendingDirection}>
+                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(2)}%
+                </Text>
+              </View>
+              <View style={styles.pendingRight}>
+                <View style={[styles.timeBadge, { backgroundColor: timeInfo.color + '20' }]}>
+                  <Text style={[styles.timeText, { color: timeInfo.color }]}>
+                    ⏱ {timeInfo.text}
+                  </Text>
+                </View>
+                <Text style={styles.pendingDate}>
+                  {pred.timeframe}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+        {predictions.length > 8 && (
+          <Text style={styles.moreText}>+{predictions.length - 8} más...</Text>
+        )}
+      </View>
+    </View>
+  );
+};
+
+// Predicciones pendientes (expiradas, listas para verificar)
 const PendingPredictionsSection: React.FC<{ predictions: any[] }> = ({ predictions }) => {
   const getMarketCloseInfo = (expiresAt: string, symbol: string) => {
     const now = new Date();
@@ -612,7 +705,7 @@ const PendingPredictionsSection: React.FC<{ predictions: any[] }> = ({ predictio
               <View style={styles.pendingLeft}>
                 <Text style={styles.pendingSymbol}>{pred.symbol}</Text>
                 <Text style={styles.pendingDirection}>
-                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(1)}%
+                  {getDirectionIcon(pred.direction)} {pred.predictedChange > 0 ? '+' : ''}{pred.predictedChange?.toFixed(2)}%
                 </Text>
               </View>
               <View style={styles.pendingRight}>
@@ -750,6 +843,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  statSubtitle: {
+    color: '#6b7280',
+    fontSize: 10,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
   qualityGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -801,6 +900,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+    marginTop: 2,
+  },
+  directionPercent: {
+    color: '#6b7280',
+    fontSize: 12,
     marginTop: 2,
   },
   pendingList: {

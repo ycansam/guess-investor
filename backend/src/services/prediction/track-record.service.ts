@@ -266,6 +266,111 @@ export const trackRecordService = {
   },
 
   /**
+   * Obtiene ajuste de confianza por DIRECCIÓN predicha
+   * Basado en estadísticas históricas globales del sistema
+   * UP=81%, DOWN=53%, NEUTRAL=44% de acierto
+   */
+  async getDirectionAdjustment(direction: 'up' | 'down' | 'neutral'): Promise<{
+    confidenceMultiplier: number;
+    recommendation: string;
+  }> {
+    try {
+      // Calcular precisión histórica por dirección
+      const stats = await this.getDirectionStats();
+      
+      if (!stats.hasEnoughData) {
+        return { confidenceMultiplier: 1.0, recommendation: '' };
+      }
+
+      const directionAccuracy = stats[direction];
+      
+      // Ajustar confianza según precisión histórica de esa dirección
+      if (directionAccuracy >= 75) {
+        return { 
+          confidenceMultiplier: 1.15, // +15% confianza
+          recommendation: `Históricamente ${direction === 'up' ? 'alcistas' : direction === 'down' ? 'bajistas' : 'neutrales'} tienen ${directionAccuracy.toFixed(0)}% de acierto`
+        };
+      } else if (directionAccuracy >= 60) {
+        return { 
+          confidenceMultiplier: 1.05, 
+          recommendation: '' 
+        };
+      } else if (directionAccuracy >= 50) {
+        return { 
+          confidenceMultiplier: 0.95, // -5% confianza
+          recommendation: `⚠️ Predicciones ${direction === 'up' ? 'alcistas' : direction === 'down' ? 'bajistas' : 'neutrales'} tienen solo ${directionAccuracy.toFixed(0)}% de acierto histórico`
+        };
+      } else {
+        return { 
+          confidenceMultiplier: 0.85, // -15% confianza
+          recommendation: `⚠️ PRECAUCIÓN: Predicciones ${direction === 'up' ? 'alcistas' : direction === 'down' ? 'bajistas' : 'neutrales'} tienen bajo acierto (${directionAccuracy.toFixed(0)}%)`
+        };
+      }
+    } catch (error) {
+      logger.error('[TrackRecord] Error getting direction adjustment:', error);
+      return { confidenceMultiplier: 1.0, recommendation: '' };
+    }
+  },
+
+  /**
+   * Obtiene estadísticas de precisión por dirección
+   */
+  async getDirectionStats(): Promise<{
+    up: number;
+    down: number;
+    neutral: number;
+    hasEnoughData: boolean;
+  }> {
+    const cacheKey = '_direction_stats';
+    const cached = trackRecordCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data as any;
+    }
+
+    try {
+      const predictions = await prisma.prediction.findMany({
+        where: { verified: true },
+        select: {
+          direction: true,
+          directionCorrect: true,
+        },
+      });
+
+      if (predictions.length < 30) {
+        return { up: 50, down: 50, neutral: 50, hasEnoughData: false };
+      }
+
+      const byDirection = {
+        up: predictions.filter(p => p.direction === 'up'),
+        down: predictions.filter(p => p.direction === 'down'),
+        neutral: predictions.filter(p => p.direction === 'neutral'),
+      };
+
+      const stats = {
+        up: byDirection.up.length > 0 
+          ? (byDirection.up.filter(p => p.directionCorrect).length / byDirection.up.length) * 100 
+          : 50,
+        down: byDirection.down.length > 0 
+          ? (byDirection.down.filter(p => p.directionCorrect).length / byDirection.down.length) * 100 
+          : 50,
+        neutral: byDirection.neutral.length > 0 
+          ? (byDirection.neutral.filter(p => p.directionCorrect).length / byDirection.neutral.length) * 100 
+          : 50,
+        hasEnoughData: true,
+      };
+
+      trackRecordCache.set(cacheKey, { data: stats as any, timestamp: Date.now() });
+      
+      logger.debug(`[TrackRecord] Direction stats: UP=${stats.up.toFixed(1)}%, DOWN=${stats.down.toFixed(1)}%, NEUTRAL=${stats.neutral.toFixed(1)}%`);
+
+      return stats;
+    } catch (error) {
+      logger.error('[TrackRecord] Error getting direction stats:', error);
+      return { up: 50, down: 50, neutral: 50, hasEnoughData: false };
+    }
+  },
+
+  /**
    * Limpia la cache (útil después de verificar predicciones)
    */
   clearCache(symbol?: string): void {

@@ -2,9 +2,12 @@ name: Reset Develop Branch
 
 on:
   pull_request:
-    types: [closed]  # Se dispara cuando se cierra un PR
+    types: [closed]
     branches:
       - main
+
+permissions:
+  contents: write
 
 jobs:
   reset-develop:
@@ -15,11 +18,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Necesario para borrar/recrear ramas
+          fetch-depth: 0
 
       - name: Delete develop branch
-        run: |
-          git push origin --delete develop
+        run: git push origin --delete develop
 
       - name: Recreate develop branch from main
         run: |

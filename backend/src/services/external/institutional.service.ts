@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../../middleware/logger.js';
+import { yahooAuthService } from './yahoo-auth.service.js';
 
 export interface InstitutionalData {
   ownershipPercent: number | null;
@@ -33,23 +34,9 @@ export const institutionalService = {
     }
 
     try {
-      // Obtener datos de Yahoo Finance
+      // Obtener datos de Yahoo Finance con autenticación
       const modules = ['institutionOwnership', 'insiderHolders', 'insiderTransactions'];
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules.join(',')}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-
-      if (!response.ok) {
-        logger.warn(`[Institutional] Failed to fetch for ${symbol}: ${response.status}`);
-        return this.getDefaultData();
-      }
-
-      const json: any = await response.json();
-      const result = json.quoteSummary?.result?.[0];
+      const result = await yahooAuthService.fetchQuoteSummary(symbol, modules);
 
       if (!result) {
         return this.getDefaultData();
@@ -86,12 +73,11 @@ export const institutionalService = {
         }
       }
 
-      // Calcular % total (aproximado)
+      // Calcular % total (aproximado) - yahoo-finance2 devuelve valores directamente
       let totalPctHeld = 0;
       for (const owner of owners.slice(0, 10)) {
-        if (owner.pctHeld?.raw) {
-          totalPctHeld += owner.pctHeld.raw * 100;
-        }
+        const pctHeld = owner.pctHeld ?? 0;
+        totalPctHeld += pctHeld * 100;
       }
       // Estimar ownership total (los top 10 suelen ser ~30-50%)
       ownershipPercent = Math.min(100, totalPctHeld * 1.5);
@@ -103,8 +89,8 @@ export const institutionalService = {
     let insiderNetValue = 0;
 
     for (const tx of insiderTransactions.slice(0, 10)) {
-      const shares = tx.shares?.raw || 0;
-      const value = tx.value?.raw || 0;
+      const shares = tx.shares ?? 0;
+      const value = tx.value ?? 0;
       
       if (tx.transactionText?.toLowerCase().includes('purchase') || 
           tx.transactionText?.toLowerCase().includes('buy')) {

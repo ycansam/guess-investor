@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
+import { prisma } from '../config/database.js';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
+import { predictionRepository } from '../repositories/prediction.repository.js';
 import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
+import { ensembleService } from '../services/prediction/ensemble.service.js';
 
 // ============================================================================
 // CONTROLADOR DE TRAINING
@@ -231,6 +234,23 @@ export const trainingController = {
       success: true,
       reset: true,
       data: saved,
+    });
+  }),
+
+  /**
+   * POST /api/training/retrain-ensemble
+   * Re-entrenar pesos del ensemble con los nuevos accuracyScores
+   */
+  retrainEnsemble: asyncHandler(async (_req: Request, res: Response) => {
+    await ensembleService.updateEnsembleWeights();
+    
+    // Obtener los nuevos pesos
+    const weights = await trainingRepository.getLearnedWeights();
+    
+    res.json({
+      success: true,
+      message: 'Ensemble weights retrained successfully',
+      data: weights,
     });
   }),
 
@@ -469,6 +489,164 @@ export const trainingController = {
       success: result.success,
       data: result.weights,
       error: result.error,
+    });
+  }),
+
+  /**
+   * POST /api/training/import-active
+   * Importar predicciones activas (no verificadas, no expiradas) de Prediction a TrainingCache
+   * Útil para restaurar el cache cuando se pierden datos
+   */
+  importActiveToCache: asyncHandler(async (req: Request, res: Response) => {
+    const { timeframeDays } = req.query;
+    
+    // Mapeo de labels a keys (la tabla Prediction usa labels)
+    const labelToKey: Record<string, string> = {
+      'Intradía': 'intraday',
+      'Swing': 'swing',
+      'Largo Plazo': 'longterm',
+      // También soportar keys directamente
+      'intraday': 'intraday',
+      'swing': 'swing',
+      'longterm': 'longterm',
+    };
+    
+    // Mapeo inverso para filtrar por timeframeDays
+    const daysToKey: Record<number, string> = {
+      1: 'intraday',
+      7: 'swing',
+      30: 'longterm',
+    };
+    
+    // Obtener predicciones activas
+    const now = new Date();
+    const where: any = {
+      verified: false,
+      expiresAt: { gt: now },
+    };
+    
+    // Si se especifica timeframeDays, filtrar
+    if (timeframeDays) {
+      where.timeframeDays = parseInt(timeframeDays as string);
+    }
+    
+    const activePredictions = await prisma.prediction.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+    
+    let imported = 0;
+    let skipped = 0;
+    const importedItems: string[] = [];
+    const errors: string[] = [];
+    
+    for (const pred of activePredictions) {
+      try {
+        // Convertir el label del timeframe al key
+        const timeframeKey = labelToKey[pred.timeframe] || daysToKey[pred.timeframeDays] || 'intraday';
+        
+        // Verificar si ya existe en cache
+        const existing = await trainingRepository.getFromCache(pred.symbol, timeframeKey);
+        if (existing) {
+          skipped++;
+          continue;
+        }
+        
+        // Parsear analysisData si existe
+        let analysisData = null;
+        if (pred.factorBreakdown) {
+          try {
+            analysisData = JSON.parse(pred.factorBreakdown);
+          } catch {}
+        }
+        
+        // Guardar en cache
+        await trainingRepository.saveToCache({
+          symbol: pred.symbol,
+          timeframe: timeframeKey,
+          predictedChange: pred.predictedChange,
+          confidence: pred.confidence,
+          direction: pred.direction,
+          currentPrice: pred.currentPrice,
+          targetPrice: pred.targetPrice,
+          analysisData,
+          expiresAt: pred.expiresAt,
+        });
+        
+        imported++;
+        importedItems.push(`${pred.symbol} (${timeframeKey})`);
+      } catch (error: any) {
+        errors.push(`${pred.symbol}: ${error.message}`);
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        found: activePredictions.length,
+        imported,
+        skipped,
+        errors: errors.length,
+        importedItems: importedItems.slice(0, 20), // Mostrar solo primeros 20
+        errorDetails: errors.slice(0, 10),
+      },
+    });
+  }),
+
+  /**
+   * POST /api/training/sync-cache
+   * Sincronizar training cache con predicciones verificadas
+   * Elimina del cache las predicciones que ya han sido verificadas
+   */
+  syncCacheWithVerified: asyncHandler(async (_req: Request, res: Response) => {
+    // Obtener todo el cache activo
+    const cache = await trainingRepository.getAllActiveCache();
+    
+    // Mapear timeframe string a días
+    const timeframeToDays: Record<string, number> = {
+      intraday: 1,
+      swing: 7,
+      longterm: 30,
+    };
+    
+    let removed = 0;
+    const removedItems: string[] = [];
+    
+    for (const item of cache) {
+      const timeframeDays = timeframeToDays[item.timeframe] || 1;
+      
+      // Buscar predicción verificada para este símbolo y timeframe
+      const { predictions } = await predictionRepository.findAll({
+        symbol: item.symbol,
+        verified: true,
+        limit: 10,
+      });
+      
+      // Verificar si alguna de las verificadas coincide aproximadamente en fecha
+      const hasVerified = predictions.some((p: { timeframeDays: number; createdAt: Date | string }) => {
+        if (p.timeframeDays !== timeframeDays) return false;
+        // Verificar que la predicción fue creada cerca de la del cache
+        const cacheCreated = new Date(item.createdAt).getTime();
+        const predCreated = new Date(p.createdAt).getTime();
+        const diffHours = Math.abs(cacheCreated - predCreated) / (1000 * 60 * 60);
+        return diffHours < 24; // Dentro de 24 horas
+      });
+      
+      if (hasVerified) {
+        await trainingRepository.deleteFromCache(item.symbol, item.timeframe);
+        removed++;
+        removedItems.push(`${item.symbol} (${item.timeframe})`);
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        scanned: cache.length,
+        removed,
+        removedItems,
+        remaining: cache.length - removed,
+      },
     });
   }),
 };

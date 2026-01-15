@@ -57,6 +57,15 @@ router.delete('/weights', trainingController.resetWeights);
 // GET /api/training/export - Exportar todos los datos
 router.get('/export', trainingController.export);
 
+// POST /api/training/retrain-ensemble - Re-entrenar pesos del ensemble
+router.post('/retrain-ensemble', trainingController.retrainEnsemble);
+
+// POST /api/training/import-active - Importar predicciones activas a cache
+router.post('/import-active', trainingController.importActiveToCache);
+
+// POST /api/training/sync-cache - Sincronizar cache con predicciones verificadas
+router.post('/sync-cache', trainingController.syncCacheWithVerified);
+
 // =============================================================================
 // PYTHON ML INTEGRATION
 // =============================================================================

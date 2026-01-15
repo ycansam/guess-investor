@@ -161,7 +161,10 @@ export const ALL_ASSETS: MarketAsset[] = [
   { symbol: 'HD', name: 'Home Depot', icon: '🏠', type: 'stock', category: 'consumer' },
   
   // Commodities (Oro, Plata, Minería)
-  { symbol: 'GC=F', name: 'Oro Físico (Futuros)', icon: '🥇', type: 'index', category: 'commodities' },
+  { symbol: 'EGLN.L', name: 'iShares Physical Gold USD', icon: '🥇', type: 'etf', category: 'commodities' },
+  { symbol: 'PPFB.DE', name: 'iShares Physical Gold', icon: '🪙', type: 'etf', category: 'commodities' },
+  { symbol: '4GLD.DE', name: 'Xetra-Gold', icon: '🏆', type: 'etf', category: 'commodities' },
+  { symbol: 'GC=F', name: 'Oro Físico (Futuros)', icon: '📊', type: 'index', category: 'commodities' },
   { symbol: 'SI=F', name: 'Plata Física (Futuros)', icon: '🥈', type: 'index', category: 'commodities' },
   { symbol: 'NEM', name: 'Newmont Mining', icon: '⛏️', type: 'stock', category: 'commodities' },
   { symbol: 'GOLD', name: 'Barrick Gold', icon: '🪙', type: 'stock', category: 'commodities' },
@@ -185,12 +188,17 @@ export const ALL_ASSETS: MarketAsset[] = [
   { symbol: '^VIX', name: 'VIX', icon: '😰', type: 'index', category: 'index' },
 ];
 
-// Lista legacy para compatibilidad
-export const POPULAR_ASSETS: MarketAsset[] = ALL_ASSETS.slice(0, 18);
+// Lista legacy para compatibilidad - se cargará dinámicamente desde el backend
+export let POPULAR_ASSETS: MarketAsset[] = ALL_ASSETS.slice(0, 18);
 
 // Cache con duración de 15 minutos
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutos
 const marketCache = new Map<string, { data: AssetQuote; timestamp: number }>();
+
+// Cache de activos dinámicos del backend
+let dynamicAssets: MarketAsset[] | null = null;
+let dynamicAssetsTimestamp = 0;
+const ASSETS_CACHE_DURATION = 60 * 60 * 1000; // 1 hora para lista de activos
 
 // Tamaño de batch para paginación
 const BATCH_SIZE = 10;
@@ -198,6 +206,74 @@ const BATCH_SIZE = 10;
 class MarketDataService {
   private lastBatchFetch: number = 0;
   private batchPromise: Promise<Map<string, MarketAsset>> | null = null;
+  private loadingAssets: Promise<MarketAsset[]> | null = null;
+
+  /**
+   * Carga los activos desde el backend (dinámico)
+   * Combina con la lista estática local como fallback
+   */
+  async loadDynamicAssets(): Promise<MarketAsset[]> {
+    const now = Date.now();
+    
+    // Si ya tenemos activos cacheados válidos, devolverlos
+    if (dynamicAssets && (now - dynamicAssetsTimestamp) < ASSETS_CACHE_DURATION) {
+      return dynamicAssets;
+    }
+
+    // Si ya hay una petición en curso, esperarla
+    if (this.loadingAssets) {
+      return this.loadingAssets;
+    }
+
+    this.loadingAssets = (async () => {
+      try {
+        console.log('[MarketData] Loading assets from backend...');
+        const backendAssets = await apiClient.getAllAssets();
+        
+        // Convertir a formato MarketAsset
+        const converted: MarketAsset[] = backendAssets.map(a => ({
+          symbol: a.symbol,
+          name: a.name,
+          icon: a.icon,
+          type: a.type as 'stock' | 'crypto' | 'etf' | 'index',
+          category: a.category,
+        }));
+
+        // Combinar: primero los populares locales, luego los del backend que no estén
+        // Esto asegura que Apple, Microsoft, etc. aparezcan primero
+        const localSymbolSet = new Set(ALL_ASSETS.map(a => a.symbol.toUpperCase()));
+        const backendOnlyAssets = converted.filter(a => !localSymbolSet.has(a.symbol.toUpperCase()));
+        
+        // Lista local primero (populares), luego los extras del backend
+        dynamicAssets = [...ALL_ASSETS, ...backendOnlyAssets];
+        dynamicAssetsTimestamp = now;
+        
+        console.log(`[MarketData] Loaded ${ALL_ASSETS.length} local (popular) + ${backendOnlyAssets.length} backend-only = ${dynamicAssets.length} total`);
+        
+        return dynamicAssets;
+      } catch (error) {
+        console.warn('[MarketData] Failed to load from backend, using local list:', error);
+        // Fallback a lista local
+        dynamicAssets = ALL_ASSETS;
+        dynamicAssetsTimestamp = now;
+        return dynamicAssets;
+      } finally {
+        this.loadingAssets = null;
+      }
+    })();
+
+    return this.loadingAssets;
+  }
+
+  /**
+   * Obtiene la lista de activos (carga dinámica si es necesario)
+   */
+  async getAssets(): Promise<MarketAsset[]> {
+    if (dynamicAssets) {
+      return dynamicAssets;
+    }
+    return this.loadDynamicAssets();
+  }
 
   /**
    * Obtiene datos LITE de un símbolo (solo precio y cambio) con cache de 15 minutos
@@ -392,8 +468,11 @@ class MarketDataService {
     category?: AssetCategory,
     searchQuery?: string
   ): Promise<{ assets: MarketAsset[]; hasMore: boolean; total: number }> {
+    // Cargar activos dinámicamente desde backend
+    const allAssets = await this.getAssets();
+    
     // Filtrar activos
-    let filteredAssets = [...ALL_ASSETS];
+    let filteredAssets = [...allAssets];
     
     if (category) {
       filteredAssets = filteredAssets.filter(a => a.category === category);
@@ -423,32 +502,35 @@ class MarketDataService {
    * Obtiene activos de categorías específicas (para secciones)
    */
   async getAssetsByCategory(category: AssetCategory): Promise<MarketAsset[]> {
-    const categoryAssets = ALL_ASSETS.filter(a => a.category === category);
+    const allAssets = await this.getAssets();
+    const categoryAssets = allAssets.filter(a => a.category === category);
     return this.fetchAssetsWithPrices(categoryAssets);
   }
 
   /**
    * Obtiene lista de categorías disponibles con conteo
    */
-  getCategories(): { category: AssetCategory; label: string; icon: string; count: number }[] {
+  async getCategories(): Promise<{ category: AssetCategory; label: string; icon: string; count: number }[]> {
+    const allAssets = await this.getAssets();
     const categories = Object.keys(CATEGORY_INFO) as AssetCategory[];
     return categories.map(cat => ({
       category: cat,
       ...CATEGORY_INFO[cat],
-      count: ALL_ASSETS.filter(a => a.category === cat).length,
+      count: allAssets.filter(a => a.category === cat).length,
     }));
   }
 
   /**
    * Busca activos por nombre o símbolo
    */
-  searchAssets(query: string): MarketAsset[] {
+  async searchAssets(query: string): Promise<MarketAsset[]> {
     if (!query || query.trim().length < 1) {
       return [];
     }
     
+    const allAssets = await this.getAssets();
     const q = query.toLowerCase().trim();
-    return ALL_ASSETS.filter(a => 
+    return allAssets.filter(a => 
       a.symbol.toLowerCase().includes(q) || 
       a.name.toLowerCase().includes(q)
     ).slice(0, 20); // Máximo 20 resultados de búsqueda
@@ -498,7 +580,36 @@ class MarketDataService {
   /**
    * Obtiene un activo por símbolo
    */
-  getAssetBySymbol(symbol: string): MarketAsset | undefined {
+  async getAssetBySymbol(symbol: string): Promise<MarketAsset | undefined> {
+    const allAssets = await this.getAssets();
+    return allAssets.find(a => a.symbol.toLowerCase() === symbol.toLowerCase());
+  }
+
+  /**
+   * Obtiene múltiples activos por símbolos con sus precios
+   */
+  async getAssetsBySymbols(symbols: string[]): Promise<MarketAsset[]> {
+    if (symbols.length === 0) return [];
+    
+    const allAssets = await this.getAssets();
+    const symbolSet = new Set(symbols.map(s => s.toUpperCase()));
+    
+    // Encontrar los activos que coinciden
+    const matchedAssets = allAssets.filter(a => 
+      symbolSet.has(a.symbol.toUpperCase())
+    );
+    
+    // Obtener precios para todos
+    return this.fetchAssetsWithPrices(matchedAssets);
+  }
+
+  /**
+   * Obtiene un activo por símbolo (sincrono, solo si ya están cargados)
+   */
+  getAssetBySymbolSync(symbol: string): MarketAsset | undefined {
+    if (dynamicAssets) {
+      return dynamicAssets.find(a => a.symbol.toLowerCase() === symbol.toLowerCase());
+    }
     return ALL_ASSETS.find(a => a.symbol.toLowerCase() === symbol.toLowerCase());
   }
 
@@ -509,6 +620,9 @@ class MarketDataService {
     marketCache.clear();
     this.batchPromise = null;
     this.lastBatchFetch = 0;
+    // También resetear activos dinámicos para forzar recarga
+    dynamicAssets = null;
+    dynamicAssetsTimestamp = 0;
   }
 }
 

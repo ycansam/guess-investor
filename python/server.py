@@ -27,11 +27,15 @@ from src.config import (
     DEFAULT_LEARNING_RATE, DEFAULT_MOMENTUM, DEFAULT_EPOCHS,
     EARLY_STOPPING_PATIENCE
 )
-from src.models import WeightOptimizer, LossFunction, VerifiedPrediction
-from src.utils import save_weights, append_training_result
+from src.models import WeightOptimizer, LossFunction, VerifiedPrediction, AssetClassifier, get_classifier, EvolutionaryOptimizer
+from src.utils import save_weights, append_training_result, load_weights
 
 # Archivo donde guardar las predicciones recibidas
 PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
+ASSET_PROFILES_FILE = DATA_DIR / "asset_profiles.json"
+
+# Inicializar clasificador de activos
+asset_classifier = get_classifier(ASSET_PROFILES_FILE)
 
 
 class TrainingHandler(BaseHTTPRequestHandler):
@@ -51,13 +55,23 @@ class TrainingHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         """GET /status - Obtener estado del servidor"""
-        if self.path == '/status':
+        if self.path == '/health':
+            # Endpoint de health check
+            self._set_headers(200)
+            self.wfile.write(json.dumps({
+                'status': 'ok',
+                'service': 'guess-investor-ml',
+                'timestamp': datetime.now().isoformat()
+            }).encode())
+        
+        elif self.path == '/status':
             status = {
                 'running': True,
                 'timestamp': datetime.now().isoformat(),
                 'predictions_file': str(PREDICTIONS_FILE),
                 'predictions_count': self._get_predictions_count(),
                 'weights_file': str(WEIGHTS_FILE),
+                'asset_profiles_count': len(asset_classifier.profiles),
             }
             self._set_headers(200)
             self.wfile.write(json.dumps(status).encode())
@@ -72,6 +86,23 @@ class TrainingHandler(BaseHTTPRequestHandler):
             else:
                 self._set_headers(404)
                 self.wfile.write(json.dumps({'error': 'No hay pesos entrenados'}).encode())
+        
+        elif self.path.startswith('/classify/'):
+            # Clasificar un activo: GET /classify/AAPL
+            symbol = self.path.split('/classify/')[1].upper()
+            try:
+                profile = asset_classifier.classify(symbol)
+                self._set_headers(200)
+                self.wfile.write(json.dumps(profile.to_dict()).encode())
+            except Exception as e:
+                self._set_headers(500)
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        elif self.path == '/profiles':
+            # Listar todos los perfiles clasificados
+            profiles = {s: p.to_dict() for s, p in asset_classifier.profiles.items()}
+            self._set_headers(200)
+            self.wfile.write(json.dumps(profiles).encode())
         
         else:
             self._set_headers(404)
@@ -104,6 +135,72 @@ class TrainingHandler(BaseHTTPRequestHandler):
                 self._set_headers(400)
                 self.wfile.write(json.dumps({'error': str(e)}).encode())
         
+        elif self.path == '/classify':
+            # Clasificar activo con datos históricos
+            # POST /classify { symbol: "AAPL", asset_type: "stock", historical_data: [...] }
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                symbol = data.get('symbol', '').upper()
+                asset_type = data.get('asset_type', 'stock')
+                historical_data = data.get('historical_data', [])
+                force = data.get('force', False)
+                
+                if not symbol:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({'error': 'Symbol requerido'}).encode())
+                    return
+                
+                profile = asset_classifier.classify(
+                    symbol=symbol,
+                    historical_data=historical_data if historical_data else None,
+                    asset_type=asset_type,
+                    force_recalculate=force
+                )
+                
+                print(f"[Server] 🏷️ Clasificado {symbol}: {profile.recommended_timeframe} (confianza: {profile.confidence}%)")
+                
+                self._set_headers(200)
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'profile': profile.to_dict(),
+                }).encode())
+                
+            except Exception as e:
+                print(f"[Server] ❌ Error clasificando: {e}")
+                self._set_headers(500)
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
+        elif self.path == '/classify-batch':
+            # Clasificar múltiples activos
+            # POST /classify-batch { symbols: ["AAPL", "BTC-USD"], historical_data: { "AAPL": [...] } }
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                symbols = data.get('symbols', [])
+                historical_data_map = data.get('historical_data', {})
+                
+                if not symbols:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({'error': 'Symbols requerido'}).encode())
+                    return
+                
+                results = asset_classifier.batch_classify(
+                    symbols=[s.upper() for s in symbols],
+                    historical_data_map=historical_data_map
+                )
+                
+                print(f"[Server] 🏷️ Clasificados {len(results)} activos")
+                
+                self._set_headers(200)
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'profiles': {s: p.to_dict() for s, p in results.items()},
+                }).encode())
+                
+            except Exception as e:
+                print(f"[Server] ❌ Error en batch: {e}")
+                self._set_headers(500)
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
         elif self.path == '/train':
             try:
                 # Entrenar con los datos actuales
@@ -132,7 +229,7 @@ class TrainingHandler(BaseHTTPRequestHandler):
             return 0
     
     def _train(self) -> dict:
-        """Ejecuta el entrenamiento"""
+        """Ejecuta el entrenamiento usando el optimizador más apropiado"""
         if not PREDICTIONS_FILE.exists():
             return {'success': False, 'error': 'No hay datos de predicciones'}
         
@@ -150,26 +247,27 @@ class TrainingHandler(BaseHTTPRequestHandler):
         predictions = []
         for p in predictions_data:
             try:
+                actual_change = p.get('actual_change', 0)
                 pred = VerifiedPrediction(
                     id=p.get('id', ''),
                     symbol=p.get('symbol', ''),
                     asset_type=p.get('asset_type', 'stock'),
                     timeframe_days=p.get('timeframe_days', 1),
-                    predicted_direction=p.get('predicted_direction', 'neutral'),
+                    predicted_direction=p.get('direction', p.get('predicted_direction', 'neutral')),
                     predicted_change=p.get('predicted_change', 0),
                     predicted_price_min=p.get('predicted_price_min', 0),
                     predicted_price_max=p.get('predicted_price_max', 0),
                     confidence=p.get('confidence', 50),
-                    price_at_prediction=p.get('price_at_prediction', 0),
+                    price_at_prediction=p.get('current_price', p.get('price_at_prediction', 0)),
                     factor_scores=p.get('factor_scores', {}),
                     factor_weights=p.get('factor_weights', {}),
                     actual_price=p.get('actual_price', 0),
-                    actual_change=p.get('actual_change', 0),
-                    actual_direction=p.get('actual_direction', 'neutral'),
+                    actual_change=actual_change,
+                    actual_direction='up' if actual_change > 0 else ('down' if actual_change < 0 else 'neutral'),
                     direction_correct=p.get('direction_correct', False),
-                    price_error=p.get('price_error', 0),
+                    price_error=abs(p.get('predicted_change', 0) - actual_change),
                     within_range=p.get('within_range', False),
-                    prediction_date=p.get('prediction_date', ''),
+                    prediction_date=p.get('created_at', p.get('prediction_date', '')),
                     verified_at=p.get('verified_at', ''),
                 )
                 predictions.append(pred)
@@ -182,56 +280,142 @@ class TrainingHandler(BaseHTTPRequestHandler):
                 'error': f'Predicciones válidas insuficientes: {len(predictions)}/5'
             }
         
-        # Crear optimizador y entrenar
-        loss_fn = LossFunction()
-        optimizer = WeightOptimizer(
-            learning_rate=DEFAULT_LEARNING_RATE,
-            momentum=DEFAULT_MOMENTUM,
-            weights=None
-        )
-        optimizer.loss_fn = loss_fn
+        # Contar predicciones con factor_scores
+        with_scores = sum(1 for p in predictions if p.factor_scores)
+        score_ratio = with_scores / len(predictions)
+        
+        # Cargar pesos previos si existen
+        existing_weights = load_weights(WEIGHTS_FILE)
+        if existing_weights:
+            print(f"[Server] 📦 Cargando pesos previos desde {WEIGHTS_FILE}")
+        else:
+            print(f"[Server] 🆕 Iniciando con pesos por defecto")
         
         print(f"\n[Server] 🧠 Entrenando con {len(predictions)} predicciones...")
+        print(f"[Server] 📊 Predicciones con factor_scores: {with_scores}/{len(predictions)} ({score_ratio:.1%})")
         
-        # Entrenar por timeframe
-        results = {}
-        for timeframe in ['intraday', 'swing', 'long']:
-            tf_preds = [p for p in predictions if p.timeframe == timeframe]
-            if len(tf_preds) >= 3:
-                result = optimizer.train(
-                    predictions=tf_preds,
-                    epochs=DEFAULT_EPOCHS,
-                    patience=EARLY_STOPPING_PATIENCE,
-                    verbose=False
-                )
-                if result:
-                    initial_loss = result.initial_loss
-                    final_loss = result.final_loss
-                    improvement = (initial_loss - final_loss) / initial_loss * 100 if initial_loss > 0 else 0
-                    results[timeframe] = {
-                        'samples': len(tf_preds),
-                        'initial_loss': round(initial_loss, 4),
-                        'final_loss': round(final_loss, 4),
-                        'improvement': round(improvement, 1),
+        # Decidir qué optimizador usar
+        # Si menos del 30% tiene factor_scores, usar evolutivo
+        if score_ratio < 0.30:
+            print(f"[Server] 🧬 Usando optimizador EVOLUTIVO (datos sin factor_scores)")
+            optimizer = EvolutionaryOptimizer(
+                weights=existing_weights,
+                learning_rate=0.05,  # Más agresivo para evolución
+                momentum=0.8
+            )
+            
+            # Guardar pesos iniciales
+            weights_before = {tf: dict(optimizer.weights[tf]) for tf in optimizer.TIMEFRAMES}
+            
+            # Aprender
+            result = optimizer.learn_from_predictions(predictions, verbose=True)
+            
+            if result['success']:
+                # Contar cambios
+                changes_count = 0
+                results = {}
+                for tf in optimizer.TIMEFRAMES:
+                    tf_changes = []
+                    for factor in optimizer.weights[tf]:
+                        before = weights_before[tf][factor]
+                        after = optimizer.weights[tf][factor]
+                        delta = after - before
+                        if abs(delta) > 0.0001:
+                            changes_count += 1
+                            tf_changes.append(f"{factor}: {delta:+.4f}")
+                    results[tf] = {
+                        'changes': len(tf_changes),
+                        'details': tf_changes[:3]
                     }
-                    print(f"   ✓ {timeframe}: {initial_loss:.4f} → {final_loss:.4f} ({improvement:+.1f}%)")
+                
+                # Guardar pesos
+                save_weights(
+                    weights=optimizer.weights,
+                    training_samples=len(predictions),
+                    learning_rate=0.05,
+                    momentum=0.8,
+                    filepath=WEIGHTS_FILE
+                )
+                print(f"[Server] 💾 Pesos evolutivos guardados")
+                
+                return {
+                    'success': True,
+                    'method': 'evolutionary',
+                    'samples_used': len(predictions),
+                    'weights_changed': changes_count,
+                    'accuracy': result['accuracy_before'],
+                    'results': results
+                }
+            else:
+                return {'success': False, 'error': result.get('reason', 'Unknown error')}
         
-        # Guardar pesos
-        save_weights(
-            weights=optimizer.weights,
-            training_samples=len(predictions),
-            learning_rate=DEFAULT_LEARNING_RATE,
-            momentum=DEFAULT_MOMENTUM,
-            filepath=WEIGHTS_FILE
-        )
-        print(f"[Server] 💾 Pesos guardados en {WEIGHTS_FILE}")
-        
-        return {
-            'success': True,
-            'samples_used': len(predictions),
-            'results': results,
-            'weights_saved': str(WEIGHTS_FILE),
-        }
+        else:
+            print(f"[Server] 🎯 Usando optimizador de GRADIENTES (datos con factor_scores)")
+            # Optimizador original basado en gradientes
+            loss_fn = LossFunction()
+            optimizer = WeightOptimizer(
+                learning_rate=DEFAULT_LEARNING_RATE,
+                momentum=DEFAULT_MOMENTUM,
+                weights=existing_weights
+            )
+            optimizer.loss_fn = loss_fn
+            
+            weights_before = {tf: dict(optimizer.weights[tf]) for tf in optimizer.weights}
+            
+            # Entrenar por timeframe
+            results = {}
+            for timeframe in ['intraday', 'swing', 'long']:
+                tf_preds = [p for p in predictions if p.timeframe == timeframe]
+                if len(tf_preds) >= 3:
+                    result = optimizer.train(
+                        predictions=tf_preds,
+                        epochs=DEFAULT_EPOCHS,
+                        patience=EARLY_STOPPING_PATIENCE,
+                        verbose=False
+                    )
+                    if result:
+                        initial_loss = result.initial_loss
+                        final_loss = result.final_loss
+                        improvement = (initial_loss - final_loss) / initial_loss * 100 if initial_loss > 0 else 0
+                        results[timeframe] = {
+                            'samples': len(tf_preds),
+                            'initial_loss': round(initial_loss, 4),
+                            'final_loss': round(final_loss, 4),
+                            'improvement': round(improvement, 1),
+                        }
+                        print(f"   ✓ {timeframe}: {initial_loss:.4f} → {final_loss:.4f} ({improvement:+.1f}%)")
+            
+            # Mostrar cambios
+            print(f"\n[Server] 📊 Cambios en pesos:")
+            for tf in ['intraday', 'swing', 'long']:
+                changes = []
+                for factor in optimizer.weights[tf]:
+                    before = weights_before[tf][factor]
+                    after = optimizer.weights[tf][factor]
+                    delta = after - before
+                    if abs(delta) > 0.0001:
+                        changes.append(f"{factor}: {before:.4f}→{after:.4f}")
+                if changes:
+                    print(f"   {tf}: {', '.join(changes[:3])}{'...' if len(changes) > 3 else ''}")
+                else:
+                    print(f"   {tf}: sin cambios significativos")
+            
+            # Guardar pesos
+            save_weights(
+                weights=optimizer.weights,
+                training_samples=len(predictions),
+                learning_rate=DEFAULT_LEARNING_RATE,
+                momentum=DEFAULT_MOMENTUM,
+                filepath=WEIGHTS_FILE
+            )
+            print(f"[Server] 💾 Pesos guardados en {WEIGHTS_FILE}")
+            
+            return {
+                'success': True,
+                'method': 'gradient',
+                'samples_used': len(predictions),
+                'results': results,
+            }
     
     def log_message(self, format, *args):
         """Personalizar logging"""
@@ -248,10 +432,14 @@ def run_server(port: int = 8765):
     print("=" * 60)
     print(f"\n🚀 Servidor corriendo en http://localhost:{port}")
     print(f"\nEndpoints:")
-    print(f"  GET  /status       - Estado del servidor")
-    print(f"  GET  /weights      - Obtener pesos actuales")
-    print(f"  POST /predictions  - Enviar predicciones verificadas")
-    print(f"  POST /train        - Forzar entrenamiento")
+    print(f"  GET  /status          - Estado del servidor")
+    print(f"  GET  /weights         - Obtener pesos actuales")
+    print(f"  GET  /classify/SYMBOL - Clasificar un activo")
+    print(f"  GET  /profiles        - Listar perfiles clasificados")
+    print(f"  POST /predictions     - Enviar predicciones verificadas")
+    print(f"  POST /train           - Forzar entrenamiento")
+    print(f"  POST /classify        - Clasificar con datos históricos")
+    print(f"  POST /classify-batch  - Clasificar múltiples activos")
     print(f"\nPresiona Ctrl+C para detener\n")
     
     try:

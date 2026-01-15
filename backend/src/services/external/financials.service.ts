@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../../middleware/logger.js';
+import { yahooAuthService } from './yahoo-auth.service.js';
 
 export interface FinancialsData {
   // Valoración
@@ -61,21 +62,7 @@ export const financialsService = {
 
     try {
       const modules = ['defaultKeyStatistics', 'financialData', 'summaryDetail'];
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules.join(',')}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-
-      if (!response.ok) {
-        logger.warn(`[Financials] Failed to fetch for ${symbol}: ${response.status}`);
-        return null;
-      }
-
-      const json: any = await response.json();
-      const result = json.quoteSummary?.result?.[0];
+      const result = await yahooAuthService.fetchQuoteSummary(symbol, modules);
 
       if (!result) {
         return null;
@@ -97,32 +84,32 @@ export const financialsService = {
     const financial = data.financialData || {};
     const summary = data.summaryDetail || {};
 
-    // Extraer valores
-    const peRatio = summary.trailingPE?.raw || null;
-    const forwardPE = summary.forwardPE?.raw || keyStats.forwardPE?.raw || null;
-    const pegRatio = keyStats.pegRatio?.raw || null;
-    const priceToBook = keyStats.priceToBook?.raw || null;
-    const priceToSales = summary.priceToSalesTrailing12Months?.raw || null;
+    // Extraer valores - yahoo-finance2 devuelve valores directamente, no con .raw
+    const peRatio = summary.trailingPE ?? null;
+    const forwardPE = summary.forwardPE ?? keyStats.forwardPE ?? null;
+    const pegRatio = keyStats.pegRatio ?? null;
+    const priceToBook = keyStats.priceToBook ?? null;
+    const priceToSales = summary.priceToSalesTrailing12Months ?? null;
     
-    const profitMargin = financial.profitMargins?.raw ? financial.profitMargins.raw * 100 : null;
-    const operatingMargin = financial.operatingMargins?.raw ? financial.operatingMargins.raw * 100 : null;
-    const returnOnEquity = financial.returnOnEquity?.raw ? financial.returnOnEquity.raw * 100 : null;
-    const returnOnAssets = financial.returnOnAssets?.raw ? financial.returnOnAssets.raw * 100 : null;
+    const profitMargin = financial.profitMargins != null ? financial.profitMargins * 100 : null;
+    const operatingMargin = financial.operatingMargins != null ? financial.operatingMargins * 100 : null;
+    const returnOnEquity = financial.returnOnEquity != null ? financial.returnOnEquity * 100 : null;
+    const returnOnAssets = financial.returnOnAssets != null ? financial.returnOnAssets * 100 : null;
     
-    const revenueGrowth = financial.revenueGrowth?.raw ? financial.revenueGrowth.raw * 100 : null;
-    const earningsGrowth = financial.earningsGrowth?.raw ? financial.earningsGrowth.raw * 100 : null;
+    const revenueGrowth = financial.revenueGrowth != null ? financial.revenueGrowth * 100 : null;
+    const earningsGrowth = financial.earningsGrowth != null ? financial.earningsGrowth * 100 : null;
     
-    const dividendYield = summary.dividendYield?.raw ? summary.dividendYield.raw * 100 : null;
-    const payoutRatio = summary.payoutRatio?.raw ? summary.payoutRatio.raw * 100 : null;
+    const dividendYield = summary.dividendYield != null ? summary.dividendYield * 100 : null;
+    const payoutRatio = summary.payoutRatio != null ? summary.payoutRatio * 100 : null;
     
-    const debtToEquity = financial.debtToEquity?.raw || null;
-    const currentRatio = financial.currentRatio?.raw || null;
+    const debtToEquity = financial.debtToEquity ?? null;
+    const currentRatio = financial.currentRatio ?? null;
     
-    const targetPrice = financial.targetMeanPrice?.raw || null;
+    const targetPrice = financial.targetMeanPrice ?? null;
     const targetVsCurrent = targetPrice && currentPrice > 0 
       ? ((targetPrice - currentPrice) / currentPrice) * 100 
       : null;
-    const recommendationMean = financial.recommendationMean?.raw || null;
+    const recommendationMean = financial.recommendationMean ?? null;
 
     // Calcular score
     let financialsScore = 0;

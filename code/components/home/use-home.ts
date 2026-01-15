@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-import { geminiService } from '../../services/gemini-service';
-import { useChatStore } from '../../store/chat-store';
+import { usePredictionStore } from '../../store/prediction-store';
 
 
 
@@ -9,48 +8,37 @@ import { useChatStore } from '../../store/chat-store';
  */
 export function useHome() {
   const {
-    messages,
-    isLoading,
     predictions,
-    sendMessage,
-    clearMessages,
+    isAnalyzing,
+    error,
+    analyzeAsset,
     clearPredictions,
     removePrediction,
     loadPredictions,
-  } = useChatStore();
+  } = usePredictionStore();
 
-  // Cargar predicciones guardadas y verificar configuración de API al montar
+  // Cargar predicciones guardadas al montar (desde backend)
   useEffect(() => {
-    // Cargar predicciones desde IndexedDB
     loadPredictions();
-    
-    if (!geminiService.isConfigured()) {
-      console.warn('⚠️ API Key de Gemini no configurada');
-    }
   }, []);
 
-  const handleSendMessage = async (content: string) => {
-    await sendMessage(content);
+  const handleAnalyzeAsset = async (asset: string, assetType: string) => {
+    return analyzeAsset(asset, assetType);
   };
 
-  const handleClearChat = () => {
-    clearMessages();
+  const handleClearPredictions = async () => {
+    await clearPredictions();
   };
 
-  const handleClearPredictions = () => {
-    clearPredictions();
-  };
-
-  const handleRemovePrediction = (id: string) => {
-    removePrediction(id);
+  const handleRemovePrediction = async (id: string) => {
+    await removePrediction(id);
   };
 
   return {
-    messages,
-    isLoading,
     predictions,
-    handleSendMessage,
-    handleClearChat,
+    isAnalyzing,
+    error,
+    handleAnalyzeAsset,
     handleClearPredictions,
     handleRemovePrediction,
   };

@@ -18,8 +18,11 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
-import { apiClient, CalculatedPrediction } from '../../services/api-client';
+import { PredictionHistoryCard } from '../../components/prediction-history';
+import { TrendsModal } from '../../components/trends-modal';
+import { apiClient, CalculatedPrediction, TrendAnalysis } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
+import { predictionTrackingService } from '../../services/prediction-tracking-service';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
 import { AssetType, InvestmentPrediction } from '../../types';
 
@@ -72,6 +75,16 @@ const TIMEFRAME_CONFIG = {
 // Subintérvalos para largo plazo
 const LONGTERM_RANGES = ['1m', '3m'] as const;
 const LONGTERM_PREDICTIONS = [15, 30, 90] as const;
+
+// Helper para obtener el timeframe efectivo (incluyendo días para longterm)
+function getEffectiveTimeframe(timeframe: ChartTimeframe, longtermDays?: number): TrainingTimeframe {
+  if (timeframe === 'longterm' && longtermDays) {
+    // Para largo plazo, usamos el timeframe base pero lo diferenciaremos en el cache
+    // mediante el campo predictionDays en el objeto cacheado
+    return 'longterm';
+  }
+  return timeframe as TrainingTimeframe;
+}
 
 // Helper para convertir CalculatedPrediction o TrainingPrediction a InvestmentPrediction
 function toInvestmentPrediction(
@@ -169,6 +182,10 @@ function toInvestmentPrediction(
   return null;
 }
 
+// Cache local para datos del gráfico (evita peticiones repetidas)
+const chartDataCache = new Map<string, { data: any[]; timestamp: number; eurRate: number }>();
+const CHART_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
 export default function AssetDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
@@ -189,6 +206,15 @@ export default function AssetDetailScreen() {
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
   const [priceInEur, setPriceInEur] = useState<number | null>(null);
+  
+  // Estado para el modal de tendencias
+  const [showTrendsModal, setShowTrendsModal] = useState(false);
+  const [trendsData, setTrendsData] = useState<TrendAnalysis | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
+
+  // Ref para trackear los días de longterm anteriores
+  const prevLongtermDaysRef = React.useRef<number>(longtermPredictionDays);
 
   // Cargar datos del activo
   const loadAssetData = useCallback(async () => {
@@ -228,21 +254,61 @@ export default function AssetDetailScreen() {
   const loadChartData = useCallback(async () => {
     if (!symbol) return;
 
+    const config = TIMEFRAME_CONFIG[selectedTimeframe];
+    let range = config.historyRange;
+    let interval = config.historyInterval;
+
+    // Ajustar para largo plazo
+    if (selectedTimeframe === 'longterm') {
+      range = longtermHistoryRange === '1m' ? '1mo' : '3mo';
+    }
+
+    // Generar key de cache
+    const cacheKey = `${symbol}:${selectedTimeframe}:${range}:${interval}`;
+    const cached = chartDataCache.get(cacheKey);
+    const now = Date.now();
+
+    // Si hay cache válido, usarlo inmediatamente
+    if (cached && (now - cached.timestamp) < CHART_CACHE_DURATION) {
+      const { data: prices, eurRate: rate } = cached;
+      setEurExchangeRate(rate);
+      
+      const lastPrice = prices[prices.length - 1];
+      const safeRate = (rate && !isNaN(rate)) ? rate : 1;
+      setLastPriceForPrediction(lastPrice.close * safeRate);
+      setLastTimestamp(lastPrice.timestamp);
+      
+      // Crear datos para el gráfico desde cache
+      let lastShownDate = '';
+      const giftedData: ChartDataPoint[] = prices.map((p: any, idx: number) => {
+        const date = new Date(p.timestamp);
+        const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
+        const isLastPoint = idx === prices.length - 1;
+        
+        let label = '';
+        if (dateStr !== lastShownDate) {
+          label = dateStr;
+          lastShownDate = dateStr;
+        } else if (isLastPoint && label === '') {
+          label = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
+        const value = p.close * safeRate;
+        return {
+          value: isNaN(value) ? 0 : value,
+          label,
+          timestamp: p.timestamp,
+          isPrediction: false,
+        };
+      });
+      
+      setChartData(giftedData);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const config = TIMEFRAME_CONFIG[selectedTimeframe];
-      let range = config.historyRange;
-      let interval = config.historyInterval;
-
-      // Ajustar para largo plazo
-      if (selectedTimeframe === 'longterm') {
-        range = longtermHistoryRange === '1m' ? '1mo' : '3mo';
-      }
-
-      // Limpiar predicción anterior al cambiar timeframe
-      setPrediction(null);
-      setPredictionData([]);
-
       // Obtener datos históricos con el intervalo correcto
       const historical = await apiClient.getHistory(symbol, range, interval);
 
@@ -273,8 +339,12 @@ export default function AssetDetailScreen() {
 
         if (prices.length === 0) {
           setChartData([]);
+          setLoading(false);
           return;
         }
+
+        // Guardar en cache
+        chartDataCache.set(cacheKey, { data: prices, timestamp: now, eurRate: rate });
 
         // Guardar último precio y timestamp para predicción (en EUR)
         const lastPrice = prices[prices.length - 1];
@@ -321,7 +391,7 @@ export default function AssetDetailScreen() {
 
   // Calcular predicción
   const handlePredict = useCallback(async () => {
-    if (!symbol || lastPriceForPrediction === 0) return;
+    if (!symbol || lastPriceForPrediction === 0 || predicting) return;
 
     setPredicting(true);
     try {
@@ -369,6 +439,24 @@ export default function AssetDetailScreen() {
           createdAt: new Date(),
         });
 
+        // Registrar predicción en el backend para estadísticas ML
+        try {
+          await predictionTrackingService.trackPrediction({
+            symbol,
+            asset: assetData?.name || symbol,
+            assetType,
+            direction: pred.direction,
+            predictedChange: pred.predictedChange,
+            confidence: pred.confidence,
+            currentPrice: lastPriceForPrediction,
+            timeframe: selectedTimeframe,
+            timeframeDays: predictionDays,
+            volatility: pred.historical?.volatility,
+          });
+        } catch (trackError) {
+          console.warn('[AssetDetail] Error tracking prediction:', trackError);
+        }
+
         // Crear puntos de predicción
         // La predicción comienza desde el momento actual
         const predPoints: ChartDataPoint[] = [];
@@ -399,7 +487,7 @@ export default function AssetDetailScreen() {
       console.error('[AssetDetail] Error calculating prediction:', error);
     }
     setPredicting(false);
-  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction, lastTimestamp, assetData?.name]);
+  }, [symbol, selectedTimeframe, longtermPredictionDays, lastPriceForPrediction, assetData?.name, predicting]);
 
   useEffect(() => {
     loadAssetData();
@@ -412,7 +500,22 @@ export default function AssetDetailScreen() {
   // Cargar predicción cacheada cuando cambia el timeframe
   useEffect(() => {
     const loadCachedPrediction = async () => {
-      if (!symbol || lastPriceForPrediction === 0) return;
+      if (!symbol || lastPriceForPrediction === 0 || predicting) return;
+      
+      // Detectar si cambió longtermPredictionDays (solo para longterm)
+      const longtermDaysChanged = selectedTimeframe === 'longterm' && 
+        prevLongtermDaysRef.current !== longtermPredictionDays;
+      prevLongtermDaysRef.current = longtermPredictionDays;
+      
+      // Si cambió los días de predicción en longterm, recalcular directamente
+      if (longtermDaysChanged) {
+        setPrediction(null);
+        setFullPrediction(null);
+        setPredictionFromCache(false);
+        setPredictionData([]);
+        handlePredict();
+        return;
+      }
       
       await trainingCacheService.init();
       const cached = await trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
@@ -423,6 +526,7 @@ export default function AssetDetailScreen() {
           confidence: cached.confidence,
           targetPrice: cached.targetPrice
         });
+        
         setPrediction({
           change: cached.predictedChange,
           confidence: cached.confidence,
@@ -439,6 +543,26 @@ export default function AssetDetailScreen() {
         let predictionDays = config.predictionDays;
         if (selectedTimeframe === 'longterm') {
           predictionDays = longtermPredictionDays;
+        }
+        
+        // Asegurar que la predicción cacheada está trackeada en el backend
+        // El backend detectará duplicados y no guardará dos veces
+        const assetType = symbol.includes('-USD') || symbol.includes('-EUR') ? 'crypto' : 'stock';
+        try {
+          await predictionTrackingService.trackPrediction({
+            symbol,
+            asset: cached.name || symbol,
+            assetType,
+            direction: cached.direction,
+            predictedChange: cached.predictedChange,
+            confidence: cached.confidence,
+            currentPrice: cached.currentPrice,
+            timeframe: selectedTimeframe,
+            timeframeDays: predictionDays,
+            volatility: cached.analysisData?.historical?.volatility,
+          });
+        } catch (trackError) {
+          console.warn('[AssetDetail] Error tracking cached prediction:', trackError);
         }
         
         const predPoints: ChartDataPoint[] = [];
@@ -464,16 +588,20 @@ export default function AssetDetailScreen() {
         
         setPredictionData(predPoints);
       } else {
-        // No hay predicción cacheada, resetear
+        // No hay predicción cacheada, calcular automáticamente
         setPrediction(null);
         setFullPrediction(null);
         setPredictionFromCache(false);
         setPredictionData([]);
+        
+        // Llamar handlePredict automáticamente
+        handlePredict();
       }
     };
     
     loadCachedPrediction();
-  }, [symbol, selectedTimeframe, lastPriceForPrediction, lastTimestamp, longtermPredictionDays]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, selectedTimeframe, lastPriceForPrediction, longtermPredictionDays]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -482,6 +610,24 @@ export default function AssetDetailScreen() {
       router.replace('/');
     }
   }, [router]);
+
+  // Cargar tendencias del activo
+  const loadTrends = useCallback(async () => {
+    if (!symbol) return;
+    
+    setTrendsLoading(true);
+    setTrendsError(null);
+    setShowTrendsModal(true);
+    
+    try {
+      const trends = await apiClient.getTrends(symbol);
+      setTrendsData(trends);
+    } catch (error) {
+      console.error('[AssetDetail] Error loading trends:', error);
+      setTrendsError('No se pudieron cargar las tendencias');
+    }
+    setTrendsLoading(false);
+  }, [symbol]);
 
   const chartWidth = width - 64;
   const chartAreaWidth = chartWidth - 70; // Ancho útil del gráfico (menos ejes y padding)
@@ -566,6 +712,22 @@ export default function AssetDetailScreen() {
           {assetData && (
             <Text style={styles.name} numberOfLines={1}>{assetData.name}</Text>
           )}
+          {/* Badge de tipo de activo */}
+          {(() => {
+            const isCrypto = symbol?.includes('-USD') || symbol?.includes('-EUR');
+            const isForex = symbol?.includes('=X');
+            const assetTypeInfo = isCrypto 
+              ? { label: 'Crypto', icon: 'logo-bitcoin' as const, style: styles.assetTypeBadgeCrypto }
+              : isForex
+              ? { label: 'Forex', icon: 'swap-horizontal' as const, style: styles.assetTypeBadgeForex }
+              : { label: 'Acción', icon: 'business' as const, style: styles.assetTypeBadgeStock };
+            return (
+              <View style={[styles.assetTypeBadge, assetTypeInfo.style]}>
+                <Ionicons name={assetTypeInfo.icon} size={10} color="#fff" />
+                <Text style={styles.assetTypeBadgeText}>{assetTypeInfo.label}</Text>
+              </View>
+            );
+          })()}
         </View>
         {assetData && (
           <View style={styles.priceContainer}>
@@ -789,22 +951,12 @@ export default function AssetDetailScreen() {
                 )}
               </View>
 
-              {/* Botón Predecir */}
-              {!prediction && (
-                <TouchableOpacity
-                  style={styles.predictButton}
-                  onPress={handlePredict}
-                  disabled={predicting}
-                >
-                  {predicting ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="sparkles" size={20} color="#fff" />
-                      <Text style={styles.predictButtonText}>Predecir</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+              {/* Indicador de carga de predicción */}
+              {predicting && !prediction && (
+                <View style={styles.predictingIndicator}>
+                  <ActivityIndicator size="small" color="#818cf8" />
+                  <Text style={styles.predictingText}>Calculando predicción...</Text>
+                </View>
               )}
             </>
           ) : (
@@ -850,6 +1002,13 @@ export default function AssetDetailScreen() {
           </View>
         )}
 
+        {/* Botón de Tendencias */}
+        <TouchableOpacity style={styles.trendsButton} onPress={loadTrends}>
+          <Ionicons name="trending-up" size={20} color="#fff" />
+          <Text style={styles.trendsButtonText}>Ver Tendencias</Text>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </TouchableOpacity>
+
         {/* Análisis detallado de la predicción */}
         {fullPrediction && fullPrediction.analysisData && (
           <View style={styles.analysisContainer}>
@@ -857,9 +1016,25 @@ export default function AssetDetailScreen() {
           </View>
         )}
 
+        {/* Historial de predicciones anteriores */}
+        {symbol && (
+          <View style={styles.historyContainer}>
+            <PredictionHistoryCard symbol={symbol} maxItems={15} />
+          </View>
+        )}
+
         {/* Espaciado inferior */}
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Modal de Tendencias */}
+      <TrendsModal
+        visible={showTrendsModal}
+        onClose={() => setShowTrendsModal(false)}
+        trends={trendsData}
+        loading={trendsLoading}
+        error={trendsError}
+      />
     </View>
   );
 }
@@ -1028,21 +1203,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
   },
-  predictButton: {
+  predictingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#6366f1',
     paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
     marginTop: 20,
   },
-  predictButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
+  predictingText: {
+    fontSize: 14,
+    color: '#818cf8',
   },
   predictionInfo: {
     backgroundColor: '#111111',
@@ -1076,5 +1247,51 @@ const styles = StyleSheet.create({
   },
   analysisContainer: {
     marginTop: 16,
+  },
+  historyContainer: {
+    marginTop: 16,
+  },
+  assetTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  assetTypeBadgeCrypto: {
+    backgroundColor: '#f59e0b', // naranja/dorado para crypto
+  },
+  assetTypeBadgeStock: {
+    backgroundColor: '#3b82f6', // azul para acciones
+  },
+  assetTypeBadgeForex: {
+    backgroundColor: '#10b981', // verde para forex
+  },
+  assetTypeBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  trendsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#6366f1',
+  },
+  trendsButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    flex: 1,
   },
 });

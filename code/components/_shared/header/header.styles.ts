@@ -23,6 +23,11 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   actionButton: {
     padding: 8,
     borderRadius: 8,

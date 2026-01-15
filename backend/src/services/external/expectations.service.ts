@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../../middleware/logger.js';
+import { yahooAuthService } from './yahoo-auth.service.js';
 
 export interface ExpectationsData {
   symbol: string;
@@ -48,23 +49,9 @@ export const expectationsService = {
     }
 
     try {
-      // Obtener datos de Yahoo Finance quoteSummary
+      // Obtener datos de Yahoo Finance quoteSummary con autenticación
       const modules = ['calendarEvents', 'earningsHistory', 'earningsTrend'];
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules.join(',')}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-
-      if (!response.ok) {
-        logger.warn(`[Expectations] Failed to fetch for ${symbol}: ${response.status}`);
-        return this.getDefaultData(symbol);
-      }
-
-      const json: any = await response.json();
-      const result = json.quoteSummary?.result?.[0];
+      const result = await yahooAuthService.fetchQuoteSummary(symbol, modules);
 
       if (!result) {
         return this.getDefaultData(symbol);
@@ -90,10 +77,16 @@ export const expectationsService = {
     let nextEarningsDate: Date | null = null;
     let daysUntilEarnings: number | null = null;
     
+    // yahoo-finance2 devuelve Date directamente para earningsDate
     if (calendarEvents?.earnings?.earningsDate?.[0]) {
-      const rawDate = calendarEvents.earnings.earningsDate[0].raw;
-      if (rawDate) {
-        nextEarningsDate = new Date(rawDate * 1000);
+      const earningsDateValue = calendarEvents.earnings.earningsDate[0];
+      // Puede ser un Date o un timestamp
+      if (earningsDateValue instanceof Date) {
+        nextEarningsDate = earningsDateValue;
+      } else if (typeof earningsDateValue === 'number') {
+        nextEarningsDate = new Date(earningsDateValue * 1000);
+      }
+      if (nextEarningsDate) {
         daysUntilEarnings = Math.ceil((nextEarningsDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
       }
     }
@@ -103,8 +96,9 @@ export const expectationsService = {
     let beatCount = 0;
     
     for (const earning of earningsHistory.slice(0, 4)) {
-      const actual = earning.epsActual?.raw;
-      const estimate = earning.epsEstimate?.raw;
+      // yahoo-finance2 devuelve valores directamente
+      const actual = earning.epsActual;
+      const estimate = earning.epsEstimate;
       
       if (actual !== undefined && estimate !== undefined && estimate !== 0) {
         const surprise = ((actual - estimate) / Math.abs(estimate)) * 100;
@@ -124,9 +118,10 @@ export const expectationsService = {
     if (earningsTrend.length > 0) {
       const currentTrend = earningsTrend.find((t: any) => t.period === '0q');
       if (currentTrend) {
-        const current = currentTrend.epsTrend?.current?.raw || 0;
-        const weekAgo = currentTrend.epsTrend?.['7daysAgo']?.raw || current;
-        const monthAgo = currentTrend.epsTrend?.['30daysAgo']?.raw || current;
+        // yahoo-finance2 devuelve valores directamente sin .raw
+        const current = currentTrend.epsTrend?.current ?? 0;
+        const weekAgo = currentTrend.epsTrend?.['7daysAgo'] ?? current;
+        const monthAgo = currentTrend.epsTrend?.['30daysAgo'] ?? current;
         
         if (current > weekAgo && current > monthAgo) {
           revisionTrend = 'up';

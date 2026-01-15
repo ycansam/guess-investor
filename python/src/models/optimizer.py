@@ -110,11 +110,13 @@ class WeightOptimizer:
                 
                 # Loss con peso aumentado
                 self.weights[timeframe][factor] = original + epsilon
-                loss_plus, _ = self.loss_fn.compute_batch(preds)
+                weights_normalized = self.normalize_weights(self.weights[timeframe])
+                loss_plus, _ = self.loss_fn.compute_batch(preds, weights_normalized)
                 
                 # Loss con peso disminuido
                 self.weights[timeframe][factor] = original - epsilon
-                loss_minus, _ = self.loss_fn.compute_batch(preds)
+                weights_normalized = self.normalize_weights(self.weights[timeframe])
+                loss_minus, _ = self.loss_fn.compute_batch(preds, weights_normalized)
                 
                 # Restaurar
                 self.weights[timeframe][factor] = original
@@ -149,8 +151,17 @@ class WeightOptimizer:
             # Normalizar y aplicar límites
             self.weights[timeframe] = self.clip_weights(self.weights[timeframe])
         
-        loss, _ = self.loss_fn.compute_batch(predictions)
-        return loss
+        # Calcular loss con pesos actuales
+        by_timeframe = self.group_by_timeframe(predictions)
+        total_loss = 0.0
+        count = 0
+        for timeframe, preds in by_timeframe.items():
+            if preds:
+                loss, _ = self.loss_fn.compute_batch(preds, self.weights[timeframe])
+                total_loss += loss * len(preds)
+                count += len(preds)
+        
+        return total_loss / count if count > 0 else 0.0
     
     def train(
         self, 
@@ -172,13 +183,19 @@ class WeightOptimizer:
             print(f"ENTRENAMIENTO - {len(predictions)} predicciones")
             print(f"{'='*60}")
         
-        initial_loss, initial_breakdown = self.loss_fn.compute_batch(predictions)
+        # Determinar el timeframe de estas predicciones
+        timeframe = self.get_timeframe_key(predictions[0].timeframe_days)
+        
+        # Calcular loss inicial CON los pesos actuales
+        initial_loss, initial_breakdown = self.loss_fn.compute_batch(
+            predictions, self.weights[timeframe]
+        )
         
         if verbose:
             print(f"\nPérdida inicial: {initial_loss:.4f}")
             print(f"  - Dirección: {initial_breakdown['direction']:.2%}")
             print(f"  - Magnitud: {initial_breakdown['magnitude']:.4f}")
-            print(f"  - Rango: {initial_breakdown['range']:.2%}")
+            print(f"  - Alignment: {initial_breakdown['alignment']:.2%}")
         
         best_loss = initial_loss
         best_weights = {k: v.copy() for k, v in self.weights.items()}
@@ -207,11 +224,13 @@ class WeightOptimizer:
         # Restaurar mejores pesos
         self.weights = best_weights
         
-        # Calcular métricas finales
-        final_loss, final_breakdown = self.loss_fn.compute_batch(predictions)
+        # Calcular métricas finales CON los pesos optimizados
+        final_loss, final_breakdown = self.loss_fn.compute_batch(
+            predictions, self.weights[timeframe]
+        )
         direction_accuracy = 1 - final_breakdown['direction']
         avg_price_error = math.sqrt(final_breakdown['magnitude']) * 100
-        within_range_rate = 1 - final_breakdown['range']
+        alignment_rate = 1 - final_breakdown['alignment']
         improvement = (initial_loss - final_loss) / initial_loss if initial_loss > 0 else 0
         
         if verbose:
@@ -221,7 +240,7 @@ class WeightOptimizer:
             print(f"Pérdida: {initial_loss:.4f} → {final_loss:.4f} ({improvement:.1%} mejora)")
             print(f"Precisión dirección: {direction_accuracy:.1%}")
             print(f"Error promedio: {avg_price_error:.2f}%")
-            print(f"Dentro del rango: {within_range_rate:.1%}")
+            print(f"Alignment: {alignment_rate:.1%}")
         
         return TrainingResult(
             timestamp=datetime.now().isoformat(),
@@ -231,7 +250,7 @@ class WeightOptimizer:
             improvement=improvement,
             direction_accuracy=direction_accuracy,
             avg_price_error=avg_price_error,
-            within_range_rate=within_range_rate,
+            within_range_rate=alignment_rate,
             weights=self.weights,
             epochs_run=epochs_run
         )

@@ -4,6 +4,7 @@ import { macroService } from '../services/external/macro.service.js';
 import { newsService } from '../services/external/news.service.js';
 import { sentimentService } from '../services/external/sentiment.service.js';
 import { technicalService } from '../services/external/technical.service.js';
+import { trendsService } from '../services/external/trends.service.js';
 
 const router = Router();
 
@@ -118,6 +119,65 @@ router.get('/full/:symbol', asyncHandler(async (req: Request, res: Response) => 
       news,
       sentiment,
       macro,
+      analyzedAt: new Date().toISOString(),
+    },
+  });
+}));
+
+/**
+ * GET /api/analysis/trends/:symbol
+ * Análisis de tendencias: rachas, momentum, soportes/resistencias
+ */
+router.get('/trends/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const trends = await trendsService.analyzeTrend(symbol.toUpperCase());
+
+  if (!trends) {
+    res.json({
+      success: false,
+      error: 'No trend data available for this symbol',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: trends,
+  });
+}));
+
+/**
+ * GET /api/analysis/top-trends
+ * Ranking de activos por tendencia
+ * Query params:
+ *   - category: 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all' (default: 'all')
+ *   - limit: number (default: 20, max: 50)
+ */
+router.get('/top-trends', asyncHandler(async (req: Request, res: Response) => {
+  const category = (req.query.category as string) || 'all';
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+  
+  const validCategories = ['gainers', 'losers', 'streaks', 'momentum', 'all'];
+  if (!validCategories.includes(category)) {
+    throw BadRequestError(`Invalid category. Must be one of: ${validCategories.join(', ')}`);
+  }
+
+  const trends = await trendsService.getTopTrends(
+    category as 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all',
+    limit
+  );
+
+  res.json({
+    success: true,
+    data: {
+      category,
+      count: trends.length,
+      trends,
       analyzedAt: new Date().toISOString(),
     },
   });

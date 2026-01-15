@@ -236,6 +236,143 @@ export interface FullAnalysis {
   analyzedAt: string;
 }
 
+export interface TrendStreak {
+  direction: 'up' | 'down' | 'sideways';
+  days: number;
+  totalChange: number;
+  avgDailyChange: number;
+  startDate: string;
+  endDate: string;
+}
+
+export interface TrendMomentum {
+  short: number;
+  medium: number;
+  long: number;
+  signal: 'bullish' | 'bearish' | 'neutral';
+  strength: 'strong' | 'moderate' | 'weak';
+}
+
+export interface TrendSupport {
+  level: number;
+  strength: 'strong' | 'moderate' | 'weak';
+  distancePercent: number;
+}
+
+export interface TrendResistance {
+  level: number;
+  strength: 'strong' | 'moderate' | 'weak';
+  distancePercent: number;
+}
+
+export interface TrendVolatility {
+  current: number;
+  average: number;
+  trend: 'increasing' | 'decreasing' | 'stable';
+  percentile: number;
+}
+
+export interface TrendAnalysis {
+  symbol: string;
+  currentPrice: number;
+  currentStreak: TrendStreak;
+  momentum: TrendMomentum;
+  supports: TrendSupport[];
+  resistances: TrendResistance[];
+  volatility: TrendVolatility;
+  stats: {
+    up_days_30d: number;
+    down_days_30d: number;
+    flat_days_30d: number;
+    best_day_30d: { date: string; change: number };
+    worst_day_30d: { date: string; change: number };
+    avg_up_move: number;
+    avg_down_move: number;
+  };
+  trendPrediction: {
+    direction: 'continue' | 'reverse' | 'uncertain';
+    probability: number;
+    reasoning: string;
+  };
+  analyzedAt: string;
+}
+
+export interface TrendRanking {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  streak: {
+    direction: 'up' | 'down' | 'sideways';
+    days: number;
+    totalChange: number;
+  };
+  momentum: {
+    signal: 'bullish' | 'bearish' | 'neutral';
+    strength: 'strong' | 'moderate' | 'weak';
+    score: number;
+  };
+  change24h: number;
+  change7d: number;
+  change30d: number;
+  trendScore: number;
+  trendPrediction: 'continue' | 'reverse' | 'uncertain';
+}
+
+export type TrendCategory = 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all';
+
+export interface TopTrendsResponse {
+  category: TrendCategory;
+  count: number;
+  trends: TrendRanking[];
+  analyzedAt: string;
+}
+
+// Tipos para ML Diagnostics
+export interface WeightComparison {
+  base: number;
+  learned: number;
+  change: string;
+  changePercent: number;
+}
+
+export interface MLWeightsStatus {
+  summary: {
+    lastUpdated: string | null;
+    trainingSamples: number;
+    hasLearnedWeights: boolean;
+    error: string | null;
+  };
+  baseWeights: Record<string, number>;
+  learnedWeights: {
+    intraday: Record<string, number>;
+    swing: Record<string, number>;
+    long: Record<string, number>;
+  } | null;
+  comparison: {
+    intraday: Record<string, WeightComparison> | null;
+    swing: Record<string, WeightComparison> | null;
+    long: Record<string, WeightComparison> | null;
+  };
+  assetGroupMultipliers: Record<string, Record<string, number>>;
+  availableAssetGroups: string[];
+}
+
+export interface MLModelsStatus {
+  reinforcementLearning: {
+    status: string;
+    totalEpisodes: number;
+    successRate: number;
+  };
+  probabilisticModel: {
+    status: string;
+    sampleCount: number;
+  };
+  factorCorrelation: { status: string };
+  metaLearning: { status: string };
+  featureEngineering: { status: string };
+  temporalCrossValidation: { status: string };
+}
+
 // ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
@@ -245,6 +382,13 @@ export const apiClient = {
   // ASSETS
   // -------------------------------------------------------------------------
   
+  /**
+   * Obtener lista completa de activos disponibles
+   */
+  getAllAssets: (): Promise<Array<{ symbol: string; name: string; type: string; category: string; icon: string }>> => {
+    return get('/assets');
+  },
+
   /**
    * Buscar activos por nombre o símbolo
    */
@@ -312,6 +456,22 @@ export const apiClient = {
     return get(`/analysis/full/${encodeURIComponent(symbol)}?type=${type}`);
   },
 
+  /**
+   * Obtener análisis de tendencias (rachas, momentum, soportes/resistencias)
+   */
+  getTrends: (symbol: string): Promise<TrendAnalysis | null> => {
+    return get(`/analysis/trends/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener ranking de activos por tendencia
+   * @param category - 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all'
+   * @param limit - Número máximo de resultados (max 50)
+   */
+  getTopTrends: (category: TrendCategory = 'all', limit: number = 20): Promise<TopTrendsResponse> => {
+    return get(`/analysis/top-trends?category=${category}&limit=${limit}`);
+  },
+
   // -------------------------------------------------------------------------
   // PREDICTIONS
   // -------------------------------------------------------------------------
@@ -324,10 +484,35 @@ export const apiClient = {
   },
 
   /**
-   * Crear y guardar predicción
+   * Crear y guardar predicción (recalcula todo)
    */
   createPrediction: (symbol: string, days: number = 1): Promise<CalculatedPrediction & { id: string }> => {
     return post('/predictions', { symbol, days });
+  },
+
+  /**
+   * Registrar predicción ya calculada para tracking
+   */
+  trackPrediction: (data: {
+    symbol: string;
+    asset?: string;
+    assetType?: string;
+    direction: string;
+    predictedChange: number;
+    predictedPriceMin?: number;
+    predictedPriceMax?: number;
+    confidence: number;
+    currentPrice: number;
+    timeframe?: string;
+    timeframeDays?: number;
+    volatility?: number;
+    volatilityCategory?: string;
+    factorBreakdown?: any;
+    factorWeights?: any;
+    uncertaintyScore?: number;
+    uncertaintyData?: any;
+  }): Promise<{ id: string; symbol: string; direction: string; expiresAt: string }> => {
+    return post('/predictions/track', data);
   },
 
   /**
@@ -349,6 +534,13 @@ export const apiClient = {
    */
   getPendingPredictions: (): Promise<any[]> => {
     return get('/predictions/pending');
+  },
+
+  /**
+   * Obtener predicciones activas (no expiradas)
+   */
+  getActivePredictions: (): Promise<any[]> => {
+    return get('/predictions/active');
   },
 
   /**
@@ -400,6 +592,13 @@ export const apiClient = {
    */
   getVerifiedPredictions: (limit: number = 100): Promise<any[]> => {
     return get(`/predictions/verified?limit=${limit}`);
+  },
+
+  /**
+   * Eliminar una predicción por ID
+   */
+  deletePrediction: (id: string): Promise<{ deleted: boolean }> => {
+    return del(`/predictions/${id}`);
   },
 
   /**
@@ -583,6 +782,24 @@ export const apiClient = {
    */
   health: (): Promise<{ status: string; timestamp: string }> => {
     return get('/health');
+  },
+
+  // -------------------------------------------------------------------------
+  // ML DIAGNOSTICS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener estado de pesos ML y clasificadores
+   */
+  getMLWeightsStatus: (): Promise<MLWeightsStatus> => {
+    return get('/ml/weights/status');
+  },
+
+  /**
+   * Obtener estado de todos los modelos ML
+   */
+  getMLStatus: (): Promise<MLModelsStatus> => {
+    return get('/ml/status');
   },
 };
 

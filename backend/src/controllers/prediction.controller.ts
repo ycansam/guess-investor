@@ -1,11 +1,153 @@
+import { Prediction } from '@prisma/client';
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
 import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
+import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 import { trackRecordService } from '../services/prediction/track-record.service.js';
+
+// Umbral para considerar el movimiento como direccional vs neutral (en %)
+// Mantener un “buffer” evita penalizar ruido intradía.
+const DIRECTION_THRESHOLD_PCT = 0.5;
+
+// Bonus por alcanzar objetivo durante el período (multiplicador de score)
+const TARGET_REACHED_BONUS = 1.10; // +10% al score si alcanzó el objetivo
+const TARGET_MARGIN_PCT = 0.5; // Margen mínimo para considerar que "alcanzó" el objetivo
+
+interface PeriodExtremes {
+  high: number;
+  low: number;
+  reachedHigh: Date;
+  reachedLow: Date;
+}
+
+function computeVerificationData(
+  prediction: Prediction, 
+  actualPrice: number,
+  periodExtremes?: PeriodExtremes | null
+): VerifyPredictionData {
+  const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
+
+  const actualDirection: 'up' | 'down' | 'neutral' =
+    actualChange > DIRECTION_THRESHOLD_PCT ? 'up' :
+    actualChange < -DIRECTION_THRESHOLD_PCT ? 'down' : 'neutral';
+
+  const directionCorrect = prediction.direction === actualDirection ||
+    (prediction.direction !== 'neutral' && actualDirection === 'neutral');
+
+  const withinRange = prediction.predictedPriceMin !== null &&
+    prediction.predictedPriceMax !== null &&
+    actualPrice >= prediction.predictedPriceMin &&
+    actualPrice <= prediction.predictedPriceMax;
+
+  const predictedChange = prediction.predictedChange ?? 0;
+  const priceError = Math.abs(actualChange - predictedChange);
+
+  // Verificar si el objetivo fue alcanzado durante el período
+  let targetReached = false;
+  let targetReachedAt: Date | undefined;
+  let periodHigh: number | undefined;
+  let periodLow: number | undefined;
+  
+  if (periodExtremes) {
+    periodHigh = periodExtremes.high;
+    periodLow = periodExtremes.low;
+    
+    // Usar el targetPrice real (no la media del rango)
+    const targetPrice = prediction.targetPrice;
+    const marginAmount = targetPrice * (TARGET_MARGIN_PCT / 100);
+    
+    if (prediction.direction === 'up') {
+      // Si predijo subida, verificar si el high del período superó el objetivo por el margen mínimo
+      if (periodExtremes.high >= targetPrice + marginAmount) {
+        targetReached = true;
+        targetReachedAt = periodExtremes.reachedHigh;
+      }
+    } else if (prediction.direction === 'down') {
+      // Si predijo bajada, verificar si el low del período bajó del objetivo por el margen mínimo
+      if (periodExtremes.low <= targetPrice - marginAmount) {
+        targetReached = true;
+        targetReachedAt = periodExtremes.reachedLow;
+      }
+    } else {
+      // Para neutral, verificar si se mantuvo cerca del precio actual (dentro del 1%)
+      const neutralMargin = prediction.currentPrice * 0.01;
+      if (periodExtremes.high <= prediction.currentPrice + neutralMargin && 
+          periodExtremes.low >= prediction.currentPrice - neutralMargin) {
+        targetReached = true;
+      }
+    }
+  }
+
+  let accuracyScore = 0;
+  if (directionCorrect) {
+    const predictedMag = Math.abs(predictedChange);
+    const actualMag = Math.abs(actualChange);
+
+    if (predictedMag < 0.1 && actualMag < 0.5) {
+      accuracyScore = 100;
+    } else if (predictedMag > 0.1) {
+      const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
+      const magAccuracy = Math.max(0, 1 - magError);
+      accuracyScore = 50 + (magAccuracy * 50);
+    } else {
+      accuracyScore = 60;
+    }
+  } else {
+    const actualMag = Math.abs(actualChange);
+    if (actualMag < 0.5) {
+      accuracyScore = 40;
+    } else if (actualMag < 1) {
+      accuracyScore = 20;
+    } else {
+      accuracyScore = Math.max(0, 15 - actualMag);
+    }
+  }
+
+  // Aplicar bonus si alcanzó el objetivo durante el período
+  if (targetReached && directionCorrect) {
+    accuracyScore = Math.min(100, accuracyScore * TARGET_REACHED_BONUS);
+    console.log(`[Verify] 🎯 Target reached bonus applied! New score: ${accuracyScore.toFixed(1)}`);
+  }
+
+  accuracyScore = Math.round(Math.max(0, Math.min(100, accuracyScore)));
+  const changeAccuracy = directionCorrect ? Math.min(100, (1 - priceError / 10) * 100) : 0;
+
+  // Calidad basada en dirección + score
+  // 'failed' = dirección incorrecta (sin importar score)
+  // 'very_poor' = dirección correcta pero score < 25
+  let quality: 'excellent' | 'good' | 'poor' | 'very_poor' | 'failed';
+  if (!directionCorrect) {
+    quality = 'failed';
+  } else if (accuracyScore >= 75) {
+    quality = 'excellent';
+  } else if (accuracyScore >= 50) {
+    quality = 'good';
+  } else if (accuracyScore >= 25) {
+    quality = 'poor';
+  } else {
+    quality = 'very_poor';
+  }
+
+  return {
+    actualPrice,
+    actualChange,
+    actualDirection,
+    directionCorrect,
+    withinRange,
+    priceError,
+    changeAccuracy: Math.round(changeAccuracy),
+    accuracyScore,
+    quality,
+    targetReached,
+    targetReachedAt,
+    periodHigh,
+    periodLow,
+  };
+}
 
 export const predictionController = {
   /**
@@ -77,6 +219,7 @@ export const predictionController = {
   /**
    * POST /api/predictions/track
    * Registrar una predicción para tracking (desde el frontend)
+   * Evita duplicados: si ya existe una predicción reciente para el mismo symbol+timeframeDays, la retorna
    */
   track: asyncHandler(async (req: Request, res: Response) => {
     const {
@@ -103,12 +246,32 @@ export const predictionController = {
       throw BadRequestError('symbol, direction and currentPrice are required');
     }
 
+    const normalizedSymbol = symbol.toUpperCase();
+    const days = timeframeDays || 1;
+
+    // Verificar si ya existe una predicción reciente para evitar duplicados
+    const existing = await predictionRepository.findRecentDuplicate(normalizedSymbol, days);
+    if (existing) {
+      console.log(`[PredictionController] Predicción duplicada detectada para ${normalizedSymbol} ${days}d, retornando existente`);
+      res.status(200).json({
+        success: true,
+        duplicate: true,
+        data: {
+          id: existing.id,
+          symbol: existing.symbol,
+          direction: existing.direction,
+          expiresAt: existing.expiresAt.toISOString(),
+        },
+      });
+      return;
+    }
+
     const saved = await predictionRepository.create({
-      symbol: symbol.toUpperCase(),
+      symbol: normalizedSymbol,
       asset,
       assetType: assetType || 'stock',
       timeframe: timeframe || '1 día',
-      timeframeDays: timeframeDays || 1,
+      timeframeDays: days,
       direction,
       predictedChange: predictedChange || 0,
       confidence: confidence || 50,
@@ -244,7 +407,7 @@ export const predictionController = {
 
   /**
    * POST /api/predictions/:id/verify
-   * Verificar predicción con precio actual
+   * Verificar predicción con precio de la fecha de expiración
    */
   verify: asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -259,16 +422,26 @@ export const predictionController = {
       throw BadRequestError('Prediction already verified');
     }
 
-    // Si no se proporciona precio, obtenerlo de Yahoo
+    // Si no se proporciona precio, obtener el precio de cierre de la fecha de expiración
     if (actualPrice === undefined) {
       try {
-        const quote = await yahooService.getQuote(prediction.symbol);
-        if (!quote) {
-          throw BadRequestError('Could not fetch current price. Please provide actualPrice.');
+        // Usar el precio de cierre del día de expiración (o último día de mercado)
+        const priceAtExpiry = await yahooService.getPriceAtDate(prediction.symbol, prediction.expiresAt);
+        
+        if (priceAtExpiry) {
+          actualPrice = priceAtExpiry.price;
+          console.log(`[Verify] Using historical price for ${prediction.symbol} at ${priceAtExpiry.actualDate.toISOString().split('T')[0]}: ${actualPrice}`);
+        } else {
+          // Fallback al precio actual si no hay datos históricos
+          const quote = await yahooService.getQuote(prediction.symbol);
+          if (!quote) {
+            throw BadRequestError('Could not fetch price for verification. Please provide actualPrice.');
+          }
+          actualPrice = quote.price;
+          console.log(`[Verify] Using current price for ${prediction.symbol} (no historical data): ${actualPrice}`);
         }
-        actualPrice = quote.price;
       } catch (error) {
-        throw BadRequestError('Could not fetch current price. Please provide actualPrice.');
+        throw BadRequestError('Could not fetch price for verification. Please provide actualPrice.');
       }
     }
 
@@ -276,62 +449,35 @@ export const predictionController = {
       throw BadRequestError('actualPrice must be a positive number');
     }
 
-    // Calcular resultados
-    const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
-    const actualDirection: 'up' | 'down' | 'neutral' = 
-      actualChange > 0.5 ? 'up' : 
-      actualChange < -0.5 ? 'down' : 'neutral';
-    
-    const directionCorrect = prediction.direction === actualDirection ||
-      (prediction.direction !== 'neutral' && actualDirection === 'neutral');
-    
-    const withinRange = prediction.predictedPriceMin !== null && 
-                       prediction.predictedPriceMax !== null &&
-                       actualPrice >= prediction.predictedPriceMin && 
-                       actualPrice <= prediction.predictedPriceMax;
-    
-    const priceError = Math.abs(actualChange - prediction.predictedChange);
-    
-    // Calcular precisión del cambio (0-100)
-    let changeAccuracy = 0;
-    if (Math.abs(prediction.predictedChange) > 0.1) {
-      const fulfillmentRatio = Math.abs(actualChange) / Math.abs(prediction.predictedChange);
-      if (directionCorrect) {
-        changeAccuracy = Math.min(100, fulfillmentRatio * 100);
-      } else {
-        changeAccuracy = Math.max(0, (1 - fulfillmentRatio) * 50);
+    // Obtener extremos del período para verificar si alcanzó el objetivo
+    let periodExtremes = null;
+    try {
+      periodExtremes = await yahooService.getPeriodExtremes(
+        prediction.symbol,
+        prediction.createdAt,
+        prediction.expiresAt
+      );
+      if (periodExtremes) {
+        console.log(`[Verify] Period extremes for ${prediction.symbol}: High=${periodExtremes.high}, Low=${periodExtremes.low}`);
       }
-    } else if (Math.abs(actualChange) < 0.5) {
-      changeAccuracy = 100; // Predijo neutral y fue neutral
+    } catch (error) {
+      console.log('[Verify] Could not get period extremes, continuing without bonus check');
     }
-    
-    // Accuracy score combinado
-    const directionWeight = 0.6;
-    const changeWeight = 0.4;
-    const accuracyScore = 
-      (directionCorrect ? 100 : 0) * directionWeight + 
-      changeAccuracy * changeWeight;
-    
-    // Clasificar calidad
-    let quality: 'excellent' | 'good' | 'poor' | 'failed';
-    if (accuracyScore >= 75) quality = 'excellent';
-    else if (accuracyScore >= 50) quality = 'good';
-    else if (accuracyScore >= 25) quality = 'poor';
-    else quality = 'failed';
 
-    const verifyData: VerifyPredictionData = {
-      actualPrice,
-      actualChange,
-      actualDirection,
-      directionCorrect,
-      withinRange,
-      priceError,
-      changeAccuracy: Math.round(changeAccuracy),
-      accuracyScore: Math.round(accuracyScore),
-      quality,
-    };
+    const verifyData = computeVerificationData(prediction, actualPrice, periodExtremes);
 
     const verified = await predictionRepository.verify(id, verifyData);
+
+    // Eliminar del training cache para que no aparezca más en la UI
+    const timeframeMap: Record<number, string> = { 1: 'intraday', 7: 'swing', 30: 'longterm' };
+    const timeframe = timeframeMap[prediction.timeframeDays] || 'intraday';
+    try {
+      await trainingRepository.deleteFromCache(prediction.symbol, timeframe);
+      console.log(`[Verify] Removed ${prediction.symbol} (${timeframe}) from training cache`);
+    } catch (err) {
+      // No es crítico si falla
+      console.log(`[Verify] Could not remove from training cache: ${err}`);
+    }
 
     // Limpiar cache del track record para este símbolo
     trackRecordService.clearCache(prediction.symbol);
@@ -354,6 +500,7 @@ export const predictionController = {
   /**
    * POST /api/predictions/verify-pending
    * Verificar todas las predicciones pendientes automáticamente
+   * Usa el precio de cierre de la fecha de expiración, no el precio actual
    */
   verifyPending: asyncHandler(async (_req: Request, res: Response) => {
     const pending = await predictionRepository.findPendingVerification();
@@ -361,61 +508,43 @@ export const predictionController = {
 
     for (const prediction of pending) {
       try {
-        const quote = await yahooService.getQuote(prediction.symbol);
-        if (!quote) {
-          results.push({ id: prediction.id, symbol: prediction.symbol, error: 'Could not fetch price' });
-          continue;
-        }
-        const actualPrice = quote.price;
+        // Obtener precio de cierre del día de expiración (o último día de mercado)
+        let actualPrice: number;
+        const priceAtExpiry = await yahooService.getPriceAtDate(prediction.symbol, prediction.expiresAt);
         
-        // Calcular resultados (mismo código que verify)
-        const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
-        const actualDirection: 'up' | 'down' | 'neutral' = 
-          actualChange > 0.5 ? 'up' : 
-          actualChange < -0.5 ? 'down' : 'neutral';
-        
-        const directionCorrect = prediction.direction === actualDirection;
-        
-        const withinRange = prediction.predictedPriceMin !== null && 
-                           prediction.predictedPriceMax !== null &&
-                           actualPrice >= prediction.predictedPriceMin && 
-                           actualPrice <= prediction.predictedPriceMax;
-        
-        const priceError = Math.abs(actualChange - prediction.predictedChange);
-        
-        let changeAccuracy = 0;
-        if (Math.abs(prediction.predictedChange) > 0.1) {
-          const fulfillmentRatio = Math.abs(actualChange) / Math.abs(prediction.predictedChange);
-          if (directionCorrect) {
-            changeAccuracy = Math.min(100, fulfillmentRatio * 100);
+        if (priceAtExpiry) {
+          actualPrice = priceAtExpiry.price;
+          console.log(`[VerifyPending] ${prediction.symbol}: Using price at ${priceAtExpiry.actualDate.toISOString().split('T')[0]}: ${actualPrice}`);
+        } else {
+          // Fallback al precio actual
+          const quote = await yahooService.getQuote(prediction.symbol);
+          if (!quote) {
+            results.push({ id: prediction.id, symbol: prediction.symbol, error: 'Could not fetch price' });
+            continue;
           }
+          actualPrice = quote.price;
+          console.log(`[VerifyPending] ${prediction.symbol}: Using current price (no historical): ${actualPrice}`);
         }
         
-        const accuracyScore = (directionCorrect ? 100 : 0) * 0.6 + changeAccuracy * 0.4;
-        
-        let quality: 'excellent' | 'good' | 'poor' | 'failed';
-        if (accuracyScore >= 75) quality = 'excellent';
-        else if (accuracyScore >= 50) quality = 'good';
-        else if (accuracyScore >= 25) quality = 'poor';
-        else quality = 'failed';
+        const verifyData = computeVerificationData(prediction, actualPrice);
 
-        await predictionRepository.verify(prediction.id, {
-          actualPrice,
-          actualChange,
-          actualDirection,
-          directionCorrect,
-          withinRange,
-          priceError,
-          changeAccuracy: Math.round(changeAccuracy),
-          accuracyScore: Math.round(accuracyScore),
-          quality,
-        });
+        await predictionRepository.verify(prediction.id, verifyData);
+
+        // Eliminar del training cache
+        const timeframeMap: Record<number, string> = { 1: 'intraday', 7: 'swing', 30: 'longterm' };
+        const timeframe = timeframeMap[prediction.timeframeDays] || 'intraday';
+        try {
+          await trainingRepository.deleteFromCache(prediction.symbol, timeframe);
+        } catch {
+          // No es crítico
+        }
 
         results.push({
           id: prediction.id,
           symbol: prediction.symbol,
-          directionCorrect,
-          quality,
+          directionCorrect: verifyData.directionCorrect,
+          quality: verifyData.quality,
+          priceDate: priceAtExpiry?.actualDate.toISOString().split('T')[0] || 'current',
         });
       } catch (error: any) {
         results.push({
@@ -579,5 +708,167 @@ export const getTrackRecord = asyncHandler(async (req: Request, res: Response) =
       symbol: trackRecord,
       global: globalRecord,
     },
+  });
+});
+
+/**
+ * POST /api/predictions/recalculate-scores
+ * Recalcular accuracyScore y quality de todas las predicciones verificadas
+ * con la nueva fórmula que prioriza la dirección
+ */
+export const recalculateScores = asyncHandler(async (_req: Request, res: Response) => {
+  const { predictions: verified } = await predictionRepository.findAll({
+    verified: true,
+    limit: 10000,
+  });
+
+  let updated = 0;
+  const results: Array<{ id: string; symbol: string; oldScore: number; newScore: number; oldQuality: string; newQuality: string }> = [];
+
+  for (const prediction of verified) {
+    if (!prediction.actualChange || prediction.predictedChange === null) continue;
+
+    const actualChange = prediction.actualChange;
+    const predictedChange = prediction.predictedChange;
+
+    const actualDirection: 'up' | 'down' | 'neutral' =
+      actualChange > DIRECTION_THRESHOLD_PCT ? 'up' :
+      actualChange < -DIRECTION_THRESHOLD_PCT ? 'down' : 'neutral';
+
+    const directionCorrect = prediction.direction === actualDirection ||
+      (prediction.direction !== 'neutral' && actualDirection === 'neutral');
+
+    // Nueva fórmula de accuracyScore
+    let newAccuracyScore = 0;
+    
+    if (directionCorrect) {
+      const predictedMag = Math.abs(predictedChange);
+      const actualMag = Math.abs(actualChange);
+      
+      if (predictedMag < 0.1 && actualMag < 0.5) {
+        newAccuracyScore = 100;
+      } else if (predictedMag > 0.1) {
+        const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
+        const magAccuracy = Math.max(0, 1 - magError);
+        newAccuracyScore = 50 + (magAccuracy * 50);
+      } else {
+        newAccuracyScore = 60;
+      }
+    } else {
+      const actualMag = Math.abs(actualChange);
+      if (actualMag < 0.5) {
+        newAccuracyScore = 40;
+      } else if (actualMag < 1) {
+        newAccuracyScore = 20;
+      } else {
+        newAccuracyScore = Math.max(0, 15 - actualMag);
+      }
+    }
+    
+    newAccuracyScore = Math.round(Math.max(0, Math.min(100, newAccuracyScore)));
+    
+    // Determinar nueva calidad
+    // 'failed' = dirección incorrecta, 'very_poor' = dirección correcta pero score < 25
+    let newQuality: 'excellent' | 'good' | 'poor' | 'very_poor' | 'failed';
+    if (!directionCorrect) {
+      newQuality = 'failed';
+    } else if (newAccuracyScore >= 75) {
+      newQuality = 'excellent';
+    } else if (newAccuracyScore >= 50) {
+      newQuality = 'good';
+    } else if (newAccuracyScore >= 25) {
+      newQuality = 'poor';
+    } else {
+      newQuality = 'very_poor';
+    }
+
+    const oldScore = prediction.accuracyScore || 0;
+    const oldQuality = prediction.quality || 'failed';
+
+    // Siempre actualizar si la quality cambió (para migración a nuevo sistema)
+    // o si el score cambió
+    const qualityChanged = oldQuality !== newQuality;
+    const scoreChanged = oldScore !== newAccuracyScore;
+    
+    if (scoreChanged || qualityChanged) {
+      await predictionRepository.updateScores(prediction.id, {
+        accuracyScore: newAccuracyScore,
+        quality: newQuality,
+        directionCorrect,
+        actualDirection,
+      });
+      
+      results.push({
+        id: prediction.id,
+        symbol: prediction.symbol,
+        oldScore,
+        newScore: newAccuracyScore,
+        oldQuality,
+        newQuality,
+      });
+      updated++;
+    }
+  }
+
+  // Limpiar cache del track record
+  trackRecordService.clearCache();
+
+  res.json({
+    success: true,
+    message: `Recalculated ${updated} predictions`,
+    data: {
+      total: verified.length,
+      updated,
+      changes: results,
+    },
+  });
+});
+
+/**
+ * POST /api/predictions/fix-intraday-expiry
+ * Corregir expiresAt de predicciones intradía para que expiren al cierre de mercado
+ */
+export const fixIntradayExpiry = asyncHandler(async (_req: Request, res: Response) => {
+  const { prisma } = await import('../config/database.js');
+  
+  // Buscar predicciones intradía no verificadas
+  const predictions = await prisma.prediction.findMany({
+    where: {
+      timeframeDays: 1,
+      verified: false,
+    },
+  });
+
+  let updated = 0;
+  for (const pred of predictions) {
+    // Calcular nuevo expiresAt: cierre de mercado (17:30 España = 16:30 UTC) del día de creación
+    const createdAt = new Date(pred.createdAt);
+    const newExpiry = new Date(createdAt);
+    newExpiry.setUTCHours(16, 30, 0, 0);
+    
+    // Si se creó después del cierre, usar el día siguiente
+    if (createdAt > newExpiry) {
+      newExpiry.setDate(newExpiry.getDate() + 1);
+    }
+    
+    // Ajustar fines de semana
+    const day = newExpiry.getDay();
+    if (day === 0) newExpiry.setDate(newExpiry.getDate() + 1);
+    if (day === 6) newExpiry.setDate(newExpiry.getDate() + 2);
+    
+    // Solo actualizar si cambió
+    if (newExpiry.getTime() !== new Date(pred.expiresAt).getTime()) {
+      await prisma.prediction.update({
+        where: { id: pred.id },
+        data: { expiresAt: newExpiry },
+      });
+      updated++;
+    }
+  }
+
+  res.json({
+    success: true,
+    message: `Fixed ${updated} intraday predictions`,
+    data: { total: predictions.length, updated },
   });
 });

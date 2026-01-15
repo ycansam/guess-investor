@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getTrackRecord, predictionController } from '../controllers/prediction.controller.js';
+import { fixIntradayExpiry, getTrackRecord, predictionController, recalculateScores } from '../controllers/prediction.controller.js';
 
 const router = Router();
 
@@ -41,6 +41,12 @@ router.post('/:id/verify', predictionController.verify);
 
 // POST /api/predictions/verify-pending - Verificar todas las pendientes
 router.post('/verify-pending', predictionController.verifyPending);
+
+// POST /api/predictions/recalculate-scores - Recalcular scores con nueva fórmula
+router.post('/recalculate-scores', recalculateScores);
+
+// POST /api/predictions/fix-intraday-expiry - Corregir expiresAt de intradía
+router.post('/fix-intraday-expiry', fixIntradayExpiry);
 
 // POST /api/predictions/import-bulk - Importar predicciones en masa (migración)
 router.post('/import-bulk', predictionController.importBulk);

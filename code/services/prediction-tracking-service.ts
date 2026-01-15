@@ -85,6 +85,7 @@ export interface TrackingStats {
 class PredictionTrackingService {
   /**
    * Registrar una nueva predicción para tracking
+   * Usa el endpoint /track que guarda la predicción ya calculada
    */
   async trackPrediction(data: {
     symbol: string;
@@ -104,10 +105,23 @@ class PredictionTrackingService {
     uncertaintyScore?: number;
   }): Promise<{ id: string }> {
     try {
-      const result = await apiClient.createPrediction(
-        data.symbol,
-        data.timeframeDays || 1
-      );
+      // Usar el endpoint /track que guarda la predicción sin recalcular
+      const result = await apiClient.trackPrediction({
+        symbol: data.symbol,
+        asset: data.asset,
+        assetType: data.assetType,
+        direction: data.direction,
+        predictedChange: data.predictedChange,
+        predictedPriceMin: data.predictedPriceMin,
+        predictedPriceMax: data.predictedPriceMax,
+        confidence: data.confidence,
+        currentPrice: data.currentPrice,
+        timeframe: data.timeframe,
+        timeframeDays: data.timeframeDays || 1,
+        volatility: data.volatility,
+        factorWeights: data.factorWeightsUsed,
+        uncertaintyScore: data.uncertaintyScore,
+      });
       console.log(`[Tracking] Predicción registrada: ${result.id}`);
       return { id: result.id };
     } catch (error: any) {

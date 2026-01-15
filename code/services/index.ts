@@ -27,8 +27,8 @@ export type {
 // Favoritos - Persistencia en backend
 export { favoritesService } from './favorites-service-v2';
 
-// Chat con IA - Gemini
-export { aiService, geminiService } from './gemini-service';
+// Servicio de IA - Solo usa el backend
+export { aiService } from './ai-service';
 
 // Lista de activos disponibles (datos locales)
 export { ALL_ASSETS, marketDataService } from './market-data-service';
@@ -42,21 +42,12 @@ export type { TrainingPrediction, TrainingTimeframe } from './training-cache-ser
 export { currencyService } from './currency-service';
 
 // Horarios de mercado
-export { default as marketHoursService } from './market-hours-service';
-
-// Parser de mensajes del chat
-export { messageParserService } from './message-parser-service';
-export type { ParsedMessage } from './message-parser-service';
-
-// Lookup de símbolos
-export { symbolLookupService } from './symbol-lookup-service';
+export { canTradeNow, getMarketHours } from './market-hours-service';
+export type { MarketHoursInfo } from './market-hours-service';
 
 // Tracking de predicciones
 export { predictionTrackingService } from './prediction-tracking-service';
 export type { TrackedPrediction, TrackingStats } from './prediction-tracking-service';
-
-// Migración de datos legacy
-export { dataMigrationService } from './data-migration-service';
 
 // =============================================================================
 // ARQUITECTURA:

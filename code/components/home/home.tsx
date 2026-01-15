@@ -1,75 +1,33 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
-import { dataMigrationService } from '../../services/data-migration-service';
+import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
+import { MLDiagnosticsModal } from '../ml-diagnostics-modal';
+import { TopTrendsModal } from '../top-trends';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { FavoritesList } from './favorites-list';
-import { MarketList } from './market-list';
 import { MarketPredictions } from './market-predictions';
 import { TabBar, TabType } from './tab-bar';
 import { useHome } from './use-home';
 
-// Exponer el servicio de migración en window para debug
-if (typeof window !== 'undefined') {
-  (window as any).dataMigrationService = dataMigrationService;
-}
-
 export function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>('explore');
+  const [activeTab, setActiveTab] = useState<TabType>('predictions');
   const [showTracking, setShowTracking] = useState(false);
+  const [showTopTrends, setShowTopTrends] = useState(false);
+  const [showMLDiagnostics, setShowMLDiagnostics] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [migrationChecked, setMigrationChecked] = useState(false);
 
   const {
-    messages,
-    isLoading,
     predictions,
-    handleSendMessage,
+    isAnalyzing,
+    error,
+    handleAnalyzeAsset,
     handleClearPredictions,
     handleRemovePrediction,
   } = useHome();
-
-  // Verificar y migrar datos legacy al inicio
-  useEffect(() => {
-    const checkAndMigrate = async () => {
-      if (migrationChecked) return;
-      
-      try {
-        // Intentar migración si no se ha hecho
-        const result = await dataMigrationService.runMigrationIfNeeded();
-        
-        if (result && result.total > 0) {
-          // Mostrar resumen de lo migrado
-          const parts = [];
-          if (result.predictionTracking.migrated > 0) {
-            parts.push(`${result.predictionTracking.migrated} predicciones`);
-          }
-          if (result.trainingCache.migrated > 0) {
-            parts.push(`${result.trainingCache.migrated} cache de training`);
-          }
-          if (result.learnedWeights.migrated) {
-            parts.push('pesos ML');
-          }
-          
-          Alert.alert(
-            '✅ Datos migrados',
-            `Se migraron: ${parts.join(', ')} al backend.`,
-            [{ text: 'OK', onPress: () => setRefreshKey(k => k + 1) }]
-          );
-        }
-      } catch (error) {
-        console.error('[Home] Error en migración:', error);
-      } finally {
-        setMigrationChecked(true);
-      }
-    };
-
-    checkAndMigrate();
-  }, [migrationChecked]);
 
   // Cargar conteos
   const loadCounts = useCallback(async () => {
@@ -105,12 +63,10 @@ export function Home() {
     switch (activeTab) {
       case 'favorites':
         return <FavoritesList onFavoritesChange={handleFavoritesChange} />;
-      case 'explore':
-        return <MarketList onFavoritesChange={handleFavoritesChange} />;
       case 'predictions':
         return <MarketPredictions />;
       default:
-        return <MarketList onFavoritesChange={handleFavoritesChange} />;
+        return <MarketPredictions />;
     }
   };
 
@@ -120,8 +76,24 @@ export function Home() {
 
       <Header 
         title="Guess Investor" 
+        actions={[
+          { icon: '🔥', onPress: () => setShowTopTrends(true) },
+          { icon: '🧠', onPress: () => setShowMLDiagnostics(true) },
+        ]}
         actionIcon="📊"
         onActionPress={() => setShowTracking(true)}
+      />
+
+      {/* Modal de Top Tendencias */}
+      <TopTrendsModal
+        visible={showTopTrends}
+        onClose={() => setShowTopTrends(false)}
+      />
+
+      {/* Modal de Diagnóstico ML */}
+      <MLDiagnosticsModal
+        visible={showMLDiagnostics}
+        onClose={() => setShowMLDiagnostics(false)}
       />
 
       {/* Modal de Tracking Stats */}
