@@ -236,6 +236,67 @@ export interface FullAnalysis {
   analyzedAt: string;
 }
 
+export interface TrendStreak {
+  direction: 'up' | 'down' | 'sideways';
+  days: number;
+  totalChange: number;
+  avgDailyChange: number;
+  startDate: string;
+  endDate: string;
+}
+
+export interface TrendMomentum {
+  short: number;
+  medium: number;
+  long: number;
+  signal: 'bullish' | 'bearish' | 'neutral';
+  strength: 'strong' | 'moderate' | 'weak';
+}
+
+export interface TrendSupport {
+  level: number;
+  strength: 'strong' | 'moderate' | 'weak';
+  distancePercent: number;
+}
+
+export interface TrendResistance {
+  level: number;
+  strength: 'strong' | 'moderate' | 'weak';
+  distancePercent: number;
+}
+
+export interface TrendVolatility {
+  current: number;
+  average: number;
+  trend: 'increasing' | 'decreasing' | 'stable';
+  percentile: number;
+}
+
+export interface TrendAnalysis {
+  symbol: string;
+  currentPrice: number;
+  currentStreak: TrendStreak;
+  momentum: TrendMomentum;
+  supports: TrendSupport[];
+  resistances: TrendResistance[];
+  volatility: TrendVolatility;
+  stats: {
+    up_days_30d: number;
+    down_days_30d: number;
+    flat_days_30d: number;
+    best_day_30d: { date: string; change: number };
+    worst_day_30d: { date: string; change: number };
+    avg_up_move: number;
+    avg_down_move: number;
+  };
+  trendPrediction: {
+    direction: 'continue' | 'reverse' | 'uncertain';
+    probability: number;
+    reasoning: string;
+  };
+  analyzedAt: string;
+}
+
 // ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
@@ -317,6 +378,13 @@ export const apiClient = {
    */
   getFullAnalysis: (symbol: string, type: 'stock' | 'crypto' = 'stock'): Promise<FullAnalysis> => {
     return get(`/analysis/full/${encodeURIComponent(symbol)}?type=${type}`);
+  },
+
+  /**
+   * Obtener análisis de tendencias (rachas, momentum, soportes/resistencias)
+   */
+  getTrends: (symbol: string): Promise<TrendAnalysis | null> => {
+    return get(`/analysis/trends/${encodeURIComponent(symbol)}`);
   },
 
   // -------------------------------------------------------------------------

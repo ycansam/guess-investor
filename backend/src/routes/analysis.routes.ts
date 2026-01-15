@@ -4,6 +4,7 @@ import { macroService } from '../services/external/macro.service.js';
 import { newsService } from '../services/external/news.service.js';
 import { sentimentService } from '../services/external/sentiment.service.js';
 import { technicalService } from '../services/external/technical.service.js';
+import { trendsService } from '../services/external/trends.service.js';
 
 const router = Router();
 
@@ -120,6 +121,33 @@ router.get('/full/:symbol', asyncHandler(async (req: Request, res: Response) => 
       macro,
       analyzedAt: new Date().toISOString(),
     },
+  });
+}));
+
+/**
+ * GET /api/analysis/trends/:symbol
+ * Análisis de tendencias: rachas, momentum, soportes/resistencias
+ */
+router.get('/trends/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const trends = await trendsService.analyzeTrend(symbol.toUpperCase());
+
+  if (!trends) {
+    res.json({
+      success: false,
+      error: 'No trend data available for this symbol',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: trends,
   });
 }));
 

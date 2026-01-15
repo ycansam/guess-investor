@@ -19,7 +19,8 @@ import {
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
 import { PredictionHistoryCard } from '../../components/prediction-history';
-import { apiClient, CalculatedPrediction } from '../../services/api-client';
+import { TrendsModal } from '../../components/trends-modal';
+import { apiClient, CalculatedPrediction, TrendAnalysis } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
 import { predictionTrackingService } from '../../services/prediction-tracking-service';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
@@ -205,6 +206,12 @@ export default function AssetDetailScreen() {
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
   const [priceInEur, setPriceInEur] = useState<number | null>(null);
+  
+  // Estado para el modal de tendencias
+  const [showTrendsModal, setShowTrendsModal] = useState(false);
+  const [trendsData, setTrendsData] = useState<TrendAnalysis | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
 
   // Ref para trackear los días de longterm anteriores
   const prevLongtermDaysRef = React.useRef<number>(longtermPredictionDays);
@@ -604,6 +611,24 @@ export default function AssetDetailScreen() {
     }
   }, [router]);
 
+  // Cargar tendencias del activo
+  const loadTrends = useCallback(async () => {
+    if (!symbol) return;
+    
+    setTrendsLoading(true);
+    setTrendsError(null);
+    setShowTrendsModal(true);
+    
+    try {
+      const trends = await apiClient.getTrends(symbol);
+      setTrendsData(trends);
+    } catch (error) {
+      console.error('[AssetDetail] Error loading trends:', error);
+      setTrendsError('No se pudieron cargar las tendencias');
+    }
+    setTrendsLoading(false);
+  }, [symbol]);
+
   const chartWidth = width - 64;
   const chartAreaWidth = chartWidth - 70; // Ancho útil del gráfico (menos ejes y padding)
 
@@ -977,6 +1002,13 @@ export default function AssetDetailScreen() {
           </View>
         )}
 
+        {/* Botón de Tendencias */}
+        <TouchableOpacity style={styles.trendsButton} onPress={loadTrends}>
+          <Ionicons name="trending-up" size={20} color="#fff" />
+          <Text style={styles.trendsButtonText}>Ver Tendencias</Text>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </TouchableOpacity>
+
         {/* Análisis detallado de la predicción */}
         {fullPrediction && fullPrediction.analysisData && (
           <View style={styles.analysisContainer}>
@@ -994,6 +1026,15 @@ export default function AssetDetailScreen() {
         {/* Espaciado inferior */}
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Modal de Tendencias */}
+      <TrendsModal
+        visible={showTrendsModal}
+        onClose={() => setShowTrendsModal(false)}
+        trends={trendsData}
+        loading={trendsLoading}
+        error={trendsError}
+      />
     </View>
   );
 }
@@ -1234,5 +1275,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     textTransform: 'uppercase',
+  },
+  trendsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#6366f1',
+  },
+  trendsButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    flex: 1,
   },
 });
