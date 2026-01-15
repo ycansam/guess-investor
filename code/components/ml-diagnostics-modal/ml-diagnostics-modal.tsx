@@ -23,6 +23,7 @@ interface MLDiagnosticsModalProps {
 
 type TabType = 'weights' | 'classifiers' | 'models';
 type TimeframeType = 'intraday' | 'swing' | 'long';
+type AssetGroupType = string;
 
 export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   visible,
@@ -34,6 +35,7 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const [modelsData, setModelsData] = useState<MLModelsStatus | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('weights');
   const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeType>('intraday');
+  const [selectedAssetGroup, setSelectedAssetGroup] = useState<AssetGroupType>('large_cap_stock');
 
   useEffect(() => {
     if (visible) {
@@ -180,58 +182,119 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       default: { emoji: '📋', description: 'Clasificación genérica' },
     };
 
+    const selectedInfo = groupDescriptions[selectedAssetGroup] || { emoji: '📋', description: 'Sin descripción' };
+    const multipliers = weightsData.assetGroupMultipliers[selectedAssetGroup] || {};
+    const allFactors = ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'];
+
+    const getMultiplierColor = (mult: number) => {
+      if (mult > 1.3) return colors.success;
+      if (mult < 0.7) return colors.danger;
+      if (mult > 1.1) return '#22c55e88';
+      if (mult < 0.9) return '#ef444488';
+      return colors.textSecondary;
+    };
+
+    const getMultiplierLabel = (mult: number) => {
+      if (mult > 1) return `+${((mult - 1) * 100).toFixed(0)}%`;
+      if (mult < 1) return `${((mult - 1) * 100).toFixed(0)}%`;
+      return '0%';
+    };
+
     return (
       <View style={styles.tabContent}>
-        <Text style={styles.sectionTitle}>🏷️ Clasificadores de Activos</Text>
-        <Text style={styles.sectionSubtitle}>
-          Cada tipo de activo recibe multiplicadores diferentes para los factores de predicción
-        </Text>
+        {/* Summary Card */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>🏷️ Clasificadores activos</Text>
+            <Text style={styles.summaryValue}>{weightsData.availableAssetGroups.length}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>📊 Factores ajustables</Text>
+            <Text style={styles.summaryValue}>{allFactors.length}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>🎯 Detección dinámica</Text>
+            <Text style={[styles.summaryValue, { color: colors.success }]}>Activa</Text>
+          </View>
+        </View>
 
-        <ScrollView style={styles.classifiersList}>
-          {weightsData.availableAssetGroups.map((group) => {
-            const info = groupDescriptions[group] || { emoji: '📋', description: group };
-            const multipliers = weightsData.assetGroupMultipliers[group] || {};
-            const hasMultipliers = Object.keys(multipliers).length > 0;
+        {/* Asset Group Selector - 2 rows */}
+        <View style={styles.assetGroupSelectorContainer}>
+          <Text style={styles.selectorLabel}>Selecciona un clasificador:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.assetGroupScroll}>
+            <View style={styles.assetGroupRow}>
+              {weightsData.availableAssetGroups.map((group) => {
+                const info = groupDescriptions[group] || { emoji: '📋', description: group };
+                return (
+                  <TouchableOpacity
+                    key={group}
+                    style={[styles.assetGroupButton, selectedAssetGroup === group && styles.assetGroupButtonActive]}
+                    onPress={() => setSelectedAssetGroup(group)}
+                  >
+                    <Text style={styles.assetGroupEmoji}>{info.emoji}</Text>
+                    <Text style={[styles.assetGroupText, selectedAssetGroup === group && styles.assetGroupTextActive]}>
+                      {group.replace(/_/g, ' ')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
 
+        {/* Selected Group Detail */}
+        <View style={styles.selectedGroupCard}>
+          <View style={styles.selectedGroupHeader}>
+            <Text style={styles.selectedGroupEmoji}>{selectedInfo.emoji}</Text>
+            <View style={styles.selectedGroupInfo}>
+              <Text style={styles.selectedGroupName}>{selectedAssetGroup.replace(/_/g, ' ')}</Text>
+              <Text style={styles.selectedGroupDescription}>{selectedInfo.description}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Multipliers Table (like weights) */}
+        <View style={styles.weightsContainer}>
+          <View style={styles.weightsHeader}>
+            <Text style={styles.weightsHeaderText}>Factor</Text>
+            <Text style={styles.weightsHeaderText}>Multiplicador</Text>
+            <Text style={styles.weightsHeaderText}>Ajuste</Text>
+            <Text style={styles.weightsHeaderText}>Impacto</Text>
+          </View>
+          {allFactors.map((factor) => {
+            const mult = (multipliers[factor] as number) || 1;
             return (
-              <View key={group} style={styles.classifierCard}>
-                <View style={styles.classifierHeader}>
-                  <Text style={styles.classifierEmoji}>{info.emoji}</Text>
-                  <View style={styles.classifierInfo}>
-                    <Text style={styles.classifierName}>{group.replace(/_/g, ' ')}</Text>
-                    <Text style={styles.classifierDescription}>{info.description}</Text>
-                  </View>
+              <View key={factor} style={styles.weightRow}>
+                <Text style={styles.weightName}>{factor}</Text>
+                <Text style={styles.weightValue}>{(mult * 100).toFixed(0)}%</Text>
+                <Text style={[styles.weightChange, { color: getMultiplierColor(mult) }]}>
+                  {getMultiplierLabel(mult)}
+                </Text>
+                <View style={styles.weightBar}>
+                  <View 
+                    style={[
+                      styles.weightBarFill, 
+                      { 
+                        width: `${Math.min(mult * 50, 100)}%`,
+                        backgroundColor: getMultiplierColor(mult),
+                      }
+                    ]} 
+                  />
                 </View>
-
-                {hasMultipliers && (
-                  <View style={styles.multipliersList}>
-                    {Object.entries(multipliers).map(([factor, mult]) => {
-                      const multNum = mult as number;
-                      const isBoost = multNum > 1;
-                      const isReduce = multNum < 1;
-                      return (
-                        <View key={factor} style={styles.multiplierItem}>
-                          <Text style={styles.multiplierFactor}>{factor}</Text>
-                          <Text style={[
-                            styles.multiplierValue,
-                            isBoost && styles.multiplierBoost,
-                            isReduce && styles.multiplierReduce,
-                          ]}>
-                            {isBoost ? '↑' : isReduce ? '↓' : '='} {(multNum * 100).toFixed(0)}%
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-
-                {!hasMultipliers && (
-                  <Text style={styles.noMultipliers}>Sin ajustes especiales (usa pesos base)</Text>
-                )}
               </View>
             );
           })}
-        </ScrollView>
+        </View>
+
+        {/* Legend */}
+        <View style={styles.legend}>
+          <Text style={styles.legendTitle}>📖 Interpretación:</Text>
+          <Text style={styles.legendText}>
+            <Text style={{ color: colors.success }}>Verde (+%)</Text>: Factor potenciado para este tipo{'\n'}
+            <Text style={{ color: colors.danger }}>Rojo (-%)</Text>: Factor reducido para este tipo{'\n'}
+            <Text style={{ color: colors.textSecondary }}>Gris (0%)</Text>: Sin ajuste especial (100%)
+          </Text>
+        </View>
       </View>
     );
   };
@@ -627,6 +690,79 @@ const styles = StyleSheet.create({
   },
   classifierDescription: {
     fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  // Nuevos estilos para el selector de asset groups
+  assetGroupSelectorContainer: {
+    marginBottom: 16,
+  },
+  selectorLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  assetGroupScroll: {
+    flexGrow: 0,
+  },
+  assetGroupRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 16,
+  },
+  assetGroupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: colors.backgroundTertiary,
+    borderRadius: 8,
+    gap: 6,
+  },
+  assetGroupButtonActive: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  assetGroupEmoji: {
+    fontSize: 16,
+  },
+  assetGroupText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'capitalize',
+  },
+  assetGroupTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  selectedGroupCard: {
+    backgroundColor: colors.backgroundTertiary,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  selectedGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectedGroupEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  selectedGroupInfo: {
+    flex: 1,
+  },
+  selectedGroupName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'capitalize',
+  },
+  selectedGroupDescription: {
+    fontSize: 13,
     color: colors.textSecondary,
     marginTop: 2,
   },
