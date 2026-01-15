@@ -199,6 +199,11 @@ const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
   // Commodities - ETFs de materias primas
   'GLD': 'commodity', 'SLV': 'commodity', 'USO': 'commodity', 'UNG': 'commodity',
   'IAU': 'commodity', 'PPLT': 'commodity', 'PALL': 'commodity',
+  // Commodities - ETCs físicos (London Stock Exchange)
+  'EGLN.L': 'commodity', 'IGLN.L': 'commodity', 'SGLN.L': 'commodity', // iShares Physical Gold
+  'SSLN.L': 'commodity', 'ISLN.L': 'commodity', // iShares Physical Silver
+  'PHAU.L': 'commodity', 'PHAG.L': 'commodity', 'PHPT.L': 'commodity', 'PHPM.L': 'commodity', // WisdomTree Physical Metals
+  'SGBS.L': 'commodity', // Gold Bullion Securities
   // Mineras de oro/plata (se comportan como commodity pero son acciones)
   'NEM': 'commodity', 'GOLD': 'commodity', 'AEM': 'commodity', 'FNV': 'commodity',
   'WPM': 'commodity', 'KGC': 'commodity', 'AGI': 'commodity', 'AG': 'commodity',
@@ -459,7 +464,8 @@ export const predictionCalculatorService = {
         forex,
         institutional,
         financials,
-        timeframeDays
+        timeframeDays,
+        quote.name || symbol // Pasar el nombre del activo para clasificación inteligente
       );
 
       // --- REINFORCEMENT LEARNING: Obtener recomendación de política ---
@@ -548,7 +554,8 @@ export const predictionCalculatorService = {
     forex: ForexImpact,
     institutional: InstitutionalData,
     financials: FinancialsData | null,
-    timeframeDays: number
+    timeframeDays: number,
+    assetName: string = '' // Nombre del activo para clasificación inteligente
   ): Promise<CalculatedPrediction> {
     // FLAGS de datos disponibles
     const hasHistoricalData = historical.hasData && (historical.change30d !== 0 || historical.change90d !== 0);
@@ -617,9 +624,9 @@ export const predictionCalculatorService = {
       // Usar pesos por defecto
     }
 
-    // Detectar grupo del activo ANTES de ajustar pesos
-    const assetGroup = this.detectAssetGroup(symbol, type);
-    logger.info(`[PredictionCalc] Asset group: ${assetGroup} (${ASSET_GROUP_CONFIGS[assetGroup].description})`);
+    // Detectar grupo del activo ANTES de ajustar pesos (usa nombre para detección inteligente)
+    const assetGroup = this.detectAssetGroup(symbol, type, assetName);
+    logger.info(`[PredictionCalc] Asset group: ${assetGroup} (${ASSET_GROUP_CONFIGS[assetGroup].description}) - Name: "${assetName}"`);
 
     // Paso 1: Ajustar pesos según GRUPO del activo
     const groupAdjustedWeights = adjustWeightsForAssetGroup(baseWeights, assetGroup);
@@ -895,35 +902,89 @@ export const predictionCalculatorService = {
   },
 
   /**
-   * Detecta el grupo del activo
+   * Detecta el grupo del activo usando símbolo, tipo y nombre
+   * La detección por nombre permite clasificar automáticamente activos nuevos
    */
-  detectAssetGroup(symbol: string, type: 'stock' | 'crypto'): AssetGroup {
+  detectAssetGroup(symbol: string, type: 'stock' | 'crypto', assetName: string = ''): AssetGroup {
+    // 1. Primero verificar mapeo manual (símbolos conocidos)
     if (SYMBOL_TO_GROUP[symbol]) {
       return SYMBOL_TO_GROUP[symbol];
     }
 
+    // 2. Crypto por tipo
     if (type === 'crypto') {
       const majorCryptos = ['BTC', 'ETH', 'BNB'];
       const base = symbol.replace('-USD', '').replace('-EUR', '').replace('-GBP', '');
       return majorCryptos.includes(base) ? 'crypto_major' : 'crypto_alt';
     }
 
-    // Índices
-    if (symbol.startsWith('^')) return 'etf_index';
+    // 3. Patrones de símbolo conocidos
+    if (symbol.startsWith('^')) return 'etf_index';  // Índices
+    if (symbol.endsWith('=F')) return 'commodity';   // Futuros
+    if (symbol.endsWith('=X')) return 'forex';       // Forex
     
-    // Futuros de commodities
-    if (symbol.endsWith('=F')) return 'commodity';
+    // 4. *** DETECCIÓN INTELIGENTE POR NOMBRE ***
+    const nameLower = assetName.toLowerCase();
     
-    // Forex
-    if (symbol.endsWith('=X')) return 'forex';
+    // Commodities - Metales preciosos físicos y ETCs
+    const commodityPatterns = [
+      'physical gold', 'physical silver', 'physical platinum', 'physical palladium',
+      'gold etc', 'silver etc', 'platinum etc', 'palladium etc',
+      'gold bullion', 'silver bullion', 'gold trust', 'silver trust',
+      'gold etf', 'silver etf', 'commodity etf',
+      'crude oil', 'natural gas', 'brent', 'wti',
+      'physical metals', 'precious metal',
+      'wisdomtree physical', 'ishares physical',
+      'xetra-gold', 'xetra gold', 'euwax gold',
+    ];
+    if (commodityPatterns.some(p => nameLower.includes(p))) return 'commodity';
     
-    // ETFs comunes por sufijo o patrón
+    // ETFs e Índices
+    const etfIndexPatterns = [
+      'msci world', 'msci emerging', 'msci europe', 'msci usa', 'msci acwi',
+      's&p 500', 's&p500', 'sp500', 'nasdaq', 'dow jones', 'ftse', 'dax', 'cac 40',
+      'stoxx', 'euro stoxx', 'nikkei', 'hang seng',
+      'vanguard', 'ishares core', 'spdr', 'invesco qqq',
+      'total stock', 'total market', 'all-world', 'all world',
+      'ucits etf', 'index fund', 'tracker',
+    ];
+    if (etfIndexPatterns.some(p => nameLower.includes(p))) return 'etf_index';
+    
+    // REITs
+    const reitPatterns = [
+      'reit', 'real estate investment', 'property trust',
+      'real estate trust', 'property fund', 'property income',
+    ];
+    if (reitPatterns.some(p => nameLower.includes(p))) return 'reit';
+    
+    // Bonos
+    const bondPatterns = [
+      'bond', 'treasury', 'government bond', 'corporate bond',
+      'fixed income', 'aggregate bond', 'high yield',
+    ];
+    if (bondPatterns.some(p => nameLower.includes(p))) return 'etf_index'; // Tratamos bonos como ETF por ahora
+    
+    // ADRs (empresas extranjeras en bolsas US)
+    const adrPatterns = [
+      'adr', 'american depositary', 'sponsored adr',
+    ];
+    if (adrPatterns.some(p => nameLower.includes(p))) return 'adr';
+    
+    // Detección de tamaño de empresa por palabras clave en nombre
+    const smallCapPatterns = [
+      'small cap', 'smallcap', 'micro cap', 'microcap', 'penny',
+    ];
+    if (smallCapPatterns.some(p => nameLower.includes(p))) return 'small_cap_stock';
+    
+    // 5. ETFs comunes por símbolo
     const etfPatterns = ['SPY', 'QQQ', 'VOO', 'VTI', 'IWM', 'EEM', 'VEA', 'VWO', 'VNQ', 'GLD', 'SLV', 'USO'];
     if (etfPatterns.some(p => symbol.toUpperCase().startsWith(p))) return 'etf_index';
     
-    // Si tiene extensión de mercado europeo
+    // 6. Mercados europeos - default a large_cap
     if (symbol.includes('.MC') || symbol.includes('.L') || symbol.includes('.PA') || symbol.includes('.DE')) {
-      return 'large_cap_stock'; // Asumimos large cap para mercados europeos conocidos
+      // Pero si detectamos algo específico en el nombre, usarlo
+      if (nameLower.includes('etc') || nameLower.includes('etp')) return 'commodity';
+      return 'large_cap_stock';
     }
 
     return 'default';

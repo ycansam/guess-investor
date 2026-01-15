@@ -449,8 +449,14 @@ export const reinforcementLearningService = {
     avgReward: number;
     skipRate: number;
     qTableSize: number;
+    successRate: number;
   }> {
     await this.initialize();
+    
+    // Calcular tasa de éxito (experiencias con reward > 0)
+    const experiences = modelState?.experienceReplay || [];
+    const successCount = experiences.filter(e => e.reward > 0).length;
+    const successRate = experiences.length > 0 ? successCount / experiences.length : 0;
     
     return {
       totalEpisodes: modelState?.totalEpisodes || 0,
@@ -458,6 +464,7 @@ export const reinforcementLearningService = {
       avgReward: modelState?.learningMetrics.avgReward || 0,
       skipRate: modelState?.learningMetrics.skipRate || 0,
       qTableSize: Object.keys(modelState?.qTable || {}).length,
+      successRate,
     };
   },
 };

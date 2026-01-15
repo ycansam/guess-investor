@@ -796,6 +796,19 @@ export const apiClient = {
   },
 
   /**
+   * Obtener comparación de pesos para un símbolo (incluye clasificación)
+   */
+  getWeightsComparison: (symbol: string): Promise<{
+    symbol: string;
+    assetGroup: string;
+    assetGroupDescription: string;
+    weightsApplied: Record<string, number>;
+    usingLearnedWeights: boolean;
+  }> => {
+    return get(`/ml/weights/compare/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
    * Obtener estado de todos los modelos ML
    */
   getMLStatus: (): Promise<MLModelsStatus> => {

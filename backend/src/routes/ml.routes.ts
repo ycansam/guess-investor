@@ -269,4 +269,106 @@ router.get('/weights/compare/:symbol', asyncHandler(async (req: Request, res: Re
   }
 }));
 
+// POST /api/ml/train-from-verified - Entrena RL y calibra Probabilístico con predicciones verificadas
+router.post('/train-from-verified', asyncHandler(async (_req: Request, res: Response) => {
+  const { predictionRepository } = await import('../repositories/prediction.repository.js');
+  
+  // Obtener predicciones verificadas
+  const verified = await predictionRepository.findVerified(500);
+  
+  if (verified.length === 0) {
+    res.json({ success: false, error: 'No verified predictions found' });
+    return;
+  }
+  
+  let rlTrained = 0;
+  let probCalibrated = 0;
+  const errors: string[] = [];
+  
+  for (const pred of verified) {
+    try {
+      // Entrenar RL
+      const analysisData = pred.analysisData as Record<string, unknown> | null;
+      const historical = analysisData?.historical as { volatility?: number } | undefined;
+      const sentiment = analysisData?.sentiment as { vix?: { value?: number } } | undefined;
+      const factorBreakdown = analysisData?.factorBreakdown as { 
+        signalSummary?: string;
+        availableFactors?: { score: number }[];
+      } | undefined;
+      
+      const volatility = historical?.volatility ?? 25;
+      const vix = sentiment?.vix?.value ?? 20;
+      const signalSummary = factorBreakdown?.signalSummary ?? 'mixed';
+      const avgScore = factorBreakdown?.availableFactors 
+        ? factorBreakdown.availableFactors.reduce((sum: number, f: { score: number }) => sum + Math.abs(f.score), 0) / factorBreakdown.availableFactors.length
+        : 30;
+      
+      // Determinar timeframe en días
+      let timeframeDays = 1;
+      if (pred.timeframe === 'swing') timeframeDays = 7;
+      else if (pred.timeframe === 'longterm') timeframeDays = 30;
+      
+      // Discretizar estado
+      const state = reinforcementLearningService.discretizeState({
+        vix,
+        volatility,
+        timeframeDays,
+        combinedScore: avgScore * (pred.direction === 'up' ? 1 : pred.direction === 'down' ? -1 : 0),
+        signalCoherence: signalSummary === 'aligned' ? 'coherent_bullish' : signalSummary === 'conflicting' ? 'mixed' : 'neutral',
+        hasUpcomingEvents: false,
+        recentAccuracy: pred.accuracyScore ?? 50,
+      });
+      
+      // Determinar acción basada en confianza original
+      let action: 'skip' | 'predict_low' | 'predict_medium' | 'predict_high' = 'predict_medium';
+      if (pred.confidence < 40) action = 'predict_low';
+      else if (pred.confidence > 70) action = 'predict_high';
+      
+      // Registrar experiencia
+      await reinforcementLearningService.recordExperience(
+        state,
+        action,
+        pred.accuracyScore ?? null,
+        pred.directionCorrect ?? null,
+        null
+      );
+      rlTrained++;
+      
+      // Calibrar modelo probabilístico
+      const predictedMean = pred.predictedChange ?? 0;
+      const predictedStdDev = volatility / Math.sqrt(252) * Math.sqrt(timeframeDays);
+      const actualChange = pred.actualChange ?? 0;
+      
+      await probabilisticModelService.recordCalibration(
+        pred.symbol,
+        predictedMean,
+        predictedStdDev,
+        actualChange
+      );
+      probCalibrated++;
+      
+    } catch (err) {
+      errors.push(`${pred.symbol}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+  
+  // Obtener stats actualizados
+  const [rlStats, probStats] = await Promise.all([
+    reinforcementLearningService.getStats(),
+    probabilisticModelService.getCalibrationStats(),
+  ]);
+  
+  res.json({
+    success: true,
+    data: {
+      totalPredictions: verified.length,
+      rlTrained,
+      probCalibrated,
+      errors: errors.slice(0, 10),
+      rlStats,
+      probStats,
+    },
+  });
+}));
+
 export default router;

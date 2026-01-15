@@ -212,6 +212,12 @@ export default function AssetDetailScreen() {
   const [trendsData, setTrendsData] = useState<TrendAnalysis | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [trendsError, setTrendsError] = useState<string | null>(null);
+  
+  // Estado para la clasificación del activo (ML)
+  const [assetClassification, setAssetClassification] = useState<{
+    assetGroup: string;
+    assetGroupDescription: string;
+  } | null>(null);
 
   // Ref para trackear los días de longterm anteriores
   const prevLongtermDaysRef = React.useRef<number>(longtermPredictionDays);
@@ -240,6 +246,20 @@ export default function AssetDetailScreen() {
         } else {
           setPriceInEur(quote.price);
         }
+      }
+      
+      // Cargar clasificación del activo desde el sistema ML
+      try {
+        const weightsResponse = await apiClient.getWeightsComparison(symbol);
+        if (weightsResponse?.assetGroup) {
+          setAssetClassification({
+            assetGroup: weightsResponse.assetGroup,
+            assetGroupDescription: weightsResponse.assetGroupDescription || weightsResponse.assetGroup,
+          });
+        }
+      } catch (classError) {
+        console.log('[AssetDetail] Could not load asset classification:', classError);
+        // No es crítico, seguimos sin la clasificación
       }
     } catch (error) {
       console.error('[AssetDetail] Error loading asset:', error);
@@ -722,9 +742,17 @@ export default function AssetDetailScreen() {
               ? { label: 'Forex', icon: 'swap-horizontal' as const, style: styles.assetTypeBadgeForex }
               : { label: 'Acción', icon: 'business' as const, style: styles.assetTypeBadgeStock };
             return (
-              <View style={[styles.assetTypeBadge, assetTypeInfo.style]}>
-                <Ionicons name={assetTypeInfo.icon} size={10} color="#fff" />
-                <Text style={styles.assetTypeBadgeText}>{assetTypeInfo.label}</Text>
+              <View style={styles.badgesRow}>
+                <View style={[styles.assetTypeBadge, assetTypeInfo.style]}>
+                  <Ionicons name={assetTypeInfo.icon} size={10} color="#fff" />
+                  <Text style={styles.assetTypeBadgeText}>{assetTypeInfo.label}</Text>
+                </View>
+                {assetClassification && (
+                  <View style={[styles.assetTypeBadge, styles.classifierBadge]}>
+                    <Ionicons name="analytics" size={10} color="#fff" />
+                    <Text style={styles.assetTypeBadgeText}>{assetClassification.assetGroupDescription}</Text>
+                  </View>
+                )}
               </View>
             );
           })()}
@@ -1251,6 +1279,13 @@ const styles = StyleSheet.create({
   historyContainer: {
     marginTop: 16,
   },
+  badgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
   assetTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1258,8 +1293,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
-    marginTop: 6,
-    alignSelf: 'flex-start',
   },
   assetTypeBadgeCrypto: {
     backgroundColor: '#f59e0b', // naranja/dorado para crypto
@@ -1269,6 +1302,9 @@ const styles = StyleSheet.create({
   },
   assetTypeBadgeForex: {
     backgroundColor: '#10b981', // verde para forex
+  },
+  classifierBadge: {
+    backgroundColor: '#8b5cf6', // púrpura para clasificador ML
   },
   assetTypeBadgeText: {
     fontSize: 10,
