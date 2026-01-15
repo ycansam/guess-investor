@@ -514,14 +514,14 @@ export const trainingController = {
       const timeframeDays = timeframeToDays[item.timeframe] || 1;
       
       // Buscar predicción verificada para este símbolo y timeframe
-      const predictions = await predictionRepository.findAll({
+      const { predictions } = await predictionRepository.findAll({
         symbol: item.symbol,
         verified: true,
-        limit: 1,
+        limit: 10,
       });
       
       // Verificar si alguna de las verificadas coincide aproximadamente en fecha
-      const hasVerified = predictions.some(p => {
+      const hasVerified = predictions.some((p: { timeframeDays: number; createdAt: Date | string }) => {
         if (p.timeframeDays !== timeframeDays) return false;
         // Verificar que la predicción fue creada cerca de la del cache
         const cacheCreated = new Date(item.createdAt).getTime();

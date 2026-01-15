@@ -1,12 +1,12 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler } from '../middleware/error-handler.js';
 import {
-    factorCorrelationService,
-    featureEngineeringService,
-    metaLearningService,
-    probabilisticModelService,
-    reinforcementLearningService,
-    temporalCrossValidationService,
+  factorCorrelationService,
+  featureEngineeringService,
+  metaLearningService,
+  probabilisticModelService,
+  reinforcementLearningService,
+  temporalCrossValidationService,
 } from '../services/ml/index.js';
 
 const router = Router();
@@ -238,11 +238,12 @@ router.get('/weights/compare/:symbol', asyncHandler(async (req: Request, res: Re
   
   // Obtener predicción solo para ver los pesos
   try {
-    const prediction = await predictionCalculatorService.calculatePrediction({
-      symbol,
-      assetType: 'stock',
-      timeframeDays: 1,
-    });
+    const prediction = await predictionCalculatorService.calculatePrediction(symbol, 'stock', 1);
+    
+    if (!prediction) {
+      res.status(404).json({ success: false, error: 'Could not calculate prediction' });
+      return;
+    }
     
     res.json({
       success: true,
@@ -252,7 +253,7 @@ router.get('/weights/compare/:symbol', asyncHandler(async (req: Request, res: Re
         assetGroupDescription: prediction.factorBreakdown.assetGroupDescription,
         weightsApplied: prediction.factorBreakdown.weightsUsed,
         usingLearnedWeights: prediction.factorBreakdown.usingLearnedWeights,
-        factorScores: prediction.factorBreakdown.availableFactors.map(f => ({
+        factorScores: prediction.factorBreakdown.availableFactors.map((f: { name: string; score: number }) => ({
           name: f.name,
           score: f.score,
           weight: prediction.factorBreakdown.weightsUsed[f.name],
