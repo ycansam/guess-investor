@@ -618,23 +618,13 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       return;
     }
 
-    // Eliminar del training cache
+    // Eliminar del training cache (esto es lo único necesario para la UI)
     const items = toDelete.map(p => ({ symbol: p.symbol, timeframe: p.timeframe }));
     const removed = await trainingCacheService.removeMultiple(items);
     
-    // También eliminar del tracking de estadísticas ML (por símbolo)
-    for (const prediction of toDelete) {
-      try {
-        // Obtener predicciones del símbolo en el backend y eliminarlas
-        const { predictions } = await apiClient.getAllPredictions({ limit: 100 });
-        const backendPredictions = predictions.filter((p: any) => p.symbol === prediction.symbol);
-        for (const bp of backendPredictions) {
-          await apiClient.deletePrediction(bp.id);
-        }
-      } catch (err) {
-        console.error(`[MarketPredictions] Error eliminando tracking de ${prediction.symbol}:`, err);
-      }
-    }
+    // Nota: NO eliminamos de la tabla Prediction porque esa contiene
+    // datos históricos necesarios para el entrenamiento ML.
+    // Solo eliminamos del TrainingCache que es la vista de la UI.
     
     const deletedUpdatedPredictions = await trainingCacheService.getAllActive();
     setCachedPredictions(deletedUpdatedPredictions);

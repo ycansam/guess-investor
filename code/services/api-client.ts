@@ -327,6 +327,52 @@ export interface TopTrendsResponse {
   analyzedAt: string;
 }
 
+// Tipos para ML Diagnostics
+export interface WeightComparison {
+  base: number;
+  learned: number;
+  change: string;
+  changePercent: number;
+}
+
+export interface MLWeightsStatus {
+  summary: {
+    lastUpdated: string | null;
+    trainingSamples: number;
+    hasLearnedWeights: boolean;
+    error: string | null;
+  };
+  baseWeights: Record<string, number>;
+  learnedWeights: {
+    intraday: Record<string, number>;
+    swing: Record<string, number>;
+    long: Record<string, number>;
+  } | null;
+  comparison: {
+    intraday: Record<string, WeightComparison> | null;
+    swing: Record<string, WeightComparison> | null;
+    long: Record<string, WeightComparison> | null;
+  };
+  assetGroupMultipliers: Record<string, Record<string, number>>;
+  availableAssetGroups: string[];
+}
+
+export interface MLModelsStatus {
+  reinforcementLearning: {
+    status: string;
+    totalEpisodes: number;
+    successRate: number;
+  };
+  probabilisticModel: {
+    status: string;
+    sampleCount: number;
+  };
+  factorCorrelation: { status: string };
+  metaLearning: { status: string };
+  featureEngineering: { status: string };
+  temporalCrossValidation: { status: string };
+}
+
 // ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
@@ -736,6 +782,24 @@ export const apiClient = {
    */
   health: (): Promise<{ status: string; timestamp: string }> => {
     return get('/health');
+  },
+
+  // -------------------------------------------------------------------------
+  // ML DIAGNOSTICS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener estado de pesos ML y clasificadores
+   */
+  getMLWeightsStatus: (): Promise<MLWeightsStatus> => {
+    return get('/ml/weights/status');
+  },
+
+  /**
+   * Obtener estado de todos los modelos ML
+   */
+  getMLStatus: (): Promise<MLModelsStatus> => {
+    return get('/ml/status');
   },
 };
 

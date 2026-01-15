@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
 import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
+import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
@@ -467,6 +468,17 @@ export const predictionController = {
 
     const verified = await predictionRepository.verify(id, verifyData);
 
+    // Eliminar del training cache para que no aparezca más en la UI
+    const timeframeMap: Record<number, string> = { 1: 'intraday', 7: 'swing', 30: 'longterm' };
+    const timeframe = timeframeMap[prediction.timeframeDays] || 'intraday';
+    try {
+      await trainingRepository.deleteFromCache(prediction.symbol, timeframe);
+      console.log(`[Verify] Removed ${prediction.symbol} (${timeframe}) from training cache`);
+    } catch (err) {
+      // No es crítico si falla
+      console.log(`[Verify] Could not remove from training cache: ${err}`);
+    }
+
     // Limpiar cache del track record para este símbolo
     trackRecordService.clearCache(prediction.symbol);
 
@@ -517,6 +529,15 @@ export const predictionController = {
         const verifyData = computeVerificationData(prediction, actualPrice);
 
         await predictionRepository.verify(prediction.id, verifyData);
+
+        // Eliminar del training cache
+        const timeframeMap: Record<number, string> = { 1: 'intraday', 7: 'swing', 30: 'longterm' };
+        const timeframe = timeframeMap[prediction.timeframeDays] || 'intraday';
+        try {
+          await trainingRepository.deleteFromCache(prediction.symbol, timeframe);
+        } catch {
+          // No es crítico
+        }
 
         results.push({
           id: prediction.id,

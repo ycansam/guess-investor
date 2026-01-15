@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
+import { predictionRepository } from '../repositories/prediction.repository.js';
 import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { ensembleService } from '../services/prediction/ensemble.service.js';
@@ -487,6 +488,63 @@ export const trainingController = {
       success: result.success,
       data: result.weights,
       error: result.error,
+    });
+  }),
+
+  /**
+   * POST /api/training/sync-cache
+   * Sincronizar training cache con predicciones verificadas
+   * Elimina del cache las predicciones que ya han sido verificadas
+   */
+  syncCacheWithVerified: asyncHandler(async (_req: Request, res: Response) => {
+    // Obtener todo el cache activo
+    const cache = await trainingRepository.getAllActiveCache();
+    
+    // Mapear timeframe string a días
+    const timeframeToDays: Record<string, number> = {
+      intraday: 1,
+      swing: 7,
+      longterm: 30,
+    };
+    
+    let removed = 0;
+    const removedItems: string[] = [];
+    
+    for (const item of cache) {
+      const timeframeDays = timeframeToDays[item.timeframe] || 1;
+      
+      // Buscar predicción verificada para este símbolo y timeframe
+      const predictions = await predictionRepository.findAll({
+        symbol: item.symbol,
+        verified: true,
+        limit: 1,
+      });
+      
+      // Verificar si alguna de las verificadas coincide aproximadamente en fecha
+      const hasVerified = predictions.some(p => {
+        if (p.timeframeDays !== timeframeDays) return false;
+        // Verificar que la predicción fue creada cerca de la del cache
+        const cacheCreated = new Date(item.createdAt).getTime();
+        const predCreated = new Date(p.createdAt).getTime();
+        const diffHours = Math.abs(cacheCreated - predCreated) / (1000 * 60 * 60);
+        return diffHours < 24; // Dentro de 24 horas
+      });
+      
+      if (hasVerified) {
+        await trainingRepository.deleteFromCache(item.symbol, item.timeframe);
+        removed++;
+        removedItems.push(`${item.symbol} (${item.timeframe})`);
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        scanned: cache.length,
+        removed,
+        removedItems,
+        remaining: cache.length - removed,
+      },
     });
   }),
 };
