@@ -4,7 +4,7 @@ Guess Investor - ML Training Server
 ====================================
 
 Servidor HTTP local que recibe datos de la app y entrena automáticamente.
-La app envía predicciones verificadas a este servidor.
+Obtiene las predicciones verificadas directamente del backend Node.js.
 
 Uso:
     python server.py              # Inicia en puerto 8765
@@ -14,6 +14,8 @@ Uso:
 import sys
 import json
 import argparse
+import urllib.request
+import urllib.error
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
@@ -30,12 +32,33 @@ from src.config import (
 from src.models import WeightOptimizer, LossFunction, VerifiedPrediction, AssetClassifier, get_classifier, EvolutionaryOptimizer
 from src.utils import save_weights, append_training_result, load_weights
 
-# Archivo donde guardar las predicciones recibidas
+# URL del backend Node.js
+BACKEND_URL = "http://localhost:3001"
+
+# Archivo local (solo como cache/backup, la fuente principal es el backend)
 PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
 ASSET_PROFILES_FILE = DATA_DIR / "asset_profiles.json"
 
 # Inicializar clasificador de activos
 asset_classifier = get_classifier(ASSET_PROFILES_FILE)
+
+
+def fetch_predictions_from_backend() -> list:
+    """Obtiene las predicciones verificadas directamente del backend"""
+    try:
+        url = f"{BACKEND_URL}/api/predictions?verified=true&limit=10000"
+        req = urllib.request.Request(url, headers={'Accept': 'application/json'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            predictions = data.get('data', [])
+            print(f"[Server] 📥 Obtenidas {len(predictions)} predicciones del backend")
+            return predictions
+    except urllib.error.URLError as e:
+        print(f"[Server] ⚠️ Error conectando al backend: {e}")
+        return []
+    except Exception as e:
+        print(f"[Server] ⚠️ Error obteniendo predicciones: {e}")
+        return []
 
 
 class TrainingHandler(BaseHTTPRequestHandler):
@@ -230,13 +253,10 @@ class TrainingHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'error': 'Not found'}).encode())
     
     def _get_predictions_count(self) -> int:
-        """Cuenta predicciones en el archivo"""
-        if not PREDICTIONS_FILE.exists():
-            return 0
+        """Cuenta predicciones verificadas del backend"""
         try:
-            with open(PREDICTIONS_FILE, 'r') as f:
-                data = json.load(f)
-                return len(data.get('predictions', []))
+            predictions = fetch_predictions_from_backend()
+            return len(predictions)
         except:
             return 0
     
@@ -298,46 +318,43 @@ class TrainingHandler(BaseHTTPRequestHandler):
         }
     
     def _train(self) -> dict:
-        """Ejecuta el entrenamiento usando el optimizador más apropiado"""
-        if not PREDICTIONS_FILE.exists():
-            return {'success': False, 'error': 'No hay datos de predicciones'}
+        """Ejecuta el entrenamiento obteniendo predicciones del backend"""
+        # Obtener predicciones del backend (fuente principal)
+        predictions_data = fetch_predictions_from_backend()
         
-        with open(PREDICTIONS_FILE, 'r') as f:
-            data = json.load(f)
-        
-        predictions_data = data.get('predictions', [])
         if len(predictions_data) < 5:
             return {
                 'success': False,
                 'error': f'Muestras insuficientes: {len(predictions_data)}/5'
             }
         
-        # Convertir a VerifiedPrediction
+        # Convertir a VerifiedPrediction (el backend usa camelCase)
         predictions = []
         for p in predictions_data:
             try:
-                actual_change = p.get('actual_change', 0)
+                # El backend devuelve camelCase, así que mapeamos ambos formatos
+                actual_change = p.get('actualChange', p.get('actual_change', 0)) or 0
                 pred = VerifiedPrediction(
                     id=p.get('id', ''),
                     symbol=p.get('symbol', ''),
-                    asset_type=p.get('asset_type', 'stock'),
-                    timeframe_days=p.get('timeframe_days', 1),
+                    asset_type=p.get('assetType', p.get('asset_type', 'stock')),
+                    timeframe_days=p.get('timeframeDays', p.get('timeframe_days', 1)),
                     predicted_direction=p.get('direction', p.get('predicted_direction', 'neutral')),
-                    predicted_change=p.get('predicted_change', 0),
-                    predicted_price_min=p.get('predicted_price_min', 0),
-                    predicted_price_max=p.get('predicted_price_max', 0),
+                    predicted_change=p.get('predictedChange', p.get('predicted_change', 0)) or 0,
+                    predicted_price_min=p.get('predictedPriceMin', p.get('predicted_price_min', 0)) or 0,
+                    predicted_price_max=p.get('predictedPriceMax', p.get('predicted_price_max', 0)) or 0,
                     confidence=p.get('confidence', 50),
-                    price_at_prediction=p.get('current_price', p.get('price_at_prediction', 0)),
-                    factor_scores=p.get('factor_scores', {}),
-                    factor_weights=p.get('factor_weights', {}),
-                    actual_price=p.get('actual_price', 0),
+                    price_at_prediction=p.get('currentPrice', p.get('current_price', 0)) or 0,
+                    factor_scores=p.get('factorScores', p.get('factor_scores', {})) or {},
+                    factor_weights=p.get('factorWeights', p.get('factor_weights', {})) or {},
+                    actual_price=p.get('actualPrice', p.get('actual_price', 0)) or 0,
                     actual_change=actual_change,
                     actual_direction='up' if actual_change > 0 else ('down' if actual_change < 0 else 'neutral'),
-                    direction_correct=p.get('direction_correct', False),
-                    price_error=abs(p.get('predicted_change', 0) - actual_change),
-                    within_range=p.get('within_range', False),
-                    prediction_date=p.get('created_at', p.get('prediction_date', '')),
-                    verified_at=p.get('verified_at', ''),
+                    direction_correct=p.get('directionCorrect', p.get('direction_correct', False)),
+                    price_error=abs((p.get('predictedChange', p.get('predicted_change', 0)) or 0) - actual_change),
+                    within_range=p.get('withinRange', p.get('within_range', False)),
+                    prediction_date=p.get('createdAt', p.get('created_at', p.get('prediction_date', ''))),
+                    verified_at=p.get('verifiedAt', p.get('verified_at', '')),
                 )
                 predictions.append(pred)
             except Exception as e:
