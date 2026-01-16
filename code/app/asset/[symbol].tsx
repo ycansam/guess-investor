@@ -7,14 +7,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
@@ -51,10 +51,10 @@ interface AssetData {
 const TIMEFRAME_CONFIG = {
   intraday: {
     label: 'Intradía',
-    historyRange: '3d' as const,
+    historyRange: '3d' as const, // API no soporta 2d, usamos 3d y filtramos
     historyInterval: '15m' as const,
     predictionDays: 1,
-    description: '2 días anteriores + predicción 1 día',
+    description: 'Ayer + hoy + predicción 1 día',
   },
   swing: {
     label: 'Swing',
@@ -197,6 +197,12 @@ export default function AssetDetailScreen() {
   const [assetData, setAssetData] = useState<AssetData | null>(null);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [predictionData, setPredictionData] = useState<ChartDataPoint[]>([]);
+  const [predictionMeta, setPredictionMeta] = useState<{
+    startTimestamp: number;
+    endTimestamp: number;
+    startPrice: number;
+    targetPrice: number;
+  } | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<ChartTimeframe>('intraday');
   const [longtermHistoryRange, setLongtermHistoryRange] = useState<'1m' | '3m'>('1m');
   const [longtermPredictionDays, setLongtermPredictionDays] = useState<15 | 30 | 90>(15);
@@ -352,7 +358,9 @@ export default function AssetDetailScreen() {
 
         // Limitar puntos según timeframe
         if (selectedTimeframe === 'intraday') {
-          prices = prices.slice(-104);
+          // Para 2 días de datos @ 15min: ~8.5h de mercado/día = 34 puntos/día
+          // Añadimos margen extra para pre/after market
+          prices = prices.slice(-140);
         } else if (selectedTimeframe === 'swing') {
           prices = prices.slice(-70);
         }
@@ -477,18 +485,31 @@ export default function AssetDetailScreen() {
           console.warn('[AssetDetail] Error tracking prediction:', trackError);
         }
 
-        // Crear puntos de predicción
-        // La predicción comienza desde el momento actual
+        // Crear puntos de predicción como línea superpuesta
+        // La predicción comienza desde el momento actual hasta las 17:30 del día final
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
         const msPerDay = 24 * 60 * 60 * 1000;
-        const totalMs = predictionDays * msPerDay;
-        const now = Date.now();
+        const startTime = Date.now();
+        
+        // Calcular el endTime como las 17:30 del día de vencimiento
+        const endDate = new Date(startTime + predictionDays * msPerDay);
+        endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
+        const endTime = endDate.getTime();
+        const totalMs = endTime - startTime;
+
+        // Guardar metadata de la predicción
+        setPredictionMeta({
+          startTimestamp: startTime,
+          endTimestamp: endTime,
+          startPrice: lastPriceForPrediction,
+          targetPrice,
+        });
 
         for (let i = 0; i <= steps; i++) {
           const progress = i / steps;
           const interpolatedValue = lastPriceForPrediction + (targetPrice - lastPriceForPrediction) * progress;
-          const timestamp = now + (totalMs * progress);
+          const timestamp = startTime + (totalMs * progress);
           const date = new Date(timestamp);
           // Solo mostrar etiqueta en el último punto (fecha objetivo)
           const label = i === steps ? `${date.getDate()}/${date.getMonth() + 1}` : '';
@@ -557,13 +578,31 @@ export default function AssetDetailScreen() {
         const investmentPred = toInvestmentPrediction(null, cached, symbol, selectedTimeframe);
         setFullPrediction(investmentPred);
         
-        // Crear puntos de predicción desde cache
-        const targetPrice = lastPriceForPrediction * (1 + cached.predictedChange / 100);
+        // Usar precio y timestamp de cuando se creó la predicción
+        const predictionStartPrice = cached.currentPrice || lastPriceForPrediction;
+        const targetPrice = cached.targetPrice || predictionStartPrice * (1 + cached.predictedChange / 100);
         const config = TIMEFRAME_CONFIG[selectedTimeframe];
         let predictionDays = config.predictionDays;
         if (selectedTimeframe === 'longterm') {
           predictionDays = longtermPredictionDays;
         }
+        
+        // Calcular timestamps de inicio y fin de la predicción
+        const createdAtTime = cached.createdAt ? new Date(cached.createdAt).getTime() : Date.now();
+        const msPerDay = 24 * 60 * 60 * 1000;
+        
+        // Calcular el endTime como las 17:30 del día de vencimiento
+        const endDate = new Date(createdAtTime + predictionDays * msPerDay);
+        endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
+        const predictionEndTime = endDate.getTime();
+        
+        // Guardar metadata de la predicción
+        setPredictionMeta({
+          startTimestamp: createdAtTime,
+          endTimestamp: predictionEndTime,
+          startPrice: predictionStartPrice,
+          targetPrice,
+        });
         
         // Asegurar que la predicción cacheada está trackeada en el backend
         // El backend detectará duplicados y no guardará dos veces
@@ -585,16 +624,15 @@ export default function AssetDetailScreen() {
           console.warn('[AssetDetail] Error tracking cached prediction:', trackError);
         }
         
+        // Crear puntos de predicción desde el momento de creación hasta el final
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
-        const msPerDay = 24 * 60 * 60 * 1000;
-        const totalMs = predictionDays * msPerDay;
-        const now = Date.now();
+        const totalMs = predictionEndTime - createdAtTime;
         
         for (let i = 0; i <= steps; i++) {
           const progress = i / steps;
-          const interpolatedValue = lastPriceForPrediction + (targetPrice - lastPriceForPrediction) * progress;
-          const timestamp = now + (totalMs * progress);
+          const interpolatedValue = predictionStartPrice + (targetPrice - predictionStartPrice) * progress;
+          const timestamp = createdAtTime + (totalMs * progress);
           const date = new Date(timestamp);
           const label = i === steps ? `${date.getDate()}/${date.getMonth() + 1}` : '';
           
@@ -613,6 +651,7 @@ export default function AssetDetailScreen() {
         setFullPrediction(null);
         setPredictionFromCache(false);
         setPredictionData([]);
+        setPredictionMeta(null);
         
         // Llamar handlePredict automáticamente
         handlePredict();
@@ -652,61 +691,248 @@ export default function AssetDetailScreen() {
   const chartWidth = width - 64;
   const chartAreaWidth = chartWidth - 70; // Ancho útil del gráfico (menos ejes y padding)
 
-  // Calcular el yAxisOffset para que el gráfico no empiece desde 0
+  // Calcular el yAxisOffset para que el gráfico tenga un rango ajustado
+  // 0.5% arriba del máximo y 0.5% abajo del mínimo
   const yAxisOffset = useMemo(() => {
     const allData = [...chartData, ...predictionData];
     if (allData.length === 0) return 0;
-    // Filtrar valores inválidos antes de calcular el mínimo
+    // Filtrar valores inválidos
     const validValues = allData.map(d => d.value).filter(v => v !== undefined && v !== null && !isNaN(v) && isFinite(v) && v > 0);
     if (validValues.length === 0) return 0;
     const minValue = Math.min(...validValues);
     const maxValue = Math.max(...validValues);
     // Si min y max son iguales, no usar offset
     if (minValue === maxValue) return 0;
-    // Restar un 2% del mínimo para dar espacio (menos agresivo)
-    const offset = minValue * 0.98;
+    // Calcular offset para que el mínimo quede 0.5% por debajo del fondo
+    const offset = minValue * 0.995; // 0.5% debajo del mínimo
     return isNaN(offset) || !isFinite(offset) ? 0 : Math.floor(offset);
   }, [chartData, predictionData]);
 
-  // Calcular spacing uniforme para todos los puntos
-  const chartSpacing = useMemo(() => {
-    if (chartData.length === 0) return 3;
-    
-    const totalPoints = chartData.length + predictionData.length;
-    const spacing = chartAreaWidth / Math.max(totalPoints - 1, 1);
-    return isNaN(spacing) || !isFinite(spacing) ? 3 : spacing;
-  }, [chartData.length, predictionData.length, chartAreaWidth]);
+  // Calcular el valor máximo del eje Y (0.5% arriba del máximo)
+  const yAxisMax = useMemo(() => {
+    const allData = [...chartData, ...predictionData];
+    if (allData.length === 0) return undefined;
+    const validValues = allData.map(d => d.value).filter(v => v !== undefined && v !== null && !isNaN(v) && isFinite(v) && v > 0);
+    if (validValues.length === 0) return undefined;
+    const maxValue = Math.max(...validValues);
+    // 0.5% arriba del máximo, ajustado por el offset
+    return (maxValue * 1.005) - yAxisOffset;
+  }, [chartData, predictionData, yAxisOffset]);
 
-  // Combinar datos históricos y predicción en uno solo, filtrando valores inválidos
-  const combinedChartData = useMemo(() => {
-    const allData = predictionData.length === 0 ? chartData : [...chartData, ...predictionData];
-    // Filtrar cualquier punto con value inválido
-    return allData.filter(d => 
+  // Calcular spacing uniforme - se recalculará después de conocer el total de puntos
+  const baseChartSpacing = useMemo(() => {
+    if (chartData.length === 0) return 3;
+    const spacing = chartAreaWidth / Math.max(chartData.length - 1, 1);
+    return isNaN(spacing) || !isFinite(spacing) ? 3 : spacing;
+  }, [chartData.length, chartAreaWidth]);
+
+  // Solo datos históricos para la línea principal (filtrados)
+  const mainChartData = useMemo(() => {
+    return chartData.filter(d => 
       d.value !== undefined && 
       d.value !== null && 
       !isNaN(d.value) && 
       isFinite(d.value)
     );
-  }, [chartData, predictionData]);
+  }, [chartData]);
 
-  // Segmentos de línea para colorear histórico (verde) y predicción (morado)
-  const lineSegments = useMemo(() => {
-    if (predictionData.length === 0 || chartData.length === 0) return undefined;
+  // Calcular posición X y datos para la línea de predicción superpuesta
+  const predictionOverlay = useMemo(() => {
+    if (!predictionMeta || mainChartData.length === 0) return null;
+    
+    // Encontrar el rango de timestamps del histórico
+    const firstTimestamp = mainChartData[0]?.timestamp || 0;
+    const lastTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || 0;
+    const timeRange = lastTimestamp - firstTimestamp;
+    
+    if (timeRange <= 0) return null;
+    
+    // Calcular posición X de inicio de la predicción (como porcentaje del ancho)
+    const predStartRelative = (predictionMeta.startTimestamp - firstTimestamp) / timeRange;
+    const predEndRelative = (predictionMeta.endTimestamp - firstTimestamp) / timeRange;
+    
+    // Limitar al rango visible (0 a 1) pero permitir que se extienda un poco
+    const startX = Math.max(0, predStartRelative);
+    const endX = Math.max(startX + 0.1, predEndRelative); // Mínimo 10% de ancho
+    
+    // Calcular posiciones en píxeles
+    const yAxisWidth = 50; // Ancho del eje Y
+    const startPx = yAxisWidth + (startX * chartAreaWidth);
+    const widthPx = (endX - startX) * chartAreaWidth;
+    
+    // Calcular rango de valores para el eje Y (igual que el gráfico)
+    const allValues = mainChartData.map(d => d.value);
+    const minVal = Math.min(...allValues);
+    const maxVal = Math.max(...allValues);
+    
+    // Incluir precios de predicción en el rango
+    const minWithPred = Math.min(minVal, predictionMeta.startPrice, predictionMeta.targetPrice);
+    const maxWithPred = Math.max(maxVal, predictionMeta.startPrice, predictionMeta.targetPrice);
+    
+    return {
+      startX: startPx,
+      width: Math.max(widthPx, 60), // Mínimo 60px de ancho
+      startPrice: predictionMeta.startPrice,
+      targetPrice: predictionMeta.targetPrice,
+      startTimestamp: predictionMeta.startTimestamp,
+      endTimestamp: predictionMeta.endTimestamp,
+      // Pasar el rango para calcular Y correctamente
+      minValue: minWithPred,
+      maxValue: maxWithPred,
+      yAxisOffset: yAxisOffset,
+    };
+  }, [predictionMeta, mainChartData, chartAreaWidth, yAxisOffset]);
+
+  // Timestamps importantes
+  const { endOfToday, predictionEndTime } = useMemo(() => {
+    const now = new Date();
+    
+    // 23:59 de hoy (para extender el gráfico)
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    // 17:30 del día de vencimiento de la predicción
+    const predEnd = predictionMeta?.endTimestamp || endOfDay.getTime();
+    
+    return {
+      endOfToday: endOfDay.getTime(),
+      predictionEndTime: predEnd,
+    };
+  }, [predictionMeta]);
+
+  // Calcular puntos extra para predicción y extensión del gráfico
+  const { predictionPoints, extensionPoints } = useMemo(() => {
+    if (mainChartData.length < 2) return { predictionPoints: 0, extensionPoints: 0 };
+    
+    // Calcular el intervalo de tiempo entre puntos del histórico
+    const lastTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || 0;
+    const prevTimestamp = mainChartData[mainChartData.length - 2]?.timestamp || 0;
+    const intervalMs = lastTimestamp - prevTimestamp;
+    
+    if (intervalMs <= 0) return { predictionPoints: 0, extensionPoints: 0 };
+    
+    // Puntos para la predicción (desde ahora hasta las 17:30 del vencimiento)
+    const msToPredEnd = predictionEndTime - lastTimestamp;
+    
+    // Si la predicción ya expiró (hora pasada), no mostrar puntos de predicción
+    if (msToPredEnd <= 0 || !predictionMeta) {
+      return { predictionPoints: 0, extensionPoints: 0 };
+    }
+    
+    const predPts = Math.max(2, Math.ceil(msToPredEnd / intervalMs));
+    
+    // Ya no extendemos el gráfico hasta las 23:59, termina en la predicción
+    return {
+      predictionPoints: Math.min(predPts, 30),
+      extensionPoints: 0, // Sin puntos de extensión
+    };
+  }, [predictionMeta, mainChartData, endOfToday, predictionEndTime]);
+
+  // Datos del gráfico: histórico + predicción (null) + extensión (null)
+  const chartDataWithExtra = useMemo(() => {
+    if (mainChartData.length === 0) return mainChartData;
+    
+    const lastPoint = mainChartData[mainChartData.length - 1];
+    const lastTimestamp = lastPoint?.timestamp || Date.now();
+    // Usar el último valor del histórico para que conecte visualmente
+    const startPrice = lastPoint?.value || predictionMeta?.startPrice || 0;
+    const targetPrice = predictionMeta?.targetPrice || startPrice;
+    
+    // Calcular intervalo entre puntos
+    const prevTimestamp = mainChartData.length > 1 ? mainChartData[mainChartData.length - 2]?.timestamp : lastTimestamp;
+    const intervalMs = lastTimestamp - (prevTimestamp || lastTimestamp) || 3600000;
+    
+    let result = [...mainChartData];
+    
+    // Añadir puntos para la predicción (con valores interpolados para el tooltip)
+    if (predictionMeta && predictionPoints > 0) {
+      const predDuration = predictionEndTime - lastTimestamp;
+      for (let i = 1; i <= predictionPoints; i++) {
+        const progress = i / predictionPoints;
+        const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
+        result.push({
+          value: interpolatedValue, // Valor real para tooltip
+          label: '',
+          timestamp: lastTimestamp + (predDuration * progress),
+          isPrediction: true,
+        });
+      }
+    }
+    
+    // Ya no añadimos puntos de extensión
+    return result;
+  }, [mainChartData, predictionMeta, predictionPoints, extensionPoints, predictionEndTime, endOfToday]);
+
+  // Calcular spacing basado en el total de puntos para que quepa en pantalla
+  const chartSpacing = useMemo(() => {
+    const totalPoints = chartDataWithExtra.length;
+    if (totalPoints <= 1) return 3;
+    const spacing = chartAreaWidth / Math.max(totalPoints - 1, 1);
+    return isNaN(spacing) || !isFinite(spacing) ? 3 : spacing;
+  }, [chartDataWithExtra.length, chartAreaWidth]);
+
+  // Datos para data2: histórico copiado + predicción interpolada + extensión null
+  const predictionLineData = useMemo(() => {
+    if (!predictionMeta || mainChartData.length === 0) return null;
+    
+    const lastValue = mainChartData[mainChartData.length - 1]?.value;
+    // Usar el último valor del histórico como punto de inicio de la predicción
+    // para que la línea conecte visualmente con el gráfico
+    const startPrice = lastValue || predictionMeta.startPrice;
+    const targetPrice = predictionMeta.targetPrice;
+    
+    // Copiar todos los puntos históricos reales (superpuestos a la línea verde)
+    const data2: any[] = mainChartData.map((point) => ({
+      value: point.value,
+    }));
+    
+    // Añadir puntos interpolados para la predicción (hasta las 17:30)
+    for (let i = 1; i <= predictionPoints; i++) {
+      const progress = i / predictionPoints;
+      const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
+      data2.push({ value: interpolatedValue });
+    }
+    
+    // Añadir puntos null para la extensión hasta las 23:59 (invisibles)
+    for (let i = 0; i < extensionPoints; i++) {
+      data2.push({ value: null });
+    }
+    
+    return data2;
+  }, [predictionMeta, mainChartData, predictionPoints, extensionPoints]);
+
+  // Segmentos de color para data2: transparente histórico, morado predicción, transparente extensión
+  const predictionLineSegments = useMemo(() => {
+    if (!mainChartData.length || !predictionMeta) return undefined;
+    
+    const lastHistoricIndex = mainChartData.length - 1;
+    const lastPredictionIndex = lastHistoricIndex + predictionPoints;
+    const lastExtensionIndex = lastPredictionIndex + extensionPoints;
     
     return [
-      {
-        startIndex: 0,
-        endIndex: chartData.length - 1,
-        color: '#22c55e',
-      },
-      {
-        startIndex: chartData.length - 1,
-        endIndex: chartData.length + predictionData.length - 1,
-        color: '#818cf8',
-        strokeDashArray: [6, 4],
-      },
+      // Histórico: transparente (se superpone con la línea verde)
+      { startIndex: 0, endIndex: lastHistoricIndex, color: 'transparent' },
+      // Predicción: morado (desde hora actual hasta 17:30)
+      { startIndex: lastHistoricIndex, endIndex: lastPredictionIndex, color: '#818cf8' },
+      // Extensión: transparente (desde 17:30 hasta 23:59)
+      { startIndex: lastPredictionIndex, endIndex: lastExtensionIndex, color: 'transparent' },
     ];
-  }, [chartData.length, predictionData.length]);
+  }, [mainChartData.length, predictionPoints, extensionPoints, predictionMeta]);
+
+  // Segmentos para la línea principal: verde solo hasta el histórico, luego transparente
+  const mainLineSegments = useMemo(() => {
+    const lastHistoricIndex = mainChartData.length - 1;
+    const totalPoints = mainChartData.length + predictionPoints + extensionPoints;
+    
+    if (lastHistoricIndex < 0) return undefined;
+    
+    return [
+      // Histórico: verde
+      { startIndex: 0, endIndex: lastHistoricIndex, color: '#22c55e' },
+      // Resto: transparente
+      { startIndex: lastHistoricIndex, endIndex: totalPoints - 1, color: 'transparent' },
+    ];
+  }, [mainChartData.length, predictionPoints, extensionPoints]);
 
   // Formatear precio para tooltip
   const formatPrice = (value: number | undefined): string => {
@@ -870,7 +1096,7 @@ export default function AssetDetailScreen() {
             </View>
           ) : chartData.length > 0 ? (
             <>
-              {/* Gráfico con gifted-charts */}
+              {/* Gráfico con 2 líneas: histórico + predicción */}
               <View
                 style={styles.chartWrapper}
                 onTouchStart={() => setScrollEnabled(false)}
@@ -878,7 +1104,10 @@ export default function AssetDetailScreen() {
                 onTouchCancel={() => setScrollEnabled(true)}
               >
                 <LineChart
-                  data={combinedChartData}
+                  data={chartDataWithExtra}
+                  data2={predictionLineData || undefined}
+                  lineSegments={mainLineSegments}
+                  lineSegments2={predictionLineSegments}
                   width={chartWidth}
                   height={250}
                   spacing={chartSpacing}
@@ -886,15 +1115,13 @@ export default function AssetDetailScreen() {
                   endSpacing={0}
                   thickness={2}
                   color="#22c55e"
-                  lineSegments={lineSegments}
+                  color2="transparent"
+                  thickness2={3}
                   hideDataPoints
+                  hideDataPoints2
                   curved
-                  areaChart
-                  startFillColor="rgba(34, 197, 94, 0.3)"
-                  endFillColor="rgba(34, 197, 94, 0.05)"
-                  startOpacity={0.8}
-                  endOpacity={0.1}
                   yAxisOffset={yAxisOffset}
+                  maxValue={yAxisMax}
                   formatYLabel={(label) => formatPrice(parseFloat(label))}
                   yAxisColor="#4b5563"
                   xAxisColor="#4b5563"
@@ -909,8 +1136,8 @@ export default function AssetDetailScreen() {
                   verticalLinesColor="#37415180"
                   pointerConfig={{
                     pointerStripHeight: 250,
-                    pointerStripColor: '#6366f1',
                     pointerStripWidth: 2,
+                    pointerStripColor: '#6366f1',
                     pointerColor: '#6366f1',
                     radius: 5,
                     pointerLabelWidth: 140,
@@ -921,11 +1148,11 @@ export default function AssetDetailScreen() {
                     pointerVanishDelay: 500,
                     pointerLabelComponent: (items: any[]) => {
                       const item = items[0];
+                      
                       let dateStr = '';
                       let timeStr = '';
                       let isPred = false;
                       
-                      // gifted-charts pasa las propiedades custom directamente en el item
                       const timestamp = item?.timestamp;
                       isPred = item?.isPrediction || false;
                       
@@ -971,10 +1198,12 @@ export default function AssetDetailScreen() {
                   <View style={[styles.legendColor, { backgroundColor: '#22c55e' }]} />
                   <Text style={styles.legendText}>Histórico</Text>
                 </View>
-                {prediction && (
+                {predictionMeta && (
                   <View style={styles.legendItem}>
                     <View style={[styles.legendColor, { backgroundColor: '#818cf8' }]} />
-                    <Text style={styles.legendText}>Predicción</Text>
+                    <Text style={styles.legendText}>
+                      Predicción ({new Date(predictionMeta.startTimestamp).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })} → {new Date(predictionMeta.endTimestamp).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })})
+                    </Text>
                   </View>
                 )}
               </View>

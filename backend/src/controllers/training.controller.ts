@@ -649,4 +649,65 @@ export const trainingController = {
       },
     });
   }),
+
+  /**
+   * DELETE /api/training/reset-all
+   * Resetear TODO el sistema ML: predicciones, pesos, cache y Python
+   */
+  resetAll: asyncHandler(async (_req: Request, res: Response) => {
+    const results = {
+      predictions: 0,
+      cache: 0,
+      mlModels: 0,
+      weights: false,
+      pythonReset: false,
+    };
+
+    // 1. Borrar todas las predicciones
+    const deletedPreds = await predictionRepository.clear();
+    results.predictions = deletedPreds;
+
+    // 2. Borrar todo el cache de training
+    const cacheResult = await prisma.trainingCache.deleteMany({});
+    results.cache = cacheResult.count;
+
+    // 3. Borrar estados de modelos ML (RL, probabilístico, correlación, meta-learning)
+    const mlModelsResult = await prisma.mLModelState.deleteMany({});
+    results.mlModels = mlModelsResult.count;
+
+    // 4. Resetear pesos aprendidos a valores por defecto (no uniformes)
+    // Estos son los pesos por defecto para swing (balance entre corto y largo plazo)
+    const defaultWeights = {
+      trend: 0.12,
+      technical: 0.18,
+      sentiment: 0.10,
+      news: 0.15,
+      macro: 0.08,
+      competitors: 0.07,
+      forex: 0.06,
+      institutional: 0.10,
+      seasonality: 0.04,
+      financials: 0.05,
+      expectations: 0.05,
+      sampleCount: 0,
+      accuracy: 0,
+    };
+    await trainingRepository.saveLearnedWeights(defaultWeights);
+    results.weights = true;
+
+    // 5. Resetear Python (predicciones verificadas y pesos)
+    try {
+      const pythonResult = await pythonTrainingService.resetAll();
+      results.pythonReset = pythonResult.success;
+    } catch (error) {
+      console.warn('[Training] Python reset failed:', error);
+      results.pythonReset = false;
+    }
+
+    res.json({
+      success: true,
+      message: 'Sistema ML reseteado completamente',
+      data: results,
+    });
+  }),
 };

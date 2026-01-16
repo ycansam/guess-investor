@@ -36,8 +36,21 @@ function computeVerificationData(
     actualChange > DIRECTION_THRESHOLD_PCT ? 'up' :
     actualChange < -DIRECTION_THRESHOLD_PCT ? 'down' : 'neutral';
 
-  const directionCorrect = prediction.direction === actualDirection ||
-    (prediction.direction !== 'neutral' && actualDirection === 'neutral');
+  // Dirección correcta: más estricto
+  // - Si predijo UP y bajó (cualquier cantidad) = error
+  // - Si predijo DOWN y subió (cualquier cantidad) = error
+  // - Neutral solo es correcto si el movimiento fue mínimo (dentro del threshold)
+  let directionCorrect = false;
+  if (prediction.direction === 'up') {
+    // Predijo subida: correcto solo si realmente subió (no bajó)
+    directionCorrect = actualChange >= 0;
+  } else if (prediction.direction === 'down') {
+    // Predijo bajada: correcto solo si realmente bajó (no subió)
+    directionCorrect = actualChange <= 0;
+  } else {
+    // Predijo neutral: correcto si se mantuvo dentro del threshold
+    directionCorrect = actualDirection === 'neutral';
+  }
 
   const withinRange = prediction.predictedPriceMin !== null &&
     prediction.predictedPriceMax !== null &&
@@ -767,8 +780,17 @@ export const recalculateScores = asyncHandler(async (_req: Request, res: Respons
       actualChange > DIRECTION_THRESHOLD_PCT ? 'up' :
       actualChange < -DIRECTION_THRESHOLD_PCT ? 'down' : 'neutral';
 
-    const directionCorrect = prediction.direction === actualDirection ||
-      (prediction.direction !== 'neutral' && actualDirection === 'neutral');
+    // Dirección correcta: más estricto
+    // - Si predijo UP y bajó (cualquier cantidad) = error
+    // - Si predijo DOWN y subió (cualquier cantidad) = error
+    let directionCorrect = false;
+    if (prediction.direction === 'up') {
+      directionCorrect = actualChange >= 0;
+    } else if (prediction.direction === 'down') {
+      directionCorrect = actualChange <= 0;
+    } else {
+      directionCorrect = actualDirection === 'neutral';
+    }
 
     // Nueva fórmula de accuracyScore
     let newAccuracyScore = 0;
@@ -816,13 +838,14 @@ export const recalculateScores = asyncHandler(async (_req: Request, res: Respons
 
     const oldScore = prediction.accuracyScore || 0;
     const oldQuality = prediction.quality || 'failed';
+    const oldDirectionCorrect = prediction.directionCorrect ?? true;
 
-    // Siempre actualizar si la quality cambió (para migración a nuevo sistema)
-    // o si el score cambió
+    // Siempre actualizar si la quality, score o directionCorrect cambió
     const qualityChanged = oldQuality !== newQuality;
     const scoreChanged = oldScore !== newAccuracyScore;
+    const directionChanged = oldDirectionCorrect !== directionCorrect;
     
-    if (scoreChanged || qualityChanged) {
+    if (scoreChanged || qualityChanged || directionChanged) {
       await predictionRepository.updateScores(prediction.id, {
         accuracyScore: newAccuracyScore,
         quality: newQuality,
@@ -902,5 +925,60 @@ export const fixIntradayExpiry = asyncHandler(async (_req: Request, res: Respons
     success: true,
     message: `Fixed ${updated} intraday predictions`,
     data: { total: predictions.length, updated },
+  });
+});
+
+/**
+ * POST /api/predictions/cleanup-duplicates
+ * Eliminar predicciones duplicadas (mismo símbolo, mismo día)
+ * Mantiene solo la primera predicción de cada día por símbolo
+ */
+export const cleanupDuplicates = asyncHandler(async (_req: Request, res: Response) => {
+  // Obtener todas las predicciones no verificadas
+  const unverified = await prisma.prediction.findMany({
+    where: { verified: false },
+    orderBy: [{ symbol: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  // Agrupar por símbolo + día
+  const groups = new Map<string, typeof unverified>();
+  
+  for (const pred of unverified) {
+    const day = new Date(pred.createdAt).toISOString().split('T')[0];
+    const key = `${pred.symbol}:${day}`;
+    
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(pred);
+  }
+
+  // Identificar duplicados (todos excepto el primero de cada grupo)
+  const toDelete: string[] = [];
+  
+  for (const [_key, preds] of groups) {
+    if (preds.length > 1) {
+      // Mantener el primero (más antiguo), eliminar el resto
+      for (let i = 1; i < preds.length; i++) {
+        toDelete.push(preds[i].id);
+      }
+    }
+  }
+
+  // Eliminar duplicados
+  if (toDelete.length > 0) {
+    await prisma.prediction.deleteMany({
+      where: { id: { in: toDelete } },
+    });
+  }
+
+  res.json({
+    success: true,
+    message: `Deleted ${toDelete.length} duplicate predictions`,
+    data: {
+      totalUnverified: unverified.length,
+      duplicatesRemoved: toDelete.length,
+      remaining: unverified.length - toDelete.length,
+    },
   });
 });

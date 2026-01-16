@@ -88,4 +88,7 @@ router.post('/python/import-weights', trainingController.pythonImportWeights);
 // GET /api/training/python/weights - Obtener pesos de Python
 router.get('/python/weights', trainingController.pythonGetWeights);
 
+// DELETE /api/training/reset-all - Resetear TODO el sistema ML
+router.delete('/reset-all', trainingController.resetAll);
+
 export const trainingRoutes = router;

@@ -213,6 +213,18 @@ class TrainingHandler(BaseHTTPRequestHandler):
                 self._set_headers(500)
                 self.wfile.write(json.dumps({'error': str(e)}).encode())
         
+        elif self.path == '/reset':
+            try:
+                # Resetear todo: predicciones y pesos
+                result = self._reset_all()
+                self._set_headers(200)
+                self.wfile.write(json.dumps(result).encode())
+                
+            except Exception as e:
+                print(f"[Server] ❌ Error reseteando: {e}")
+                self._set_headers(500)
+                self.wfile.write(json.dumps({'error': str(e)}).encode())
+        
         else:
             self._set_headers(404)
             self.wfile.write(json.dumps({'error': 'Not found'}).encode())
@@ -227,6 +239,63 @@ class TrainingHandler(BaseHTTPRequestHandler):
                 return len(data.get('predictions', []))
         except:
             return 0
+    
+    def _reset_all(self) -> dict:
+        """Resetea todo: predicciones verificadas y pesos aprendidos"""
+        deleted_predictions = False
+        deleted_weights = False
+        
+        # 1. Resetear verified_predictions.json
+        if PREDICTIONS_FILE.exists():
+            try:
+                with open(PREDICTIONS_FILE, 'w') as f:
+                    json.dump({'predictions': []}, f, indent=2)
+                deleted_predictions = True
+                print(f"[Server] 🗑️ Predicciones verificadas borradas")
+            except Exception as e:
+                print(f"[Server] ⚠️ Error borrando predicciones: {e}")
+        
+        # 2. Resetear learned_weights.json a valores por defecto (los buenos, no uniformes)
+        # Importar DEFAULT_WEIGHTS del config
+        from src.config import DEFAULT_WEIGHTS
+        
+        default_weights = {
+            "version": "1.0",
+            "updated_at": datetime.now().isoformat(),
+            "training_samples": 0,
+            "weights": DEFAULT_WEIGHTS,
+            "metadata": {
+                "learning_rate": DEFAULT_LEARNING_RATE,
+                "momentum": DEFAULT_MOMENTUM
+            }
+        }
+        
+        try:
+            with open(WEIGHTS_FILE, 'w') as f:
+                json.dump(default_weights, f, indent=2)
+            deleted_weights = True
+            print(f"[Server] 🗑️ Pesos reseteados a valores por defecto")
+        except Exception as e:
+            print(f"[Server] ⚠️ Error reseteando pesos: {e}")
+        
+        # 3. También resetear el archivo en code/config/learned_weights.json
+        frontend_weights_file = Path(__file__).parent.parent / "code" / "config" / "learned_weights.json"
+        if frontend_weights_file.exists():
+            try:
+                with open(frontend_weights_file, 'w') as f:
+                    json.dump(default_weights, f, indent=2)
+                print(f"[Server] 🗑️ Pesos del frontend reseteados")
+            except Exception as e:
+                print(f"[Server] ⚠️ Error reseteando pesos frontend: {e}")
+        
+        print(f"[Server] ✅ Reset completo")
+        
+        return {
+            'success': True,
+            'deleted_predictions': deleted_predictions,
+            'deleted_weights': deleted_weights,
+            'message': 'Todo reseteado correctamente'
+        }
     
     def _train(self) -> dict:
         """Ejecuta el entrenamiento usando el optimizador más apropiado"""

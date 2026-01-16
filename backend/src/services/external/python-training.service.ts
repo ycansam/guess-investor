@@ -382,4 +382,35 @@ export const pythonTrainingService = {
       return { success: false, error: error.message };
     }
   },
+
+  /**
+   * Resetea todo el sistema ML de Python (predicciones y pesos)
+   */
+  async resetAll(): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(`${PYTHON_SERVER_URL}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      
+      if (!response.ok) {
+        return { success: false, error: `HTTP ${response.status}` };
+      }
+      
+      const result = await response.json() as { success: boolean; message?: string };
+      logger.info('[PythonBridge] Reset completo en Python');
+      return { success: result.success };
+    } catch (error: any) {
+      logger.error('[PythonBridge] Error reseteando Python:', error.message);
+      return { success: false, error: error.message };
+    }
+  },
 };

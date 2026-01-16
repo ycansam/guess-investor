@@ -88,7 +88,17 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
     loadPredictions();
   }, [loadPredictions]);
 
-  // Formatear fecha
+  // Formatear fecha corta (día/mes hora:min)
+  const formatDateShort = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const mins = date.getMinutes().toString().padStart(2, '0');
+    return `${day}/${month} ${hours}:${mins}`;
+  };
+
+  // Formatear fecha completa con hora
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const day = date.getDate().toString().padStart(2, '0');
@@ -96,6 +106,14 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
     const hours = date.getHours().toString().padStart(2, '0');
     const mins = date.getMinutes().toString().padStart(2, '0');
     return `${day}/${month} ${hours}:${mins}`;
+  };
+
+  // Formatear timeframe para mostrar
+  const formatTimeframe = (timeframe: string, days: number) => {
+    if (days === 1) return '1d';
+    if (days <= 7) return `${days}d`;
+    if (days <= 30) return `${days}d`;
+    return timeframe;
   };
 
   // Color según calidad
@@ -259,7 +277,16 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
                   color={getDirectionColor(pred.direction)} 
                 />
                 <View style={styles.predictionInfo}>
-                  <Text style={styles.predictionDate}>{formatDate(pred.createdAt)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.predictionDate}>
+                      {formatDateShort(pred.createdAt)} → {formatDateShort(pred.expiresAt)}
+                    </Text>
+                    <View style={styles.timeframeBadge}>
+                      <Text style={styles.timeframeText}>
+                        {formatTimeframe(pred.timeframe, pred.timeframeDays)}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={styles.predictionChange}>
                     {pred.predictedChange >= 0 ? '+' : ''}{pred.predictedChange.toFixed(2)}%
                     <Text style={styles.predictionConfidence}> ({pred.confidence}% conf.)</Text>
@@ -452,6 +479,17 @@ const styles = StyleSheet.create({
   predictionDate: {
     fontSize: 11,
     color: '#6b7280',
+  },
+  timeframeBadge: {
+    backgroundColor: '#6366f120',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  timeframeText: {
+    fontSize: 9,
+    color: '#818cf8',
+    fontWeight: '600',
   },
   predictionChange: {
     fontSize: 14,

@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiClient } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
+import { trainingCacheService } from '../services/training-cache-service';
 
 interface TrackingStatsCardProps {
   onClose?: () => void;
@@ -73,10 +74,12 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     
     setResetting(true);
     try {
-      // Limpiar todo del backend
-      await apiClient.clearAllPredictions();
-      await apiClient.resetLearnedWeights();
-      await apiClient.clearAllTrainingCache();
+      // Resetear TODO: predicciones, cache, pesos, Python
+      await apiClient.resetAllML();
+      
+      // Limpiar cache local del frontend
+      await trainingCacheService.clear();
+      
       await loadData();
       setConfirmReset(false);
     } catch (error) {

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { fixIntradayExpiry, getTrackRecord, predictionController, recalculateScores } from '../controllers/prediction.controller.js';
+import { cleanupDuplicates, fixIntradayExpiry, getTrackRecord, predictionController, recalculateScores } from '../controllers/prediction.controller.js';
 
 const router = Router();
 
@@ -47,6 +47,9 @@ router.post('/recalculate-scores', recalculateScores);
 
 // POST /api/predictions/fix-intraday-expiry - Corregir expiresAt de intradía
 router.post('/fix-intraday-expiry', fixIntradayExpiry);
+
+// POST /api/predictions/cleanup-duplicates - Eliminar predicciones duplicadas
+router.post('/cleanup-duplicates', cleanupDuplicates);
 
 // POST /api/predictions/import-bulk - Importar predicciones en masa (migración)
 router.post('/import-bulk', predictionController.importBulk);

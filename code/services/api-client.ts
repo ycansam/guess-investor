@@ -703,6 +703,18 @@ export const apiClient = {
   },
 
   /**
+   * Resetear TODO el sistema ML: predicciones, cache, pesos y Python
+   */
+  resetAllML: (): Promise<{
+    predictions: number;
+    cache: number;
+    weights: boolean;
+    pythonReset: boolean;
+  }> => {
+    return del('/training/reset-all');
+  },
+
+  /**
    * Exportar todos los datos de training
    */
   exportTrainingData: (): Promise<any> => {
