@@ -1,6 +1,28 @@
-import { AssetAdjustment, LearnedWeights } from '@prisma/client';
+import { AssetAdjustment } from '@prisma/client';
 import { prisma } from '../config/database.js';
 import { Weights } from '../models/index.js';
+import { readFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
+
+// Ruta al archivo JSON de pesos (única fuente de verdad)
+const WEIGHTS_FILE = resolve(process.cwd(), '../code/config/learned_weights.json');
+
+// Interfaz del archivo JSON que escribe Python
+interface LearnedWeightsJson {
+  version: string;
+  updated_at: string;
+  training_samples: number;
+  weights: {
+    intraday: Record<string, number>;
+    swing: Record<string, number>;
+    long: Record<string, number>;
+  };
+  metadata?: {
+    learning_rate?: number;
+    momentum?: number;
+    final_loss?: number;
+  };
+}
 
 // Pesos por defecto (11 factores, igual peso)
 const DEFAULT_WEIGHTS: Weights = {
@@ -17,6 +39,25 @@ const DEFAULT_WEIGHTS: Weights = {
   expectations: 0.091,
 };
 
+// Pesos por defecto por timeframe (usados si no hay archivo)
+const DEFAULT_TIMEFRAME_WEIGHTS = {
+  intraday: {
+    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18, macro: 0.04,
+    competitors: 0.04, forex: 0.04, institutional: 0.05, seasonality: 0.02,
+    financials: 0.02, expectations: 0.01
+  },
+  swing: {
+    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15, macro: 0.08,
+    competitors: 0.07, forex: 0.06, institutional: 0.10, seasonality: 0.04,
+    financials: 0.05, expectations: 0.05
+  },
+  long: {
+    trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08, macro: 0.12,
+    competitors: 0.10, forex: 0.08, institutional: 0.12, seasonality: 0.08,
+    financials: 0.13, expectations: 0.12
+  }
+};
+
 // Formato extendido para el calculator
 export interface LearnedWeightsExtended {
   weights: {
@@ -26,100 +67,96 @@ export interface LearnedWeightsExtended {
   } | null;
   trainingSamples: number;
   accuracy: number | null;
+  updatedAt?: string;
+}
+
+/**
+ * Lee los pesos del archivo JSON
+ */
+function readWeightsFile(): LearnedWeightsJson | null {
+  try {
+    if (!existsSync(WEIGHTS_FILE)) {
+      return null;
+    }
+    const content = readFileSync(WEIGHTS_FILE, 'utf-8');
+    return JSON.parse(content) as LearnedWeightsJson;
+  } catch (error) {
+    console.error('[WeightsRepository] Error reading weights file:', error);
+    return null;
+  }
 }
 
 export const weightsRepository = {
   /**
-   * Obtener los pesos actuales en formato extendido
+   * Obtener los pesos actuales en formato extendido (lee del archivo JSON)
    */
   async getCurrent(): Promise<LearnedWeightsExtended> {
-    const latest = await prisma.learnedWeights.findFirst({
-      orderBy: { version: 'desc' },
-    });
+    const fileData = readWeightsFile();
 
-    if (!latest || latest.sampleCount === 0) {
+    if (!fileData || fileData.training_samples === 0) {
       return {
-        weights: null,
+        weights: DEFAULT_TIMEFRAME_WEIGHTS,
         trainingSamples: 0,
         accuracy: null,
       };
     }
 
-    // Convertir a formato con timeframes
-    const baseWeights = {
-      trend: latest.trend,
-      technical: latest.technical,
-      sentiment: latest.sentiment,
-      news: latest.news,
-      macro: latest.macro,
-    };
-
     return {
-      weights: {
-        intraday: { ...baseWeights },
-        swing: { ...baseWeights },
-        long: { ...baseWeights },
-      },
-      trainingSamples: latest.sampleCount,
-      accuracy: latest.accuracy,
+      weights: fileData.weights,
+      trainingSamples: fileData.training_samples,
+      accuracy: fileData.metadata?.final_loss 
+        ? Math.round((1 - fileData.metadata.final_loss) * 100) 
+        : null,
+      updatedAt: fileData.updated_at,
     };
   },
 
   /**
-   * Obtener pesos raw
+   * Obtener pesos raw (formato plano, usa swing como default)
    */
   async getRaw(): Promise<Weights> {
-    const latest = await prisma.learnedWeights.findFirst({
-      orderBy: { version: 'desc' },
-    });
+    const fileData = readWeightsFile();
 
-    if (!latest) {
+    if (!fileData) {
       return DEFAULT_WEIGHTS;
     }
 
+    // Usar swing como balance entre corto y largo plazo
+    const swingWeights = fileData.weights.swing;
+
     return {
-      trend: latest.trend,
-      technical: latest.technical,
-      sentiment: latest.sentiment,
-      news: latest.news,
-      macro: latest.macro,
-      competitors: latest.competitors,
-      forex: latest.forex,
-      institutional: latest.institutional,
-      seasonality: latest.seasonality,
-      financials: latest.financials,
-      expectations: latest.expectations,
+      trend: swingWeights.trend || DEFAULT_WEIGHTS.trend,
+      technical: swingWeights.technical || DEFAULT_WEIGHTS.technical,
+      sentiment: swingWeights.sentiment || DEFAULT_WEIGHTS.sentiment,
+      news: swingWeights.news || DEFAULT_WEIGHTS.news,
+      macro: swingWeights.macro || DEFAULT_WEIGHTS.macro,
+      competitors: swingWeights.competitors || DEFAULT_WEIGHTS.competitors,
+      forex: swingWeights.forex || DEFAULT_WEIGHTS.forex,
+      institutional: swingWeights.institutional || DEFAULT_WEIGHTS.institutional,
+      seasonality: swingWeights.seasonality || DEFAULT_WEIGHTS.seasonality,
+      financials: swingWeights.financials || DEFAULT_WEIGHTS.financials,
+      expectations: swingWeights.expectations || DEFAULT_WEIGHTS.expectations,
     };
   },
 
   /**
-   * Guardar nuevos pesos (crea nueva versión)
+   * Obtener info del archivo de pesos
    */
-  async save(weights: Weights, sampleCount: number, accuracy?: number): Promise<LearnedWeights> {
-    const latest = await prisma.learnedWeights.findFirst({
-      orderBy: { version: 'desc' },
-    });
-    
-    const nextVersion = (latest?.version || 0) + 1;
-
-    return prisma.learnedWeights.create({
-      data: {
-        ...weights,
-        version: nextVersion,
-        sampleCount,
-        accuracy,
-      },
-    });
-  },
-
-  /**
-   * Obtener historial de pesos
-   */
-  async getHistory(limit = 10): Promise<LearnedWeights[]> {
-    return prisma.learnedWeights.findMany({
-      orderBy: { version: 'desc' },
-      take: limit,
-    });
+  async getInfo(): Promise<{
+    exists: boolean;
+    path: string;
+    trainingSamples: number;
+    version: string;
+    updatedAt: string | null;
+  }> {
+    const fileData = readWeightsFile();
+    return {
+      exists: fileData !== null,
+      path: WEIGHTS_FILE,
+      trainingSamples: fileData?.training_samples || 0,
+      version: fileData?.version || '0',
+      updatedAt: fileData?.updated_at || null,
+    };
   },
 };
 
