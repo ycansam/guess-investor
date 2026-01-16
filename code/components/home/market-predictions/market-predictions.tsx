@@ -7,30 +7,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    FlatList,
-    PanResponder,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  FlatList,
+  PanResponder,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -94,6 +94,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [recommendedTimeframes, setRecommendedTimeframes] = useState<Map<string, TrainingTimeframe>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   
   // Filtros (movidos desde MarketList/Explorar)
   const [categories, setCategories] = useState<AssetCategory[]>([]);
@@ -386,6 +387,11 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   // Obtener predicción cacheada para un símbolo y timeframe (desde el estado local)
   const getCachedPrediction = useCallback((symbol: string, timeframe: TrainingTimeframe): TrainingPrediction | null => {
     return cachedPredictions.find(p => p.symbol === symbol && p.timeframe === timeframe) || null;
+  }, [cachedPredictions]);
+
+  // Obtener TODAS las predicciones de un símbolo
+  const getAllPredictionsForSymbol = useCallback((symbol: string): TrainingPrediction[] => {
+    return cachedPredictions.filter(p => p.symbol === symbol);
   }, [cachedPredictions]);
 
   // Hacer predicción para un activo
@@ -737,6 +743,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   // Renderizar activo con checkbox de selección
   const renderAsset = ({ item }: { item: MarketAsset }) => {
     const cached = getCachedPrediction(item.symbol, selectedTimeframe);
+    const allPredictions = getAllPredictionsForSymbol(item.symbol);
+    const hasPredictions = allPredictions.length > 0;
     const isPredicting = predictingSymbol === item.symbol;
     const isSelected = selectedSymbols.has(item.symbol);
     
@@ -817,40 +825,80 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           </View>
         </View>
 
-        {/* Estado: Predicción con precio objetivo o cambio actual */}
+        {/* Estado: Cambio diario + Predicción (horizontal) */}
         <View style={styles.actionContainer}>
           {item.loading ? (
             <ActivityIndicator size="small" color="#6b7280" />
-          ) : cached ? (
-            <View style={styles.predictionInfo}>
-              <View style={[styles.predictionBadge, { backgroundColor: cached.direction === 'up' ? '#10b981' : cached.direction === 'down' ? '#ef4444' : '#6b7280' }]}>
-                <Text style={styles.predictionIcon} selectable={true}>
-                  {cached.direction === 'up' ? '📈' : cached.direction === 'down' ? '📉' : '➡️'}
-                </Text>
-                <Text style={styles.predictionText} selectable={true}>
-                  {(cached.predictedChange ?? 0) >= 0 ? '+' : ''}{(cached.predictedChange ?? 0).toFixed(2)}%
-                </Text>
-                <Text style={styles.confidenceText} selectable={true}>
-                  ({cached.confidence ?? 0}%)
-                </Text>
-              </View>
-              <Text style={styles.targetPrice} selectable={true}>
-                → {formatPrice(cached.targetPrice ?? 0, item.currency)}
-              </Text>
-              <TouchableOpacity
-                style={styles.chartButton}
-                onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
-              >
-                <Text style={styles.chartButtonText}>📊</Text>
-              </TouchableOpacity>
-            </View>
           ) : isPredicting ? (
             <Text style={styles.predictingText} selectable={true}>Analizando...</Text>
           ) : (
-            <View style={styles.noPredictonActions}>
-              <Text style={[styles.changeText, { color: getChangeColor(item.changePercent) }]} selectable={true}>
-                {item.changePercent !== undefined ? `${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%` : '-'}
-              </Text>
+            <View style={styles.actionsRow}>
+              {/* Cambio diario */}
+              <View style={styles.dailyChangeBox}>
+                <Text style={[styles.changeText, { color: getChangeColor(item.changePercent) }]} selectable={true}>
+                  {item.changePercent !== undefined ? `${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%` : '-'}
+                </Text>
+                <Text style={styles.dailyLabel}>hoy</Text>
+              </View>
+              
+              {/* Predicción con hover tooltip */}
+              {hasPredictions && (
+                <View 
+                  style={styles.predictionsWrapper}
+                  // @ts-ignore - Web only props
+                  onMouseEnter={() => Platform.OS === 'web' && setHoveredSymbol(item.symbol)}
+                  onMouseLeave={() => Platform.OS === 'web' && setHoveredSymbol(null)}
+                >
+                  <View style={[
+                    styles.predictionBadgeCompact,
+                    { backgroundColor: allPredictions[0].direction === 'up' ? '#10b98120' : allPredictions[0].direction === 'down' ? '#ef444420' : '#6b728020' }
+                  ]}>
+                    <Text style={styles.predictionIconInline} selectable={true}>
+                      {allPredictions[0].direction === 'up' ? '📈' : allPredictions[0].direction === 'down' ? '📉' : '➡️'}
+                    </Text>
+                    <Text style={[styles.predictionTextInline, { color: allPredictions[0].direction === 'up' ? '#10b981' : allPredictions[0].direction === 'down' ? '#ef4444' : '#6b7280' }]} selectable={true}>
+                      {(allPredictions[0].predictedChange ?? 0) >= 0 ? '+' : ''}{(allPredictions[0].predictedChange ?? 0).toFixed(1)}%
+                    </Text>
+                    {allPredictions.length > 1 && (
+                      <View style={styles.moreCountBadge}>
+                        <Text style={styles.moreCountText}>+{allPredictions.length - 1}</Text>
+                      </View>
+                    )}
+                  </View>
+                  
+                  {/* Hover tooltip (web only) */}
+                  {Platform.OS === 'web' && hoveredSymbol === item.symbol && (
+                    <View style={styles.hoverTooltip}>
+                      <View style={styles.hoverTooltipArrow} />
+                      <Text style={styles.hoverTooltipTitle}>🎯 {item.name}</Text>
+                      {allPredictions.map((pred, idx) => (
+                        <View key={idx} style={styles.hoverPredictionRow}>
+                          <Text style={[
+                            styles.hoverPredictionIcon,
+                            { color: pred.direction === 'up' ? '#10b981' : pred.direction === 'down' ? '#ef4444' : '#6b7280' }
+                          ]}>
+                            {pred.direction === 'up' ? '📈' : pred.direction === 'down' ? '📉' : '➡️'}
+                          </Text>
+                          <Text style={[
+                            styles.hoverPredictionChange,
+                            { color: pred.direction === 'up' ? '#10b981' : pred.direction === 'down' ? '#ef4444' : '#6b7280' }
+                          ]}>
+                            {(pred.predictedChange ?? 0) >= 0 ? '+' : ''}{(pred.predictedChange ?? 0).toFixed(1)}%
+                          </Text>
+                          <Text style={styles.hoverTimeframe}>
+                            {TIMEFRAME_INFO[pred.timeframe]?.label || pred.timeframe}
+                          </Text>
+                          {pred.confidence !== undefined && (
+                            <Text style={styles.hoverConfidence}>({pred.confidence}%)</Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+              
+              {/* Botón gráfico */}
               <TouchableOpacity
                 style={styles.chartButton}
                 onPress={() => router.push({ pathname: '/asset/[symbol]', params: { symbol: item.symbol } })}
@@ -1911,6 +1959,125 @@ const styles = StyleSheet.create({
   },
   chartButtonText: {
     fontSize: 14,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dailyChangeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  dailyLabel: {
+    fontSize: 9,
+    color: '#6b7280',
+    fontStyle: 'italic',
+  },
+  predictionBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
+  },
+  predictionIconInline: {
+    fontSize: 11,
+  },
+  predictionTextInline: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  confidenceTextInline: {
+    fontSize: 9,
+    color: '#6b7280',
+  },
+  // Predictions wrapper y hover tooltip
+  predictionsWrapper: {
+    position: 'relative',
+  },
+  predictionBadgeCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  moreCountBadge: {
+    backgroundColor: '#ffffff20',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginLeft: 2,
+  },
+  moreCountText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  hoverTooltip: {
+    position: 'absolute',
+    bottom: '100%',
+    right: 0,
+    backgroundColor: '#1e1e1e',
+    borderRadius: 10,
+    padding: 12,
+    minWidth: 200,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    zIndex: 1000,
+  },
+  hoverTooltipArrow: {
+    position: 'absolute',
+    bottom: -6,
+    right: 20,
+    width: 12,
+    height: 12,
+    backgroundColor: '#1e1e1e',
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#333',
+    transform: [{ rotate: '45deg' }],
+  },
+  hoverTooltipTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9ca3af',
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  hoverPredictionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  hoverPredictionIcon: {
+    fontSize: 12,
+  },
+  hoverPredictionChange: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  hoverTimeframe: {
+    fontSize: 11,
+    color: '#6b7280',
+    flex: 1,
+  },
+  hoverConfidence: {
+    fontSize: 10,
+    color: '#f59e0b',
+    fontWeight: '600',
   },
   noPredictonActions: {
     flexDirection: 'row',
