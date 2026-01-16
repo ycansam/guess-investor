@@ -57,6 +57,7 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
       await trainingCacheService.init();
       const predictions = await trainingCacheService.getAllActive();
       const predSymbols = new Set(predictions.map(p => p.symbol));
+      console.log('[FavoritesList] Predicciones activas:', predictions.length, 'Símbolos:', [...predSymbols]);
       setPredictedSymbols(predSymbols);
       
       if (favoriteSymbols.length === 0) {
@@ -126,6 +127,7 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
 
   const renderAsset = ({ item }: { item: MarketAsset }) => {
     const hasPrediction = predictedSymbols.has(item.symbol);
+    console.log('[FavoritesList] Render:', item.symbol, 'hasPrediction:', hasPrediction, 'predictedSymbols size:', predictedSymbols.size);
     
     return (
       <TouchableOpacity 

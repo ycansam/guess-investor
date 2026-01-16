@@ -66,6 +66,7 @@ export const ALL_ASSETS: MarketAsset[] = [
   
   // Crypto
   { symbol: 'BTC-USD', name: 'Bitcoin', icon: '₿', type: 'crypto', category: 'crypto' },
+  { symbol: 'BTC-EUR', name: 'Bitcoin EUR', icon: '₿', type: 'crypto', category: 'crypto' },
   { symbol: 'ETH-USD', name: 'Ethereum', icon: 'Ξ', type: 'crypto', category: 'crypto' },
   { symbol: 'SOL-USD', name: 'Solana', icon: '◎', type: 'crypto', category: 'crypto' },
   { symbol: 'XRP-USD', name: 'XRP', icon: '💧', type: 'crypto', category: 'crypto' },
@@ -163,6 +164,7 @@ export const ALL_ASSETS: MarketAsset[] = [
   // Commodities (Oro, Plata, Minería)
   { symbol: 'EGLN.L', name: 'iShares Physical Gold USD', icon: '🥇', type: 'etf', category: 'commodities' },
   { symbol: 'PPFB.DE', name: 'iShares Physical Gold', icon: '🪙', type: 'etf', category: 'commodities' },
+  { symbol: 'PHAG.MI', name: 'WisdomTree Physical Silver', icon: '🥈', type: 'etf', category: 'commodities' },
   { symbol: '4GLD.DE', name: 'Xetra-Gold', icon: '🏆', type: 'etf', category: 'commodities' },
   { symbol: 'GC=F', name: 'Oro Físico (Futuros)', icon: '📊', type: 'index', category: 'commodities' },
   { symbol: 'SI=F', name: 'Plata Física (Futuros)', icon: '🥈', type: 'index', category: 'commodities' },

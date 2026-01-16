@@ -7,30 +7,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  FlatList,
-  PanResponder,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  useWindowDimensions,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    FlatList,
+    PanResponder,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-  TIMEFRAME_INFO,
-  trainingCacheService,
-  TrainingPrediction,
-  TrainingTimeframe,
+    TIMEFRAME_INFO,
+    trainingCacheService,
+    TrainingPrediction,
+    TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -233,13 +233,16 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     return sorted;
   }, []);
 
-  // Cargar datos inicial con paginación (favoritos y predicciones primero)
+  // Cargar datos inicial con paginación (favoritos y predicciones primero, excepto en búsqueda)
   const loadData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         marketDataService.clearCache();
         setPage(1);
       }
+      
+      const isSearching = debouncedSearchQuery.trim().length > 0;
+      console.log('[MarketPredictions] loadData called - searching:', isSearching, 'query:', debouncedSearchQuery);
       
       // 1. Obtener los símbolos favoritos
       const favSymbols = Array.from(favoriteSymbols);
@@ -249,13 +252,13 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         .filter(p => p.timeframe === selectedTimeframe)
         .map(p => p.symbol);
       
-      // 3. Combinar símbolos prioritarios (favoritos + predicciones)
-      const prioritySymbols = [...new Set([...favSymbols, ...predictionSymbols])];
+      // 3. Combinar símbolos prioritarios (favoritos + predicciones) - SOLO si no hay búsqueda
+      const prioritySymbols = isSearching ? [] : [...new Set([...favSymbols, ...predictionSymbols])];
       
       // 4. Obtener precios de símbolos prioritarios en paralelo con los activos paginados
       const [priorityAssets, result] = await Promise.all([
-        // Obtener datos de favoritos y predicciones
-        prioritySymbols.length > 0 
+        // Obtener datos de favoritos y predicciones (solo si no hay búsqueda)
+        !isSearching && prioritySymbols.length > 0 
           ? marketDataService.getAssetsBySymbols(prioritySymbols)
           : Promise.resolve([]),
         // Obtener activos paginados normal
@@ -266,31 +269,38 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         )
       ]);
       
-      // 5. Combinar: prioritarios primero, luego el resto sin duplicados
-      const prioritySymbolSet = new Set(prioritySymbols.map(s => s.toUpperCase()));
-      const nonPriorityAssets = result.assets.filter(
-        a => !prioritySymbolSet.has(a.symbol.toUpperCase())
-      );
-      
-      // 6. Ordenar prioritarios: predicciones primero, luego favoritos
+      let combined: MarketAsset[];
       const predSymbols = new Set(cachedPredictions.filter(p => p.timeframe === selectedTimeframe).map(p => p.symbol));
-      const sortedPriority = [...priorityAssets].sort((a, b) => {
-        const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
-        const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
-        if (aHasPred !== bHasPred) return bHasPred - aHasPred;
-        const aFav = favoriteSymbols.has(a.symbol) ? 1 : 0;
-        const bFav = favoriteSymbols.has(b.symbol) ? 1 : 0;
-        if (aFav !== bFav) return bFav - aFav;
-        return (b.changePercent ?? -999) - (a.changePercent ?? -999);
-      });
       
-      // 7. Aplicar ordenamiento al resto según el tipo seleccionado
-      const sortedRest = applySorting(nonPriorityAssets, exploreSortBy, predSymbols, new Set());
-      
-      // 8. Combinar: prioritarios primero, luego el resto
-      const combined = [...sortedPriority, ...sortedRest];
-      
-      console.log(`[MarketPredictions] Loaded ${priorityAssets.length} priority (${predictionSymbols.length} predictions + ${favSymbols.length} favorites) + ${nonPriorityAssets.length} others`);
+      if (isSearching) {
+        // Si hay búsqueda, solo ordenar por el criterio seleccionado sin priorizar
+        combined = applySorting(result.assets, exploreSortBy, predSymbols, new Set());
+        console.log(`[MarketPredictions] Search results: ${combined.length} assets for "${debouncedSearchQuery}"`);
+      } else {
+        // 5. Combinar: prioritarios primero, luego el resto sin duplicados
+        const prioritySymbolSet = new Set(prioritySymbols.map(s => s.toUpperCase()));
+        const nonPriorityAssets = result.assets.filter(
+          a => !prioritySymbolSet.has(a.symbol.toUpperCase())
+        );
+        
+        // 6. Ordenar prioritarios: predicciones primero, luego favoritos
+        const sortedPriority = [...priorityAssets].sort((a, b) => {
+          const aHasPred = predSymbols.has(a.symbol) ? 1 : 0;
+          const bHasPred = predSymbols.has(b.symbol) ? 1 : 0;
+          if (aHasPred !== bHasPred) return bHasPred - aHasPred;
+          const aFav = favoriteSymbols.has(a.symbol) ? 1 : 0;
+          const bFav = favoriteSymbols.has(b.symbol) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return (b.changePercent ?? -999) - (a.changePercent ?? -999);
+        });
+        
+        // 7. Aplicar ordenamiento al resto según el tipo seleccionado
+        const sortedRest = applySorting(nonPriorityAssets, exploreSortBy, predSymbols, new Set());
+        
+        // 8. Combinar: prioritarios primero, luego el resto
+        combined = [...sortedPriority, ...sortedRest];
+        console.log(`[MarketPredictions] Loaded ${priorityAssets.length} priority (${predictionSymbols.length} predictions + ${favSymbols.length} favorites) + ${nonPriorityAssets.length} others`);
+      }
       
       setAllAssets(combined);
       setDisplayedAssets(combined);
@@ -348,7 +358,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     if (favoritesLoaded) {
       loadData();
     }
-  }, [favoritesLoaded, debouncedSearchQuery, selectedCategory]);
+  }, [favoritesLoaded, debouncedSearchQuery, selectedCategory, loadData]);
 
   // Reordenar cuando cambia exploreSortBy (sin recargar datos)
   useEffect(() => {
