@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { ALL_ASSETS, MarketAsset, marketDataService } from '../../../services/market-data-service';
-import { trainingCacheService } from '../../../services/training-cache-service';
+import { trainingCacheService, TrainingPrediction, TIMEFRAME_INFO } from '../../../services/training-cache-service';
 
 const BREAKPOINTS = {
   tablet: 768,
@@ -47,6 +47,7 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [predictedSymbols, setPredictedSymbols] = useState<Set<string>>(new Set());
+  const [predictions, setPredictions] = useState<TrainingPrediction[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -55,10 +56,11 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
       
       // Obtener predicciones
       await trainingCacheService.init();
-      const predictions = await trainingCacheService.getAllActive();
-      const predSymbols = new Set(predictions.map(p => p.symbol));
-      console.log('[FavoritesList] Predicciones activas:', predictions.length, 'Símbolos:', [...predSymbols]);
+      const allPredictions = await trainingCacheService.getAllActive();
+      const predSymbols = new Set(allPredictions.map(p => p.symbol));
+      console.log('[FavoritesList] Predicciones activas:', allPredictions.length, 'Símbolos:', [...predSymbols]);
       setPredictedSymbols(predSymbols);
+      setPredictions(allPredictions);
       
       if (favoriteSymbols.length === 0) {
         setFavorites([]);
@@ -125,9 +127,14 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
     onFavoritesChange?.();
   }, [onFavoritesChange]);
 
+  // Obtener predicciones para un símbolo
+  const getPredictionsForSymbol = useCallback((symbol: string): TrainingPrediction[] => {
+    return predictions.filter(p => p.symbol === symbol);
+  }, [predictions]);
+
   const renderAsset = ({ item }: { item: MarketAsset }) => {
-    const hasPrediction = predictedSymbols.has(item.symbol);
-    console.log('[FavoritesList] Render:', item.symbol, 'hasPrediction:', hasPrediction, 'predictedSymbols size:', predictedSymbols.size);
+    const symbolPredictions = getPredictionsForSymbol(item.symbol);
+    const hasPrediction = symbolPredictions.length > 0;
     
     return (
       <TouchableOpacity 
@@ -138,11 +145,6 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
         {/* Icono */}
         <View style={styles.iconContainer}>
           <Text style={styles.icon}>{item.icon}</Text>
-          {hasPrediction && (
-            <View style={styles.predictionBadge}>
-              <Text style={styles.predictionBadgeText}>🎯</Text>
-            </View>
-          )}
         </View>
 
         {/* Info */}
@@ -158,13 +160,47 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
           </View>
         </View>
 
-        {/* Cambio % */}
-        <View style={styles.priceContainer}>
+        {/* Predicción o Cambio % */}
+        <View style={styles.actionContainer}>
           {item.loading ? (
             <ActivityIndicator size="small" color="#6b7280" />
           ) : item.error ? (
             <Text style={styles.errorText}>-</Text>
+          ) : hasPrediction ? (
+            // Mostrar predicciones como en MarketPredictions
+            <View style={styles.predictionsColumn}>
+              {symbolPredictions.map((pred, idx) => (
+                <View key={idx} style={styles.predictionInfoRow}>
+                  <View style={[
+                    styles.predictionBadgeFull,
+                    { backgroundColor: pred.direction === 'up' || pred.direction === 'bullish' ? '#10b981' : '#ef4444' }
+                  ]}>
+                    <Text style={styles.predictionIconFull}>
+                      {pred.direction === 'up' || pred.direction === 'bullish' ? '📈' : '📉'}
+                    </Text>
+                    <Text style={styles.predictionTextFull}>
+                      {(pred.predictedChange ?? pred.expectedChange ?? 0) >= 0 ? '+' : ''}
+                      {(pred.predictedChange ?? pred.expectedChange ?? 0).toFixed(1)}%
+                    </Text>
+                    {pred.confidence !== undefined && (
+                      <Text style={styles.confidenceText}>
+                        ({pred.confidence}%)
+                      </Text>
+                    )}
+                  </View>
+                  {pred.targetPrice !== undefined && (
+                    <Text style={styles.targetPrice}>
+                      → {formatPrice(pred.targetPrice, item.currency)}
+                    </Text>
+                  )}
+                  <Text style={styles.timeframeLabel}>
+                    {TIMEFRAME_INFO[pred.timeframe]?.label || pred.timeframe}
+                  </Text>
+                </View>
+              ))}
+            </View>
           ) : (
+            // Sin predicción: mostrar cambio %
             <View style={[
               styles.changeBadge,
               { backgroundColor: getChangeColor(item.changePercent) + '20' }
@@ -383,9 +419,9 @@ const styles = StyleSheet.create({
     color: '#a0a0a0',
     fontWeight: '500',
   },
-  priceContainer: {
+  actionContainer: {
     alignItems: 'flex-end',
-    minWidth: 70,
+    minWidth: 100,
   },
   changeBadge: {
     paddingHorizontal: 8,
@@ -403,6 +439,43 @@ const styles = StyleSheet.create({
   removeButton: {
     padding: 8,
     marginLeft: 4,
+  },
+  predictionsColumn: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  predictionInfoRow: {
+    alignItems: 'flex-end',
+  },
+  predictionBadgeFull: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  predictionIconFull: {
+    fontSize: 12,
+  },
+  predictionTextFull: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  confidenceText: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  targetPrice: {
+    fontSize: 10,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  timeframeLabel: {
+    fontSize: 9,
+    color: '#6b7280',
+    marginTop: 1,
   },
   emptyContainer: {
     flex: 1,
