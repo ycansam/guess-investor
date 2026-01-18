@@ -1,5 +1,6 @@
 import { Prediction } from '@prisma/client';
 import { Request, Response } from 'express';
+import { prisma } from '../config/database.js';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
 import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
@@ -9,7 +10,6 @@ import { yahooService } from '../services/external/yahoo.service.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 import { trackRecordService } from '../services/prediction/track-record.service.js';
-import { prisma } from '../config/database.js';
 
 // Umbral para considerar el movimiento como direccional vs neutral (en %)
 // Mantener un “buffer” evita penalizar ruido intradía.

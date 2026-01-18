@@ -7,14 +7,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
@@ -486,14 +486,24 @@ export default function AssetDetailScreen() {
         }
 
         // Crear puntos de predicción como línea superpuesta
-        // La predicción comienza desde el momento actual hasta las 17:30 del día final
+        // La predicción comienza desde el último dato histórico hasta las 17:30 del día de vencimiento
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
         const msPerDay = 24 * 60 * 60 * 1000;
-        const startTime = Date.now();
+        
+        // IMPORTANTE: Usar el último timestamp del histórico, NO Date.now()
+        // Esto es crucial cuando hay gaps (fines de semana, festivos)
+        const startTime = lastTimestamp || Date.now();
         
         // Calcular el endTime como las 17:30 del día de vencimiento
-        const endDate = new Date(startTime + predictionDays * msPerDay);
+        // Si estamos en fin de semana, ajustar al próximo día hábil
+        let endDate = new Date(startTime + predictionDays * msPerDay);
+        
+        // Ajustar si cae en fin de semana (para stocks)
+        const dayOfWeek = endDate.getDay();
+        if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1); // Domingo → Lunes
+        if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2); // Sábado → Lunes
+        
         endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
         const endTime = endDate.getTime();
         const totalMs = endTime - startTime;
@@ -847,7 +857,8 @@ export default function AssetDetailScreen() {
     // Añadir puntos para la predicción (con valores interpolados para el tooltip)
     if (predictionMeta && predictionPoints > 0) {
       const predDuration = predictionEndTime - lastTimestamp;
-      for (let i = 1; i <= predictionPoints; i++) {
+      // Empezamos desde i=0 para que conecte con el histórico (primer punto = startPrice)
+      for (let i = 0; i <= predictionPoints; i++) {
         const progress = i / predictionPoints;
         const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
         result.push({
@@ -887,7 +898,9 @@ export default function AssetDetailScreen() {
     }));
     
     // Añadir puntos interpolados para la predicción (hasta las 17:30)
-    for (let i = 1; i <= predictionPoints; i++) {
+    // Empezamos desde i=0 para que el primer punto tenga el mismo valor que el histórico
+    // y la línea conecte visualmente sin gap
+    for (let i = 0; i <= predictionPoints; i++) {
       const progress = i / predictionPoints;
       const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
       data2.push({ value: interpolatedValue });
@@ -906,7 +919,8 @@ export default function AssetDetailScreen() {
     if (!mainChartData.length || !predictionMeta) return undefined;
     
     const lastHistoricIndex = mainChartData.length - 1;
-    const lastPredictionIndex = lastHistoricIndex + predictionPoints;
+    // Ahora tenemos predictionPoints + 1 puntos (de i=0 a i=predictionPoints inclusive)
+    const lastPredictionIndex = lastHistoricIndex + predictionPoints + 1;
     const lastExtensionIndex = lastPredictionIndex + extensionPoints;
     
     return [
@@ -922,7 +936,8 @@ export default function AssetDetailScreen() {
   // Segmentos para la línea principal: verde solo hasta el histórico, luego transparente
   const mainLineSegments = useMemo(() => {
     const lastHistoricIndex = mainChartData.length - 1;
-    const totalPoints = mainChartData.length + predictionPoints + extensionPoints;
+    // Ahora tenemos predictionPoints + 1 puntos de predicción
+    const totalPoints = mainChartData.length + predictionPoints + 1 + extensionPoints;
     
     if (lastHistoricIndex < 0) return undefined;
     

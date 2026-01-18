@@ -1,7 +1,7 @@
 import { AssetAdjustment, ConfidenceCalibration, LearnedWeights, TrainingCache } from '@prisma/client';
-import { prisma } from '../config/database.js';
-import { readFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { prisma } from '../config/database.js';
 
 // Ruta al archivo JSON de pesos (única fuente de verdad)
 const WEIGHTS_FILE = resolve(process.cwd(), '../code/config/learned_weights.json');
