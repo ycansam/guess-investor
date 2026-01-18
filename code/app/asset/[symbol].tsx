@@ -358,9 +358,28 @@ export default function AssetDetailScreen() {
 
         // Limitar puntos según timeframe
         if (selectedTimeframe === 'intraday') {
-          // Para 2 días de datos @ 15min: ~8.5h de mercado/día = 34 puntos/día
-          // Añadimos margen extra para pre/after market
-          prices = prices.slice(-140);
+          // Para intradía queremos solo los últimos 2 días de trading
+          // Primero obtenemos los días únicos de trading
+          const uniqueTradingDays = [...new Set(prices.map(p => new Date(p.timestamp).toDateString()))];
+          
+          // Tomamos solo los últimos 2 días de trading
+          const last2Days = uniqueTradingDays.slice(-2);
+          
+          // Filtramos los precios para solo incluir esos 2 días
+          prices = prices.filter(p => {
+            const dayStr = new Date(p.timestamp).toDateString();
+            return last2Days.includes(dayStr);
+          });
+          
+          // DEBUG: Log de datos intraday
+          console.log('[Chart DEBUG] Intraday data:', {
+            totalPrices: prices.length,
+            firstTimestamp: prices[0]?.timestamp ? new Date(prices[0].timestamp).toISOString() : null,
+            lastTimestamp: prices[prices.length - 1]?.timestamp ? new Date(prices[prices.length - 1].timestamp).toISOString() : null,
+            uniqueDays: [...new Set(prices.map(p => new Date(p.timestamp).toDateString()))],
+            allTradingDays: uniqueTradingDays,
+            selectedDays: last2Days,
+          });
         } else if (selectedTimeframe === 'swing') {
           prices = prices.slice(-70);
         }
@@ -572,10 +591,33 @@ export default function AssetDetailScreen() {
       const cached = await trainingCacheService.get(symbol, selectedTimeframe as TrainingTimeframe);
       
       if (cached) {
+        // Verificar si el precio actual difiere mucho del precio cuando se hizo la predicción
+        // Si cambió más del 3%, la predicción ya no es válida
+        const cachedPrice = cached.currentPrice || 0;
+        const priceChangePct = cachedPrice > 0 
+          ? Math.abs((lastPriceForPrediction - cachedPrice) / cachedPrice) * 100 
+          : 0;
+        
+        if (priceChangePct > 3) {
+          console.log(`[AssetDetail] Cache invalidated for ${symbol}: price changed ${priceChangePct.toFixed(2)}% (${cachedPrice.toFixed(2)} → ${lastPriceForPrediction.toFixed(2)})`);
+          // Invalidar cache y recalcular
+          await trainingCacheService.remove(symbol, selectedTimeframe as TrainingTimeframe);
+          setPrediction(null);
+          setFullPrediction(null);
+          setPredictionFromCache(false);
+          setPredictionData([]);
+          setPredictionMeta(null);
+          handlePredict();
+          return;
+        }
+        
         console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}:`, {
           change: cached.predictedChange,
           confidence: cached.confidence,
-          targetPrice: cached.targetPrice
+          targetPrice: cached.targetPrice,
+          cachedPrice,
+          currentPrice: lastPriceForPrediction,
+          priceChangePct: priceChangePct.toFixed(2) + '%'
         });
         
         setPrediction({
@@ -738,13 +780,26 @@ export default function AssetDetailScreen() {
 
   // Solo datos históricos para la línea principal (filtrados)
   const mainChartData = useMemo(() => {
-    return chartData.filter(d => 
+    const filtered = chartData.filter(d => 
       d.value !== undefined && 
       d.value !== null && 
       !isNaN(d.value) && 
       isFinite(d.value)
     );
-  }, [chartData]);
+    
+    // DEBUG: Log de mainChartData
+    if (filtered.length > 0 && selectedTimeframe === 'intraday') {
+      console.log('[Chart DEBUG] mainChartData:', {
+        points: filtered.length,
+        firstDate: new Date(filtered[0]?.timestamp).toLocaleString(),
+        lastDate: new Date(filtered[filtered.length - 1]?.timestamp).toLocaleString(),
+        uniqueDays: [...new Set(filtered.map(p => new Date(p.timestamp).toDateString()))],
+        labels: filtered.filter(p => p.label).map(p => ({ label: p.label, date: new Date(p.timestamp).toLocaleString() })),
+      });
+    }
+    
+    return filtered;
+  }, [chartData, selectedTimeframe]);
 
   // Calcular posición X y datos para la línea de predicción superpuesta
   const predictionOverlay = useMemo(() => {
@@ -801,14 +856,31 @@ export default function AssetDetailScreen() {
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
     
-    // 17:30 del día de vencimiento de la predicción
+    // Calcular predictionEndTime basado en el ÚLTIMO punto del histórico, no en predictionMeta
+    // Esto es crucial para que la línea de predicción conecte correctamente
+    if (predictionMeta && mainChartData.length > 0) {
+      const lastHistoricTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || Date.now();
+      
+      // Calcular la duración de la predicción en ms
+      const predictionDurationMs = predictionMeta.endTimestamp - predictionMeta.startTimestamp;
+      
+      // El nuevo endTime es el último histórico + la duración de la predicción
+      const adjustedPredEnd = lastHistoricTimestamp + predictionDurationMs;
+      
+      return {
+        endOfToday: endOfDay.getTime(),
+        predictionEndTime: adjustedPredEnd,
+      };
+    }
+    
+    // Fallback si no hay datos
     const predEnd = predictionMeta?.endTimestamp || endOfDay.getTime();
     
     return {
       endOfToday: endOfDay.getTime(),
       predictionEndTime: predEnd,
     };
-  }, [predictionMeta]);
+  }, [predictionMeta, mainChartData]);
 
   // Calcular puntos extra para predicción y extensión del gráfico
   const { predictionPoints, extensionPoints } = useMemo(() => {
@@ -871,6 +943,22 @@ export default function AssetDetailScreen() {
     }
     
     // Ya no añadimos puntos de extensión
+    
+    // DEBUG: Log de chartDataWithExtra
+    if (selectedTimeframe === 'intraday' && result.length > 0) {
+      const historicPoints = result.filter(p => !p.isPrediction);
+      const predictionPts = result.filter(p => p.isPrediction);
+      console.log('[Chart DEBUG] chartDataWithExtra:', {
+        totalPoints: result.length,
+        historicPoints: historicPoints.length,
+        predictionPoints: predictionPts.length,
+        lastHistoric: historicPoints.length > 0 ? new Date(historicPoints[historicPoints.length - 1]?.timestamp).toLocaleString() : null,
+        firstPrediction: predictionPts.length > 0 ? new Date(predictionPts[0]?.timestamp).toLocaleString() : null,
+        lastPrediction: predictionPts.length > 0 ? new Date(predictionPts[predictionPts.length - 1]?.timestamp).toLocaleString() : null,
+        predictionEndTime: new Date(predictionEndTime).toLocaleString(),
+      });
+    }
+    
     return result;
   }, [mainChartData, predictionMeta, predictionPoints, extensionPoints, predictionEndTime, endOfToday]);
 
@@ -1213,11 +1301,19 @@ export default function AssetDetailScreen() {
                   <View style={[styles.legendColor, { backgroundColor: '#22c55e' }]} />
                   <Text style={styles.legendText}>Histórico</Text>
                 </View>
-                {predictionMeta && (
+                {predictionMeta && mainChartData.length > 0 && (
                   <View style={styles.legendItem}>
                     <View style={[styles.legendColor, { backgroundColor: '#818cf8' }]} />
                     <Text style={styles.legendText}>
-                      Predicción ({new Date(predictionMeta.startTimestamp).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })} → {new Date(predictionMeta.endTimestamp).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })})
+                      Predicción ({(() => {
+                        // Usar el último timestamp del histórico como inicio visual
+                        const lastHistoric = mainChartData[mainChartData.length - 1]?.timestamp || predictionMeta.startTimestamp;
+                        const duration = predictionMeta.endTimestamp - predictionMeta.startTimestamp;
+                        const visualEndTime = lastHistoric + duration;
+                        const startDate = new Date(lastHistoric).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' });
+                        const endDate = new Date(visualEndTime).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' });
+                        return `${startDate} → ${endDate}`;
+                      })()})
                     </Text>
                   </View>
                 )}
@@ -1254,10 +1350,22 @@ export default function AssetDetailScreen() {
                 <Text
                   style={[
                     styles.predictionValue,
-                    { color: (prediction.change ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
+                    { color: (() => {
+                      // Calcular el cambio actual desde el precio de ahora al objetivo (ambos en EUR)
+                      const currentPriceEur = lastPriceForPrediction || 0;
+                      const targetPrice = predictionMeta?.targetPrice || currentPriceEur * (1 + (prediction.change ?? 0) / 100);
+                      const actualChange = currentPriceEur > 0 ? ((targetPrice - currentPriceEur) / currentPriceEur) * 100 : (prediction.change ?? 0);
+                      return actualChange >= 0 ? '#22c55e' : '#ef4444';
+                    })() },
                   ]}
                 >
-                  {(prediction.change ?? 0) >= 0 ? '+' : ''}{(prediction.change ?? 0).toFixed(2)}%
+                  {(() => {
+                    // Mostrar el cambio real desde el precio actual al objetivo (ambos en EUR)
+                    const currentPriceEur = lastPriceForPrediction || 0;
+                    const targetPrice = predictionMeta?.targetPrice || currentPriceEur * (1 + (prediction.change ?? 0) / 100);
+                    const actualChange = currentPriceEur > 0 ? ((targetPrice - currentPriceEur) / currentPriceEur) * 100 : (prediction.change ?? 0);
+                    return `${actualChange >= 0 ? '+' : ''}${actualChange.toFixed(2)}%`;
+                  })()}
                 </Text>
               </View>
               <View style={styles.predictionItem}>
@@ -1267,7 +1375,9 @@ export default function AssetDetailScreen() {
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Precio objetivo</Text>
                 <Text style={styles.predictionValue}>
-                  {((assetData?.price || 0) * (1 + (prediction.change ?? 0) / 100)).toFixed(2)} €
+                  {predictionMeta?.targetPrice 
+                    ? predictionMeta.targetPrice.toFixed(2)
+                    : (lastPriceForPrediction * (1 + (prediction.change ?? 0) / 100)).toFixed(2)} €
                 </Text>
               </View>
             </View>
