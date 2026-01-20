@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "updated_at": "2026-01-20T22:43:12.308073",
-  "training_samples": 90,
+  "updated_at": "2026-01-20T23:03:52.256285",
+  "training_samples": 0,
   "weights": {
     "intraday": {
       "trend": 0.2,
@@ -44,7 +44,7 @@
     }
   },
   "metadata": {
-    "learning_rate": 0.05,
-    "momentum": 0.8
+    "learning_rate": 0.01,
+    "momentum": 0.9
   }
 }

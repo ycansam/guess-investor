@@ -32,9 +32,12 @@ interface PeriodExtremes {
 function computeVerificationData(
   prediction: Prediction, 
   actualPrice: number,
-  periodExtremes?: PeriodExtremes | null
+  periodExtremes?: PeriodExtremes | null,
+  basePrice?: number // Precio base para comparar (cierre del día anterior). Si no se provee, usa prediction.currentPrice
 ): VerifyPredictionData {
-  const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
+  // Usar basePrice si se provee (cierre del día anterior), si no usar el precio de creación
+  const referencePrice = basePrice ?? prediction.currentPrice;
+  const actualChange = ((actualPrice - referencePrice) / referencePrice) * 100;
 
   const actualDirection: 'up' | 'down' | 'neutral' =
     actualChange > DIRECTION_THRESHOLD_PCT ? 'up' :
@@ -524,6 +527,8 @@ export const predictionController = {
     }
 
     // Si no se proporciona precio, obtener el precio de cierre de la fecha de expiración
+    let basePrice: number | undefined; // Precio base para comparar (cierre del día anterior)
+    
     if (actualPrice === undefined) {
       try {
         // Usar el precio de cierre del día de expiración (o último día de mercado)
@@ -532,6 +537,16 @@ export const predictionController = {
         if (priceAtExpiry) {
           actualPrice = priceAtExpiry.price;
           console.log(`[Verify] Using historical price for ${prediction.symbol} at ${priceAtExpiry.actualDate.toISOString().split('T')[0]}: ${actualPrice}`);
+          
+          // Obtener el precio de cierre del día ANTERIOR a la expiración como base
+          const dayBefore = new Date(priceAtExpiry.actualDate);
+          dayBefore.setDate(dayBefore.getDate() - 1);
+          const previousClose = await yahooService.getPriceAtDate(prediction.symbol, dayBefore);
+          
+          if (previousClose) {
+            basePrice = previousClose.price;
+            console.log(`[Verify] Base price (previous close ${previousClose.actualDate.toISOString().split('T')[0]}): ${basePrice}`);
+          }
         } else {
           // Fallback al precio actual si no hay datos históricos
           const quote = await yahooService.getQuote(prediction.symbol);
@@ -539,7 +554,8 @@ export const predictionController = {
             throw BadRequestError('Could not fetch price for verification. Please provide actualPrice.');
           }
           actualPrice = quote.price;
-          console.log(`[Verify] Using current price for ${prediction.symbol} (no historical data): ${actualPrice}`);
+          basePrice = quote.previousClose;
+          console.log(`[Verify] Using current price for ${prediction.symbol} (no historical data): ${actualPrice}, previousClose: ${basePrice}`);
         }
       } catch (error) {
         throw BadRequestError('Could not fetch price for verification. Please provide actualPrice.');
@@ -565,7 +581,7 @@ export const predictionController = {
       console.log('[Verify] Could not get period extremes, continuing without bonus check');
     }
 
-    const verifyData = computeVerificationData(prediction, actualPrice, periodExtremes);
+    const verifyData = computeVerificationData(prediction, actualPrice, periodExtremes, basePrice);
 
     const verified = await predictionRepository.verify(id, verifyData);
 
@@ -624,6 +640,12 @@ export const predictionController = {
         if (weightLearningResult.adjusted) {
           console.log(`[Verify] Factor weights adjusted:`, weightLearningResult.changes.join(', '));
         }
+
+        // Marcar predicción como usada para training (evitar re-entrenamiento)
+        await prisma.prediction.update({
+          where: { id: prediction.id },
+          data: { usedForTraining: true, trainedAt: new Date() },
+        });
       }
     } catch (err) {
       console.log('[Verify] Could not update classifier learning:', err);
@@ -662,11 +684,24 @@ export const predictionController = {
       try {
         // Obtener precio de cierre del día de expiración (o último día de mercado)
         let actualPrice: number;
+        let basePrice: number | undefined; // Precio de cierre del día anterior (base para comparar)
         const priceAtExpiry = await yahooService.getPriceAtDate(prediction.symbol, prediction.expiresAt);
         
         if (priceAtExpiry) {
           actualPrice = priceAtExpiry.price;
           console.log(`[VerifyPending] ${prediction.symbol}: Using price at ${priceAtExpiry.actualDate.toISOString().split('T')[0]}: ${actualPrice}`);
+          
+          // Obtener el precio de cierre del día ANTERIOR a la expiración como base
+          const dayBefore = new Date(priceAtExpiry.actualDate);
+          dayBefore.setDate(dayBefore.getDate() - 1);
+          const previousClose = await yahooService.getPriceAtDate(prediction.symbol, dayBefore);
+          
+          if (previousClose) {
+            basePrice = previousClose.price;
+            console.log(`[VerifyPending] ${prediction.symbol}: Base price (previous close ${previousClose.actualDate.toISOString().split('T')[0]}): ${basePrice}`);
+          } else {
+            console.log(`[VerifyPending] ${prediction.symbol}: Could not get previous close, using creation price as base`);
+          }
         } else {
           // Fallback al precio actual
           const quote = await yahooService.getQuote(prediction.symbol);
@@ -675,10 +710,11 @@ export const predictionController = {
             continue;
           }
           actualPrice = quote.price;
-          console.log(`[VerifyPending] ${prediction.symbol}: Using current price (no historical): ${actualPrice}`);
+          basePrice = quote.previousClose; // Yahoo provee el cierre anterior
+          console.log(`[VerifyPending] ${prediction.symbol}: Using current price (no historical): ${actualPrice}, previousClose: ${basePrice}`);
         }
         
-        const verifyData = computeVerificationData(prediction, actualPrice);
+        const verifyData = computeVerificationData(prediction, actualPrice, null, basePrice);
 
         await predictionRepository.verify(prediction.id, verifyData);
 
@@ -735,6 +771,12 @@ export const predictionController = {
             if (weightLearningResult.adjusted) {
               console.log(`[VerifyPending] Factor weights adjusted for ${prediction.symbol}:`, weightLearningResult.changes.join(', '));
             }
+
+            // Marcar predicción como usada para training (evitar re-entrenamiento)
+            await prisma.prediction.update({
+              where: { id: prediction.id },
+              data: { usedForTraining: true, trainedAt: new Date() },
+            });
           }
         } catch (err) {
           console.log(`[VerifyPending] Could not update classifier learning for ${prediction.symbol}:`, err);

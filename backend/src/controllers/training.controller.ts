@@ -723,8 +723,10 @@ export const trainingController = {
       weightsLearned: 0,
       classifiersLearned: 0,
       totalVerified: 0,
+      alreadyTrained: 0,
       withFactorData: 0,
       withoutFactorData: 0,
+      newlyProcessed: 0,
       errors: [] as string[],
       details: [] as string[],
     };
@@ -735,27 +737,47 @@ export const trainingController = {
     });
     results.totalVerified = totalVerified;
 
-    // Obtener predicciones verificadas con factorBreakdown
-    const verifiedPredictions = await prisma.prediction.findMany({
+    // Contar ya entrenadas
+    const alreadyTrained = await prisma.prediction.count({
+      where: { verified: true, usedForTraining: true },
+    });
+    results.alreadyTrained = alreadyTrained;
+
+    // Obtener SOLO predicciones verificadas NO entrenadas con factorBreakdown
+    const untrainedPredictions = await prisma.prediction.findMany({
       where: {
         verified: true,
+        usedForTraining: false, // Solo las que NO han sido usadas
         factorBreakdown: { not: null },
       },
       orderBy: { verifiedAt: 'asc' },
     });
 
-    results.withFactorData = verifiedPredictions.length;
-    results.withoutFactorData = totalVerified - verifiedPredictions.length;
+    // Contar las que no tienen factorBreakdown (sin datos)
+    const withoutFactorData = await prisma.prediction.count({
+      where: {
+        verified: true,
+        usedForTraining: false,
+        factorBreakdown: null,
+      },
+    });
+    results.withoutFactorData = withoutFactorData;
+    results.withFactorData = untrainedPredictions.length;
 
-    console.log(`[ForceRelearn] Total verificadas: ${totalVerified}, Con factorBreakdown: ${verifiedPredictions.length}`);
+    console.log(`[ForceRelearn] Total: ${totalVerified}, Ya entrenadas: ${alreadyTrained}, Pendientes con datos: ${untrainedPredictions.length}`);
     
-    if (results.withoutFactorData > 0) {
-      results.details.push(`⚠️ ${results.withoutFactorData} predicciones sin datos de factores (anteriores al fix)`);
+    if (alreadyTrained > 0) {
+      results.details.push(`✅ ${alreadyTrained} predicciones ya fueron usadas para entrenar`);
     }
-    results.details.push(`📊 ${results.withFactorData} predicciones con datos procesables`);
+    if (withoutFactorData > 0) {
+      results.details.push(`⚠️ ${withoutFactorData} predicciones sin datos de factores (no procesables)`);
+    }
+    results.details.push(`🆕 ${untrainedPredictions.length} predicciones nuevas para procesar`);
 
-    // Procesar cada predicción verificada
-    for (const prediction of verifiedPredictions) {
+    // Procesar cada predicción NO entrenada
+    const processedIds: string[] = [];
+    
+    for (const prediction of untrainedPredictions) {
       try {
         const factorBreakdown = prediction.factorBreakdown 
           ? JSON.parse(prediction.factorBreakdown) 
@@ -805,9 +827,25 @@ export const trainingController = {
           });
           results.classifiersLearned++;
         }
+
+        // Marcar como procesada
+        processedIds.push(prediction.id);
+        results.newlyProcessed++;
       } catch (err: any) {
         results.errors.push(`${prediction.symbol}: ${err.message}`);
       }
+    }
+
+    // Marcar todas las predicciones procesadas como usadas para training
+    if (processedIds.length > 0) {
+      await prisma.prediction.updateMany({
+        where: { id: { in: processedIds } },
+        data: { 
+          usedForTraining: true,
+          trainedAt: new Date(),
+        },
+      });
+      console.log(`[ForceRelearn] Marcadas ${processedIds.length} predicciones como entrenadas`);
     }
 
     // También intentar entrenar con Python
@@ -820,10 +858,10 @@ export const trainingController = {
           ? 'Entrenamiento Python exitoso' 
           : 'Python no disponible o sin cambios',
       };
-      results.details.push(`Python: ${pythonResult.message}`);
+      results.details.push(`🐍 Python: ${pythonResult.message}`);
     } catch (err: any) {
       pythonResult = { success: false, message: err.message };
-      results.details.push(`Python error: ${err.message}`);
+      results.details.push(`🐍 Python error: ${err.message}`);
     }
 
     const status = factorWeightLearningService.getStatus();
@@ -831,15 +869,19 @@ export const trainingController = {
 
     // Construir mensaje según los resultados
     let message = '';
-    if (results.withFactorData === 0 && results.totalVerified > 0) {
-      message = `⚠️ Las ${results.totalVerified} predicciones verificadas no tienen datos de factores (fueron creadas antes del fix). Las nuevas predicciones sí se procesarán.`;
-      if (pythonResult.success) {
-        message += ' Python sí pudo entrenar con datos históricos.';
+    if (untrainedPredictions.length === 0) {
+      if (alreadyTrained > 0) {
+        message = `ℹ️ Todas las predicciones (${alreadyTrained}) ya fueron procesadas. No hay nuevos datos para entrenar.`;
+      } else if (withoutFactorData > 0) {
+        message = `⚠️ Hay ${withoutFactorData} predicciones verificadas pero sin datos de factores (creadas antes del fix). Las nuevas predicciones sí tendrán datos.`;
+      } else {
+        message = 'No hay predicciones verificadas para procesar.';
       }
-    } else if (results.withFactorData > 0) {
-      message = `✅ Procesadas ${results.withFactorData} predicciones: ${results.weightsLearned} ajustes de pesos, ${results.classifiersLearned} clasificadores.`;
+      if (pythonResult.success) {
+        message += ' Python sí pudo entrenar.';
+      }
     } else {
-      message = 'No hay predicciones verificadas para procesar.';
+      message = `✅ Procesadas ${results.newlyProcessed} predicciones nuevas: ${results.weightsLearned} ajustes de pesos, ${results.classifiersLearned} clasificadores.`;
     }
 
     res.json({

@@ -300,6 +300,7 @@ export const yahooService = {
         changePercent,
         volume: meta.regularMarketVolume,
         marketCap: meta.marketCap,
+        previousClose: prevClose,
       };
     } catch {
       return null;

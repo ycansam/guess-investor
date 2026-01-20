@@ -75,12 +75,17 @@ model Prediction {
   newsData          String?   // JSON con noticias
   macroData         String?   // JSON con indicadores macro
   
+  // Training tracking - evitar re-entrenar con mismos datos
+  usedForTraining   Boolean   @default(false) // ¿Ya se usó para entrenar pesos/clasificadores?
+  trainedAt         DateTime? // ¿Cuándo se usó para entrenar?
+  
   // Índices para búsquedas frecuentes
   @@index([symbol])
   @@index([verified])
   @@index([createdAt])
   @@index([symbol, timeframe])
   @@index([quality])
+  @@index([usedForTraining])
 }
 
 // ============================================================================

@@ -90,6 +90,7 @@ export const AssetQuoteSchema = z.object({
   changePercent: z.number(),
   volume: z.number().optional(),
   marketCap: z.number().optional(),
+  previousClose: z.number().optional(),
 });
 export type AssetQuote = z.infer<typeof AssetQuoteSchema>;
 
