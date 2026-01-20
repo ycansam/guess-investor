@@ -38,11 +38,17 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const [selectedAssetGroup, setSelectedAssetGroup] = useState<AssetGroupType>('large_cap_stock');
   const [isRelearning, setIsRelearning] = useState(false);
   const [relearnResult, setRelearnResult] = useState<string | null>(null);
+  const [isResettingModels, setIsResettingModels] = useState(false);
+  const [resetModelsResult, setResetModelsResult] = useState<string | null>(null);
+  const [isRetrainingClassifiers, setIsRetrainingClassifiers] = useState(false);
+  const [retrainClassifiersResult, setRetrainClassifiersResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       loadData();
       setRelearnResult(null);
+      setResetModelsResult(null);
+      setRetrainClassifiersResult(null);
     }
   }, [visible]);
 
@@ -76,6 +82,34 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       setRelearnResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
     } finally {
       setIsRelearning(false);
+    }
+  };
+
+  const handleResetModels = async () => {
+    setIsResettingModels(true);
+    setResetModelsResult(null);
+    try {
+      const result = await apiClient.resetAllML();
+      setResetModelsResult(`✅ Reset completado: ${result.predictions} predicciones, ${result.cache} cache, pesos: ${result.weights ? 'sí' : 'no'}, Python: ${result.pythonReset ? 'sí' : 'no'}`);
+      await loadData();
+    } catch (err) {
+      setResetModelsResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsResettingModels(false);
+    }
+  };
+
+  const handleRetrainClassifiers = async () => {
+    setIsRetrainingClassifiers(true);
+    setRetrainClassifiersResult(null);
+    try {
+      const result = await apiClient.forceRelearn();
+      setRetrainClassifiersResult(`✅ Clasificadores actualizados: ${result.classifiersLearned} grupos procesados de ${result.withFactorData} predicciones`);
+      await loadData();
+    } catch (err) {
+      setRetrainClassifiersResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsRetrainingClassifiers(false);
     }
   };
 
@@ -342,6 +376,32 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
             <Text style={{ color: colors.textSecondary }}>Gris (0%)</Text>: Sin ajuste especial (100%)
           </Text>
         </View>
+
+        {/* Retrain Classifiers Button */}
+        <View style={styles.forceRelearnContainer}>
+          <TouchableOpacity 
+            style={[styles.forceRelearnButton, isRetrainingClassifiers && styles.forceRelearnButtonDisabled]}
+            onPress={handleRetrainClassifiers}
+            disabled={isRetrainingClassifiers}
+          >
+            {isRetrainingClassifiers ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={styles.forceRelearnText}>🔄 Reentrenar Clasificadores</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.forceRelearnHint}>
+            Recalcula los multiplicadores de cada grupo de activos
+          </Text>
+          {retrainClassifiersResult && (
+            <View style={[
+              styles.relearnResultBox, 
+              retrainClassifiersResult.startsWith('❌') ? styles.relearnResultBoxError : styles.relearnResultBoxSuccess
+            ]}>
+              <Text style={styles.relearnResultText}>{retrainClassifiersResult}</Text>
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -409,6 +469,32 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
             <Text style={styles.qualityLabel}>Muestras calibración</Text>
             <Text style={styles.qualityValue}>{modelsData.probabilisticModel.sampleCount}</Text>
           </View>
+        </View>
+
+        {/* Reset Models Button */}
+        <View style={styles.forceRelearnContainer}>
+          <TouchableOpacity 
+            style={[styles.resetButton, isResettingModels && styles.forceRelearnButtonDisabled]}
+            onPress={handleResetModels}
+            disabled={isResettingModels}
+          >
+            {isResettingModels ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={styles.forceRelearnText}>🗑️ Reset Completo del Sistema ML</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.forceRelearnHint}>
+            ⚠️ Borra TODAS las predicciones, cache, pesos aprendidos y datos de Python
+          </Text>
+          {resetModelsResult && (
+            <View style={[
+              styles.relearnResultBox, 
+              resetModelsResult.startsWith('❌') ? styles.relearnResultBoxError : styles.relearnResultBoxSuccess
+            ]}>
+              <Text style={styles.relearnResultText}>{resetModelsResult}</Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -927,6 +1013,16 @@ const styles = StyleSheet.create({
   },
   forceRelearnButton: {
     backgroundColor: colors.warning,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 200,
+  },
+  resetButton: {
+    backgroundColor: colors.danger,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
