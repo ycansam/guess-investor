@@ -26,9 +26,9 @@ import { TechnicalAnalysis, technicalService } from '../external/technical.servi
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-    factorCorrelationService,
-    probabilisticModelService,
-    reinforcementLearningService,
+  factorCorrelationService,
+  probabilisticModelService,
+  reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -205,6 +205,9 @@ const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
   'SSLN.L': 'commodity', 'ISLN.L': 'commodity', // iShares Physical Silver
   'PHAU.L': 'commodity', 'PHAG.L': 'commodity', 'PHPT.L': 'commodity', 'PHPM.L': 'commodity', // WisdomTree Physical Metals
   'SGBS.L': 'commodity', // Gold Bullion Securities
+  // Commodities - ETCs físicos (Borsa Italiana - Milano)
+  'NGAS.MI': 'commodity', 'PHAG.MI': 'commodity', 'PHAU.MI': 'commodity', // WisdomTree Physical Metals Italia
+  'CRUD.MI': 'commodity', 'OILB.MI': 'commodity', // Petroleo Italia
   // Mineras de oro/plata (se comportan como commodity pero son acciones)
   'NEM': 'commodity', 'GOLD': 'commodity', 'AEM': 'commodity', 'FNV': 'commodity',
   'WPM': 'commodity', 'KGC': 'commodity', 'AGI': 'commodity', 'AG': 'commodity',
@@ -399,7 +402,7 @@ function adjustWeightsForVolatility(
 export const predictionCalculatorService = {
   /**
    * Calcula una predicción completa para un símbolo
-   * NO se cachea - cada predicción es única y debe verificarse
+   * DETERMINÍSTICO: usa previousClose para que la predicción sea estable durante el día
    */
   async calculatePrediction(
     symbol: string,
@@ -415,6 +418,11 @@ export const predictionCalculatorService = {
         logger.warn(`[PredictionCalc] No price data for ${symbol}`);
         return null;
       }
+
+      // Usar previousClose para que la predicción sea ESTABLE durante todo el día
+      // El precio en tiempo real solo cambia la predicción, causando inconsistencias
+      const basePrice = quote.previousClose || quote.price;
+      logger.info(`[PredictionCalc] Using previousClose (${basePrice}) instead of realtime price (${quote.price}) for stability`);
 
       // 2. Obtener datos históricos
       const history = await yahooService.getHistory(symbol, '3mo', '1d');
@@ -451,11 +459,11 @@ export const predictionCalculatorService = {
         symbol, companyChange1d, companyChange1w, companyChange1m
       );
 
-      // 5. Calcular predicción determinística
+      // 5. Calcular predicción determinística usando basePrice (previousClose)
       const prediction = await this.calculateFromData(
         symbol,
         type,
-        quote.price,
+        basePrice, // Usar previousClose para estabilidad
         quote.currency || 'USD',
         historical,
         technical,
