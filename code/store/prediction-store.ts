@@ -194,6 +194,7 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
               timeframeDays,
               factorScores,
               factorWeightsUsed,
+              factorBreakdown: prediction.analysisData?.factorBreakdown, // CRÍTICO para aprendizaje
               volatility: prediction.analysisData?.historical?.volatility,
               uncertaintyScore: prediction.analysisData?.uncertainty?.score,
             });

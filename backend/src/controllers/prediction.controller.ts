@@ -8,6 +8,9 @@ import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
+import { factorWeightLearningService } from '../services/ml/factor-weight-learning.service.js';
+import { probabilisticModelService } from '../services/ml/probabilistic-model.service.js';
+import { reinforcementLearningService } from '../services/ml/reinforcement-learning.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 import { trackRecordService } from '../services/prediction/track-record.service.js';
 
@@ -162,6 +165,89 @@ function computeVerificationData(
     periodHigh,
     periodLow,
   };
+}
+
+/**
+ * Entrena los modelos ML (RL y Probabilístico) con una predicción verificada
+ */
+async function trainMLModelsFromVerification(
+  prediction: Prediction,
+  verifyData: VerifyPredictionData
+): Promise<{ rlTrained: boolean; probCalibrated: boolean }> {
+  let rlTrained = false;
+  let probCalibrated = false;
+
+  try {
+    // Parsear datos históricos
+    const historicalData = prediction.historicalData ? JSON.parse(prediction.historicalData) : null;
+    const sentimentData = prediction.sentimentData ? JSON.parse(prediction.sentimentData) : null;
+    const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+
+    const volatility = historicalData?.volatility ?? prediction.volatility ?? 25;
+    const vix = sentimentData?.vix?.value ?? 20;
+    const signalSummary = factorBreakdown?.signalSummary ?? 'mixed';
+    const avgScore = factorBreakdown?.availableFactors
+      ? factorBreakdown.availableFactors.reduce((sum: number, f: { score: number }) => sum + Math.abs(f.score), 0) / factorBreakdown.availableFactors.length
+      : 30;
+
+    // Determinar timeframe en días
+    const timeframeDays = prediction.timeframeDays || 1;
+
+    // ===== ENTRENAR REINFORCEMENT LEARNING =====
+    try {
+      // Discretizar estado
+      const state = reinforcementLearningService.discretizeState({
+        vix,
+        volatility,
+        timeframeDays,
+        combinedScore: avgScore * (prediction.direction === 'up' ? 1 : prediction.direction === 'down' ? -1 : 0),
+        signalCoherence: signalSummary === 'aligned' ? 'coherent_bullish' : signalSummary === 'conflicting' ? 'mixed' : 'neutral',
+        hasUpcomingEvents: false,
+        recentAccuracy: verifyData.accuracyScore ?? 50,
+      });
+
+      // Determinar acción basada en confianza original
+      let action: 'skip' | 'predict_low' | 'predict_medium' | 'predict_high' = 'predict_medium';
+      if (prediction.confidence < 40) action = 'predict_low';
+      else if (prediction.confidence > 70) action = 'predict_high';
+
+      // Registrar experiencia
+      await reinforcementLearningService.recordExperience(
+        state,
+        action,
+        verifyData.accuracyScore ?? null,
+        verifyData.directionCorrect ?? null,
+        null
+      );
+      rlTrained = true;
+      console.log(`[ML] RL trained for ${prediction.symbol}: action=${action}, reward based on score=${verifyData.accuracyScore}`);
+    } catch (err) {
+      console.log(`[ML] RL training failed for ${prediction.symbol}:`, err);
+    }
+
+    // ===== CALIBRAR MODELO PROBABILÍSTICO =====
+    try {
+      const predictedMean = prediction.predictedChange ?? 0;
+      const predictedStdDev = volatility / Math.sqrt(252) * Math.sqrt(timeframeDays);
+      const actualChange = verifyData.actualChange ?? 0;
+
+      await probabilisticModelService.recordCalibration(
+        prediction.symbol,
+        predictedMean,
+        predictedStdDev,
+        actualChange
+      );
+      probCalibrated = true;
+      console.log(`[ML] Probabilistic model calibrated for ${prediction.symbol}: predicted=${predictedMean.toFixed(2)}%, actual=${actualChange.toFixed(2)}%`);
+    } catch (err) {
+      console.log(`[ML] Probabilistic calibration failed for ${prediction.symbol}:`, err);
+    }
+
+  } catch (err) {
+    console.log(`[ML] Error training ML models for ${prediction.symbol}:`, err);
+  }
+
+  return { rlTrained, probCalibrated };
 }
 
 export const predictionController = {
@@ -513,6 +599,7 @@ export const predictionController = {
           Object.assign(factorWeights, factorBreakdown.weightsUsed);
         }
 
+        // Actualizar clasificadores por grupo de activo
         await classifierLearningService.learnFromVerifiedPrediction({
           assetGroup: factorBreakdown.assetGroup,
           directionCorrect: verifyData.directionCorrect,
@@ -523,10 +610,28 @@ export const predictionController = {
           actualChange: verifyData.actualChange,
         });
         console.log(`[Verify] Classifier learning updated for ${factorBreakdown.assetGroup}`);
+
+        // Actualizar pesos de factores (technical, trend, news, etc.)
+        const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+          timeframeDays: prediction.timeframeDays,
+          directionCorrect: verifyData.directionCorrect,
+          accuracyScore: verifyData.accuracyScore,
+          factorScores,
+          factorWeights,
+          predictedChange: prediction.predictedChange,
+          actualChange: verifyData.actualChange,
+        });
+        if (weightLearningResult.adjusted) {
+          console.log(`[Verify] Factor weights adjusted:`, weightLearningResult.changes.join(', '));
+        }
       }
     } catch (err) {
       console.log('[Verify] Could not update classifier learning:', err);
     }
+
+    // Entrenar modelos ML (RL y Probabilístico)
+    const mlResult = await trainMLModelsFromVerification(prediction, verifyData);
+    console.log(`[Verify] ML training: RL=${mlResult.rlTrained}, Prob=${mlResult.probCalibrated}`);
 
     // Sincronizar con Python en background (no bloqueante)
     pythonTrainingService.syncAndTrain().catch(err => {
@@ -539,6 +644,7 @@ export const predictionController = {
         predictionId: verified.id,
         ...verifyData,
         predictedChange: prediction.predictedChange,
+        mlTrained: mlResult,
       },
     });
   }),
@@ -585,12 +691,66 @@ export const predictionController = {
           // No es crítico
         }
 
+        // Limpiar cache del track record para este símbolo
+        trackRecordService.clearCache(prediction.symbol);
+
+        // Aprender de la predicción verificada para ajustar clasificadores y pesos
+        try {
+          const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+          if (factorBreakdown?.assetGroup) {
+            const factorScores: Record<string, number> = {};
+            const factorWeights: Record<string, number> = {};
+            
+            if (factorBreakdown.availableFactors) {
+              for (const f of factorBreakdown.availableFactors) {
+                factorScores[f.name] = f.score;
+              }
+            }
+            if (factorBreakdown.weightsUsed) {
+              Object.assign(factorWeights, factorBreakdown.weightsUsed);
+            }
+
+            // Actualizar clasificadores por grupo de activo
+            await classifierLearningService.learnFromVerifiedPrediction({
+              assetGroup: factorBreakdown.assetGroup,
+              directionCorrect: verifyData.directionCorrect,
+              accuracyScore: verifyData.accuracyScore,
+              factorScores,
+              factorWeights,
+              predictedChange: prediction.predictedChange,
+              actualChange: verifyData.actualChange,
+            });
+            console.log(`[VerifyPending] Classifier learning updated for ${prediction.symbol} (${factorBreakdown.assetGroup})`);
+
+            // Actualizar pesos de factores (technical, trend, news, etc.)
+            const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+              timeframeDays: prediction.timeframeDays,
+              directionCorrect: verifyData.directionCorrect,
+              accuracyScore: verifyData.accuracyScore,
+              factorScores,
+              factorWeights,
+              predictedChange: prediction.predictedChange,
+              actualChange: verifyData.actualChange,
+            });
+            if (weightLearningResult.adjusted) {
+              console.log(`[VerifyPending] Factor weights adjusted for ${prediction.symbol}:`, weightLearningResult.changes.join(', '));
+            }
+          }
+        } catch (err) {
+          console.log(`[VerifyPending] Could not update classifier learning for ${prediction.symbol}:`, err);
+        }
+
+        // Entrenar modelos ML (RL y Probabilístico)
+        const mlResult = await trainMLModelsFromVerification(prediction, verifyData);
+
         results.push({
           id: prediction.id,
           symbol: prediction.symbol,
           directionCorrect: verifyData.directionCorrect,
           quality: verifyData.quality,
           priceDate: priceAtExpiry?.actualDate.toISOString().split('T')[0] || 'current',
+          learningUpdated: true,
+          mlTrained: mlResult,
         });
       } catch (error: any) {
         results.push({
@@ -601,6 +761,13 @@ export const predictionController = {
       }
     }
 
+    // Contar ML entrenados
+    const mlStats = {
+      rlTrained: results.filter(r => r.mlTrained?.rlTrained).length,
+      probCalibrated: results.filter(r => r.mlTrained?.probCalibrated).length,
+    };
+    console.log(`[VerifyPending] ML training complete: RL=${mlStats.rlTrained}, Prob=${mlStats.probCalibrated}`);
+
     // Sincronizar con Python después de verificar todas las pendientes
     const pythonSync = await pythonTrainingService.syncAndTrain();
 
@@ -609,6 +776,7 @@ export const predictionController = {
       data: {
         processed: results.length,
         results,
+        mlStats,
         pythonSync: {
           available: pythonSync.available,
           synced: pythonSync.synced,

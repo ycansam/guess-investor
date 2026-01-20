@@ -26,9 +26,9 @@ import { TechnicalAnalysis, technicalService } from '../external/technical.servi
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  probabilisticModelService,
-  reinforcementLearningService,
+    factorCorrelationService,
+    probabilisticModelService,
+    reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -323,13 +323,13 @@ function adjustWeightsForAssetGroup(
 ): Record<string, number> {
   // Obtener multiplicadores aprendidos (o estáticos si no hay aprendidos)
   const learnedMultipliers = classifierLearningService.getMultipliers(assetGroup);
-  const multipliers: Record<string, number> = learnedMultipliers || ASSET_GROUP_WEIGHT_MULTIPLIERS[assetGroup] || ASSET_GROUP_WEIGHT_MULTIPLIERS.default;
+  const multipliers = (learnedMultipliers as unknown as Record<string, number> | null) || ASSET_GROUP_WEIGHT_MULTIPLIERS[assetGroup] || ASSET_GROUP_WEIGHT_MULTIPLIERS.default;
   
   const adjustedWeights: Record<string, number> = {};
   let totalAdjusted = 0;
   
   for (const [factor, weight] of Object.entries(baseWeights)) {
-    const multiplier = (multipliers as Record<string, number>)[factor] || 1.0;
+    const multiplier = multipliers[factor] || 1.0;
     adjustedWeights[factor] = weight * multiplier;
     totalAdjusted += adjustedWeights[factor];
   }

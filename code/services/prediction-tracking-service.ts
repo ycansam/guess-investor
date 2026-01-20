@@ -101,6 +101,7 @@ class PredictionTrackingService {
     timeframeDays?: number;
     factorScores?: Record<string, number>;
     factorWeightsUsed?: Record<string, number>;
+    factorBreakdown?: any; // El objeto completo para aprendizaje de pesos
     volatility?: number;
     uncertaintyScore?: number;
   }): Promise<{ id: string }> {
@@ -119,6 +120,7 @@ class PredictionTrackingService {
         timeframe: data.timeframe,
         timeframeDays: data.timeframeDays || 1,
         volatility: data.volatility,
+        factorBreakdown: data.factorBreakdown, // CRÍTICO: pasar el factorBreakdown completo para aprendizaje
         factorWeights: data.factorWeightsUsed,
         uncertaintyScore: data.uncertaintyScore,
       });

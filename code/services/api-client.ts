@@ -715,6 +715,23 @@ export const apiClient = {
   },
 
   /**
+   * Forzar re-aprendizaje de pesos y clasificadores desde predicciones verificadas
+   */
+  forceRelearn: (): Promise<{
+    message: string;
+    weightsLearned: number;
+    classifiersLearned: number;
+    totalVerified: number;
+    withFactorData: number;
+    withoutFactorData: number;
+    errors: string[];
+    details: string[];
+    pythonResult: { success: boolean; message: string };
+  }> => {
+    return post('/training/force-relearn', {});
+  },
+
+  /**
    * Exportar todos los datos de training
    */
   exportTrainingData: (): Promise<any> => {

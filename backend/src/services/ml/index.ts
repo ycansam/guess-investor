@@ -44,6 +44,10 @@ export {
     type AssetProfile
 } from './python-ml.service.js';
 
+export {
+    factorWeightLearningService
+} from './factor-weight-learning.service.js';
+
 /**
  * Inicializa todos los servicios ML que requieren carga de estado
  */

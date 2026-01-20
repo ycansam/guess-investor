@@ -36,10 +36,13 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('weights');
   const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeType>('intraday');
   const [selectedAssetGroup, setSelectedAssetGroup] = useState<AssetGroupType>('large_cap_stock');
+  const [isRelearning, setIsRelearning] = useState(false);
+  const [relearnResult, setRelearnResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       loadData();
+      setRelearnResult(null);
     }
   }, [visible]);
 
@@ -57,6 +60,22 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       setError(err instanceof Error ? err.message : 'Error cargando datos ML');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForceRelearn = async () => {
+    setIsRelearning(true);
+    setRelearnResult(null);
+    try {
+      const result = await apiClient.forceRelearn();
+      // Usar el mensaje del backend que ya tiene el contexto completo
+      setRelearnResult(result.message);
+      // Recargar datos después del aprendizaje
+      await loadData();
+    } catch (err) {
+      setRelearnResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsRelearning(false);
     }
   };
 
@@ -161,6 +180,34 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
             <Text style={{ color: colors.danger }}>Rojo</Text>: El ML aprendió que es menos importante{'\n'}
             <Text style={{ color: colors.textSecondary }}>Gris</Text>: Similar al peso base
           </Text>
+        </View>
+
+        {/* Force Relearn Button */}
+        <View style={styles.forceRelearnContainer}>
+          <TouchableOpacity 
+            style={[styles.forceRelearnButton, isRelearning && styles.forceRelearnButtonDisabled]}
+            onPress={handleForceRelearn}
+            disabled={isRelearning}
+          >
+            {isRelearning ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={styles.forceRelearnText}>🔄 Forzar Re-aprendizaje</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.forceRelearnHint}>
+            Usa este botón si los pesos no se actualizaron automáticamente
+          </Text>
+          {relearnResult && (
+            <View style={[
+              styles.relearnResultBox, 
+              relearnResult.startsWith('❌') ? styles.relearnResultBoxError : 
+              relearnResult.startsWith('⚠️') ? styles.relearnResultBoxWarning : 
+              styles.relearnResultBoxSuccess
+            ]}>
+              <Text style={styles.relearnResultText}>{relearnResult}</Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -872,5 +919,61 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  // Force Relearn styles
+  forceRelearnContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  forceRelearnButton: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 200,
+  },
+  forceRelearnButtonDisabled: {
+    backgroundColor: colors.neutralLight,
+  },
+  forceRelearnText: {
+    color: colors.background,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  forceRelearnHint: {
+    marginTop: 8,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  relearnResultBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 8,
+  },
+  relearnResultBoxSuccess: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  relearnResultBoxWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  relearnResultBoxError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  relearnResultText: {
+    fontSize: 12,
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
