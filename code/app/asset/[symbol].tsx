@@ -213,7 +213,8 @@ export default function AssetDetailScreen() {
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
   const [priceInEur, setPriceInEur] = useState<number | null>(null);
-  const [showTableView, setShowTableView] = useState(false); // Toggle gráfico/tabla
+  // Modo de vista: 'chart' (con predicción), 'history' (solo histórico), 'table'
+  const [viewMode, setViewMode] = useState<'chart' | 'history' | 'table'>('chart');
   
   // Estado para el modal de tendencias
   const [showTrendsModal, setShowTrendsModal] = useState(false);
@@ -790,6 +791,26 @@ export default function AssetDetailScreen() {
     return (maxValue * 1.005) - yAxisOffset;
   }, [chartData, predictionData, yAxisOffset]);
 
+  // Cálculos específicos para modo histórico (sin predicción)
+  const historyYAxisOffset = useMemo(() => {
+    if (chartData.length === 0) return 0;
+    const validValues = chartData.map(d => d.value).filter(v => v !== undefined && v !== null && !isNaN(v) && isFinite(v) && v > 0);
+    if (validValues.length === 0) return 0;
+    const minValue = Math.min(...validValues);
+    const maxValue = Math.max(...validValues);
+    if (minValue === maxValue) return 0;
+    const offset = minValue * 0.995;
+    return isNaN(offset) || !isFinite(offset) ? 0 : Math.floor(offset);
+  }, [chartData]);
+
+  const historyYAxisMax = useMemo(() => {
+    if (chartData.length === 0) return undefined;
+    const validValues = chartData.map(d => d.value).filter(v => v !== undefined && v !== null && !isNaN(v) && isFinite(v) && v > 0);
+    if (validValues.length === 0) return undefined;
+    const maxValue = Math.max(...validValues);
+    return (maxValue * 1.005) - historyYAxisOffset;
+  }, [chartData, historyYAxisOffset]);
+
   // Calcular spacing uniforme - se recalculará después de conocer el total de puntos
   const baseChartSpacing = useMemo(() => {
     if (chartData.length === 0) return 3;
@@ -1219,32 +1240,39 @@ export default function AssetDetailScreen() {
             : TIMEFRAME_CONFIG[selectedTimeframe].description}
         </Text>
 
-        {/* Toggle Gráfico/Tabla */}
+        {/* Toggle Gráfico/Histórico/Tabla */}
         <View style={styles.viewToggle}>
           <TouchableOpacity
-            style={[styles.viewToggleButton, !showTableView && styles.viewToggleButtonActive]}
-            onPress={() => setShowTableView(false)}
+            style={[styles.viewToggleButton, viewMode === 'chart' && styles.viewToggleButtonActive]}
+            onPress={() => setViewMode('chart')}
           >
-            <Ionicons name="analytics" size={16} color={!showTableView ? '#fff' : '#9ca3af'} />
-            <Text style={[styles.viewToggleText, !showTableView && styles.viewToggleTextActive]}>Gráfico</Text>
+            <Ionicons name="analytics" size={16} color={viewMode === 'chart' ? '#fff' : '#9ca3af'} />
+            <Text style={[styles.viewToggleText, viewMode === 'chart' && styles.viewToggleTextActive]}>Predicción</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.viewToggleButton, showTableView && styles.viewToggleButtonActive]}
-            onPress={() => setShowTableView(true)}
+            style={[styles.viewToggleButton, viewMode === 'history' && styles.viewToggleButtonActive]}
+            onPress={() => setViewMode('history')}
           >
-            <Ionicons name="list" size={16} color={showTableView ? '#fff' : '#9ca3af'} />
-            <Text style={[styles.viewToggleText, showTableView && styles.viewToggleTextActive]}>Tabla</Text>
+            <Ionicons name="trending-up" size={16} color={viewMode === 'history' ? '#fff' : '#9ca3af'} />
+            <Text style={[styles.viewToggleText, viewMode === 'history' && styles.viewToggleTextActive]}>Histórico</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewToggleButton, viewMode === 'table' && styles.viewToggleButtonActive]}
+            onPress={() => setViewMode('table')}
+          >
+            <Ionicons name="list" size={16} color={viewMode === 'table' ? '#fff' : '#9ca3af'} />
+            <Text style={[styles.viewToggleText, viewMode === 'table' && styles.viewToggleTextActive]}>Tabla</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Gráfico o Tabla */}
+        {/* Gráfico, Histórico o Tabla */}
         <View style={styles.chartContainer}>
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#6366f1" />
               <Text style={styles.loadingText}>Cargando datos...</Text>
             </View>
-          ) : showTableView ? (
+          ) : viewMode === 'table' ? (
             /* Vista de Tabla */
             <View style={styles.tableContainer}>
               <View style={styles.tableHeader}>
@@ -1284,6 +1312,113 @@ export default function AssetDetailScreen() {
                 Mostrando últimos 20 puntos históricos + predicción
               </Text>
             </View>
+          ) : viewMode === 'history' && chartData.length > 0 ? (
+            /* Vista de solo Histórico (sin predicción) */
+            <>
+              <View
+                style={styles.chartWrapper}
+                onTouchStart={() => setScrollEnabled(false)}
+                onTouchEnd={() => setScrollEnabled(true)}
+                onTouchCancel={() => setScrollEnabled(true)}
+              >
+                <LineChart
+                  data={mainChartData}
+                  width={chartWidth}
+                  height={250}
+                  spacing={baseChartSpacing}
+                  initialSpacing={0}
+                  endSpacing={0}
+                  thickness={2}
+                  color="#22c55e"
+                  hideDataPoints
+                  curved
+                  yAxisOffset={historyYAxisOffset}
+                  maxValue={historyYAxisMax}
+                  formatYLabel={(label) => formatPrice(parseFloat(label))}
+                  yAxisColor="#4b5563"
+                  xAxisColor="#4b5563"
+                  yAxisTextStyle={{ color: '#9ca3af', fontSize: 11, fontWeight: '500' }}
+                  xAxisLabelTextStyle={{ color: '#9ca3af', fontSize: 10, fontWeight: '500' }}
+                  yAxisLabelWidth={50}
+                  labelsExtraHeight={25}
+                  rulesColor="#374151"
+                  rulesType="dashed"
+                  noOfSections={4}
+                  showVerticalLines
+                  verticalLinesColor="#37415180"
+                  pointerConfig={{
+                    pointerStripHeight: 250,
+                    pointerStripWidth: 2,
+                    pointerStripColor: '#22c55e',
+                    pointerColor: '#22c55e',
+                    radius: 5,
+                    pointerLabelWidth: 140,
+                    pointerLabelHeight: 70,
+                    activatePointersOnLongPress: false,
+                    autoAdjustPointerLabelPosition: true,
+                    shiftPointerLabelY: -50,
+                    pointerVanishDelay: 500,
+                    pointerLabelComponent: (items: any[]) => {
+                      const item = items[0];
+                      
+                      let dateStr = '';
+                      let timeStr = '';
+                      
+                      const timestamp = item?.timestamp;
+                      
+                      if (timestamp) {
+                        const date = new Date(timestamp);
+                        const day = date.getDate().toString().padStart(2, '0');
+                        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                        const hours = date.getHours().toString().padStart(2, '0');
+                        const minutes = date.getMinutes().toString().padStart(2, '0');
+                        dateStr = `${day}/${month}`;
+                        timeStr = `${hours}:${minutes}`;
+                      }
+                      
+                      return (
+                        <View style={{
+                          backgroundColor: '#1e1e2e',
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#22c55e',
+                          minWidth: 100,
+                          alignItems: 'center',
+                        }}>
+                          {dateStr ? (
+                            <Text style={{ color: '#9ca3af', fontSize: 11, marginBottom: 2 }}>
+                              {dateStr} {timeStr}
+                            </Text>
+                          ) : null}
+                          <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
+                            {formatPrice(item.value)} €
+                          </Text>
+                        </View>
+                      );
+                    },
+                  }}
+                />
+              </View>
+
+              {/* Leyenda solo histórico con rango de fechas */}
+              <View style={styles.legend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: '#22c55e' }]} />
+                  <Text style={styles.legendText}>
+                    Histórico ({mainChartData.length > 0 ? (() => {
+                      const first = mainChartData[0]?.timestamp;
+                      const last = mainChartData[mainChartData.length - 1]?.timestamp;
+                      if (!first || !last) return '';
+                      const startDate = new Date(first).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+                      const endDate = new Date(last).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                      return `${startDate} → ${endDate}`;
+                    })() : ''})
+                  </Text>
+                </View>
+              </View>
+            </>
           ) : chartData.length > 0 ? (
             <>
               {/* Gráfico con 2 líneas: histórico + predicción */}

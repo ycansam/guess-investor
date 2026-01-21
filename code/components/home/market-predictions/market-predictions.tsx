@@ -110,6 +110,22 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const flatListRef = useRef<FlatList>(null);
   const isDraggingScrollbar = useRef(false);
   const lastScrollY = useRef(0);
+  
+  // Ref para acceder a displayedAssets sin causar re-renders del callback
+  const displayedAssetsRef = useRef<MarketAsset[]>([]);
+  useEffect(() => {
+    displayedAssetsRef.current = displayedAssets;
+  }, [displayedAssets]);
+  
+  // Refs para loadMore sin stale closures
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  useEffect(() => {
+    loadingMoreRef.current = loadingMore;
+  }, [loadingMore]);
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
 
   // PanResponder para arrastrar la scrollbar
   const scrollbarPanResponder = useRef(
@@ -317,24 +333,56 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
   // Cargar más datos (infinite scroll)
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    console.log('[MarketPredictions] loadMore called - loadingMore:', loadingMore, 'hasMore:', hasMore);
+    if (loadingMore || !hasMore) {
+      console.log('[MarketPredictions] loadMore skipped');
+      return;
+    }
     
+    console.log('[MarketPredictions] loadMore starting...');
     setLoadingMore(true);
     try {
-      const nextPage = page + 1;
-      const result = await marketDataService.getAssetsPaginated(
-        nextPage,
-        selectedCategory || undefined,
-        debouncedSearchQuery
-      );
+      let currentPage = page;
+      let newAssets: MarketAsset[] = [];
+      let moreAvailable = true;
       
-      // Aplicar el mismo ordenamiento a los nuevos datos
-      const predSymbols = new Set(cachedPredictions.map(p => p.symbol));
-      const sortedNew = applySorting(result.assets, exploreSortBy, predSymbols, favoriteSymbols);
+      // Usar ref para evitar dependencia en el callback
+      const existingSymbols = new Set(displayedAssetsRef.current.map(a => a.symbol.toUpperCase()));
       
-      setDisplayedAssets(prev => [...prev, ...sortedNew]);
-      setHasMore(result.hasMore);
-      setPage(nextPage);
+      // Buscar páginas hasta encontrar al menos 5 activos nuevos o no haya más
+      while (newAssets.length < 5 && moreAvailable) {
+        currentPage++;
+        const result = await marketDataService.getAssetsPaginated(
+          currentPage,
+          selectedCategory || undefined,
+          debouncedSearchQuery
+        );
+        
+        // Filtrar assets que ya tenemos
+        const pageNewAssets = result.assets.filter(a => !existingSymbols.has(a.symbol.toUpperCase()));
+        
+        // Añadir los nuevos a nuestra lista
+        pageNewAssets.forEach(a => {
+          existingSymbols.add(a.symbol.toUpperCase());
+          newAssets.push(a);
+        });
+        
+        moreAvailable = result.hasMore;
+        
+        // Límite de seguridad - no buscar más de 5 páginas a la vez
+        if (currentPage - page >= 5) break;
+      }
+      
+      console.log('[MarketPredictions] Loaded', newAssets.length, 'new assets from pages', page + 1, 'to', currentPage);
+      
+      if (newAssets.length > 0) {
+        const predSymbols = new Set(cachedPredictions.map(p => p.symbol));
+        const sortedNew = applySorting(newAssets, exploreSortBy, predSymbols, favoriteSymbols);
+        setDisplayedAssets(prev => [...prev, ...sortedNew]);
+      }
+      
+      setHasMore(moreAvailable);
+      setPage(currentPage);
     } catch (error) {
       console.error('[MarketPredictions] Error loading more:', error);
     } finally {
@@ -1235,12 +1283,22 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           renderItem={renderAsset}
           keyExtractor={(item, index) => `${item.symbol}-${index}`}
           ListHeaderComponent={renderHeader}
-          ListFooterComponent={loadingMore ? (
-            <View style={styles.loadingFooter}>
-              <ActivityIndicator size="small" color="#6b7280" />
-              <Text style={styles.loadingText}>Cargando más...</Text>
-            </View>
-          ) : null}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.loadingFooter}>
+                <ActivityIndicator size="small" color="#3b82f6" />
+                <Text style={styles.loadingText}>Cargando más activos...</Text>
+              </View>
+            ) : hasMore ? (
+              <View style={styles.loadingFooter}>
+                <Text style={styles.loadMoreHint}>↓ Desliza para cargar más</Text>
+              </View>
+            ) : sortedAssets.length > 0 ? (
+              <View style={styles.loadingFooter}>
+                <Text style={styles.endOfListText}>— Fin de la lista ({sortedAssets.length} activos) —</Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             loading ? (
               <View style={styles.emptyContainer}>
@@ -1258,7 +1316,11 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
             )
           }
           onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
+          onEndReachedThreshold={0.3}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          removeClippedSubviews={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1272,10 +1334,20 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
             sortedAssets.length === 0 && styles.emptyListContent,
           ]}
           showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
+          onScroll={(event) => {
+            // Update animated value
+            scrollY.setValue(event.nativeEvent.contentOffset.y);
+            
+            // Manual check for end of list usando refs para evitar stale closures
+            const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+            const paddingToBottom = 300;
+            const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+            
+            if (isCloseToBottom && hasMoreRef.current && !loadingMoreRef.current) {
+              console.log('[MarketPredictions] Near bottom, triggering loadMore');
+              loadMore();
+            }
+          }}
           onContentSizeChange={(w, h) => {
             contentHeightRef.current = h;
             setScrollbarVisible(h > scrollViewHeightRef.current);
@@ -2164,5 +2236,16 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 13,
     marginTop: 8,
+  },
+  loadMoreHint: {
+    color: '#4b5563',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  endOfListText: {
+    color: '#374151',
+    fontSize: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
