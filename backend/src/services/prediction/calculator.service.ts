@@ -419,14 +419,23 @@ export const predictionCalculatorService = {
         return null;
       }
 
-      // Usar previousClose para que la predicción sea ESTABLE durante todo el día
-      // El precio en tiempo real solo cambia la predicción, causando inconsistencias
-      const basePrice = quote.previousClose || quote.price;
-      logger.info(`[PredictionCalc] Using previousClose (${basePrice}) instead of realtime price (${quote.price}) for stability`);
-
-      // 2. Obtener datos históricos
+      // 2. Obtener datos históricos (necesarios para determinar precio base correcto)
       const history = await yahooService.getHistory(symbol, '3mo', '1d');
       const historical = this.processHistoricalData(history);
+
+      // IMPORTANTE: Usar el último precio de cierre del historial como base
+      // previousClose de Yahoo puede ser incorrecto para futuros/commodities
+      // El historial siempre tiene los cierres correctos de cada día
+      let basePrice: number;
+      if (history.length > 0) {
+        const lastHistoricalClose = history[history.length - 1].close;
+        basePrice = lastHistoricalClose;
+        logger.info(`[PredictionCalc] Using last historical close (${basePrice}) as base price. Quote price: ${quote.price}, previousClose: ${quote.previousClose}`);
+      } else {
+        // Fallback si no hay historial
+        basePrice = quote.previousClose || quote.price;
+        logger.warn(`[PredictionCalc] No historical data, using previousClose (${basePrice}) as fallback`);
+      }
 
       // 3. Obtener todos los datos en paralelo
       const [

@@ -237,6 +237,7 @@ model TrainingCache {
   direction       String
   currentPrice    Float
   targetPrice     Float
+  currency        String?  // Moneda del activo (EUR, USD, GBP, etc.)
   
   // Análisis (JSON)
   analysisData    String?

@@ -93,6 +93,7 @@ ${directionEmoji} Predicción: ${directionText} (${prediction.predictedChange >=
         asset: prediction.asset,
         symbol: prediction.symbol,
         assetType: prediction.assetType as any,
+        currency: prediction.currency, // Moneda del activo
         direction: prediction.direction,
         confidence: prediction.confidence,
         timeframe: prediction.timeframe,

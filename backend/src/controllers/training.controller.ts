@@ -61,6 +61,7 @@ export const trainingController = {
       direction: data.direction,
       currentPrice: data.currentPrice,
       targetPrice: data.targetPrice,
+      currency: data.currency, // IMPORTANTE: Guardar la moneda
       analysisData: data.analysisData,
       expiresAt: new Date(data.expiresAt),
     });

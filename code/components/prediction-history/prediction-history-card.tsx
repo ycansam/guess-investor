@@ -12,6 +12,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { currencyService } from '../../services/currency-service';
 import { predictionTrackingService, TrackedPrediction } from '../../services/prediction-tracking-service';
 
 interface PredictionHistoryCardProps {
@@ -114,6 +115,19 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
     if (days <= 7) return `${days}d`;
     if (days <= 30) return `${days}d`;
     return timeframe;
+  };
+
+  // Formatear precio de forma compacta, convirtiendo a EUR si es necesario
+  const formatPrice = (price: number | null | undefined, currency?: string) => {
+    if (price === null || price === undefined) return '?';
+    
+    // Convertir a EUR usando el servicio de moneda (síncrono)
+    const priceInEur = currencyService.convertToEURSync(price, currency || 'EUR');
+    
+    if (priceInEur >= 1000) return priceInEur.toFixed(0);
+    if (priceInEur >= 100) return priceInEur.toFixed(1);
+    if (priceInEur >= 1) return priceInEur.toFixed(2);
+    return priceInEur.toFixed(4);
   };
 
   // Color según calidad
@@ -287,6 +301,10 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
                       </Text>
                     </View>
                   </View>
+                  {/* Precio base → Precio objetivo */}
+                  <Text style={styles.priceRange}>
+                    {formatPrice(pred.currentPrice, pred.currency)} → {formatPrice(pred.targetPrice, pred.currency)}
+                  </Text>
                   <Text style={styles.predictionChange}>
                     {pred.predictedChange >= 0 ? '+' : ''}{pred.predictedChange.toFixed(2)}%
                     <Text style={styles.predictionConfidence}> ({pred.confidence}% conf.)</Text>
@@ -490,6 +508,12 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#818cf8',
     fontWeight: '600',
+  },
+  priceRange: {
+    fontSize: 11,
+    color: '#9ca3af',
+    fontWeight: '400',
+    marginBottom: 2,
   },
   predictionChange: {
     fontSize: 14,

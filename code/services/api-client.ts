@@ -417,6 +417,27 @@ export const apiClient = {
     return response.prices;
   },
 
+  /**
+   * Limpiar caché de historial de un símbolo específico
+   */
+  clearSymbolCache: (symbol: string): Promise<{ symbol: string; clearedEntries: number; message: string }> => {
+    return del(`/assets/${encodeURIComponent(symbol)}/cache`);
+  },
+
+  /**
+   * Obtener estadísticas del caché de historial
+   */
+  getCacheStats: (): Promise<{ entries: number; symbols: string[] }> => {
+    return get('/assets/cache/stats');
+  },
+
+  /**
+   * Limpiar todo el caché de historial
+   */
+  clearAllCache: (): Promise<{ clearedEntries: number; message: string }> => {
+    return del('/assets/cache');
+  },
+
   // -------------------------------------------------------------------------
   // ANALYSIS
   // -------------------------------------------------------------------------
@@ -497,6 +518,7 @@ export const apiClient = {
     symbol: string;
     asset?: string;
     assetType?: string;
+    currency?: string; // Moneda del activo
     direction: string;
     predictedChange: number;
     predictedPriceMin?: number;
@@ -661,6 +683,7 @@ export const apiClient = {
     direction: string;
     currentPrice: number;
     targetPrice: number;
+    currency?: string;
     analysisData?: any;
     expiresAt: string;
   }): Promise<any> => {

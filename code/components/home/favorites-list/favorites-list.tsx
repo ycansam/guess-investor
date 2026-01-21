@@ -17,6 +17,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { currencyService } from '../../../services/currency-service';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { ALL_ASSETS, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { TIMEFRAME_INFO, trainingCacheService, TrainingPrediction } from '../../../services/training-cache-service';
@@ -27,7 +28,6 @@ const BREAKPOINTS = {
 };
 
 const MAX_CONTENT_WIDTH = 800;
-const USD_TO_EUR = 0.92;
 
 interface FavoritesListProps {
   onFavoritesChange?: () => void;
@@ -351,7 +351,7 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
                   
                   {pred.targetPrice !== undefined && (
                     <Text style={styles.tooltipTarget}>
-                      → {formatPrice(pred.targetPrice, 'EUR')}
+                      → {formatPrice(pred.targetPrice, pred.currency || 'EUR')}
                     </Text>
                   )}
                 </View>
@@ -398,10 +398,8 @@ export function FavoritesList({ onFavoritesChange }: FavoritesListProps) {
 function formatPrice(price?: number, currency?: string): string {
   if (price === undefined) return '-';
   
-  let priceInEur = price;
-  if (currency === 'USD') {
-    priceInEur = price * USD_TO_EUR;
-  }
+  // Convertir a EUR usando el servicio de moneda
+  const priceInEur = currencyService.convertToEURSync(price, currency || 'EUR');
   
   if (priceInEur >= 1000) {
     return `€${priceInEur.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

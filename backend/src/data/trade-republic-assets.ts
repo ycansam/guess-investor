@@ -102,12 +102,20 @@ export const tradeRepublicAssets: TradeRepublicAsset[] = [
     keywords: ['silver', 'plata', 'wisdomtree', 'physical silver', 'plata fisica'],
   },
   {
-    symbol: 'SIVR.MI',
+    symbol: 'SSLN.L',
     name: 'iShares Physical Silver ETC',
     type: 'ETC',
     isin: 'IE00B4NCWG09',
     category: 'silver',
-    keywords: ['silver', 'plata', 'ishares', 'physical silver', 'plata fisica'],
+    keywords: ['silver', 'plata', 'ishares', 'physical silver', 'plata fisica', 'lbma', 'ppfd'],
+  },
+  {
+    symbol: 'ISLN.L',
+    name: 'iShares Physical Silver ETC (USD)',
+    type: 'ETC',
+    isin: 'IE00B4NCWG09',
+    category: 'silver',
+    keywords: ['silver', 'plata', 'ishares', 'physical silver', 'plata fisica', 'usd'],
   },
   {
     symbol: 'XAD3.MI',

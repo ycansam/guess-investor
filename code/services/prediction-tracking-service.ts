@@ -14,6 +14,7 @@ export interface TrackedPrediction {
   symbol: string;
   asset: string;
   assetType: string;
+  currency?: string; // Moneda original del activo (EUR, USD, GBP, etc.)
   
   // Datos de la predicción
   createdAt: string;
@@ -91,6 +92,7 @@ class PredictionTrackingService {
     symbol: string;
     asset?: string;
     assetType?: string;
+    currency?: string; // Moneda del activo
     direction: string;
     predictedChange: number;
     predictedPriceMin?: number;
@@ -111,6 +113,7 @@ class PredictionTrackingService {
         symbol: data.symbol,
         asset: data.asset,
         assetType: data.assetType,
+        currency: data.currency,
         direction: data.direction,
         predictedChange: data.predictedChange,
         predictedPriceMin: data.predictedPriceMin,
@@ -224,6 +227,7 @@ class PredictionTrackingService {
       symbol: p.symbol,
       asset: p.asset || p.symbol,
       assetType: p.assetType,
+      currency: p.currency, // IMPORTANTE: Mapear la moneda para conversión correcta
       createdAt: p.createdAt,
       expiresAt: p.expiresAt,
       timeframeDays: p.timeframeDays,

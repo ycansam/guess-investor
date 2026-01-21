@@ -330,6 +330,7 @@ export const predictionController = {
       symbol,
       asset,
       assetType,
+      currency,
       timeframe,
       timeframeDays,
       direction,
@@ -374,6 +375,7 @@ export const predictionController = {
       symbol: normalizedSymbol,
       asset,
       assetType: assetType || 'stock',
+      currency: currency || 'EUR', // Moneda del activo
       timeframe: timeframe || '1 día',
       timeframeDays: days,
       direction,

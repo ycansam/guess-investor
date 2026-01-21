@@ -106,6 +106,7 @@ function toInvestmentPrediction(
       asset: calc.asset,
       symbol: calc.symbol,
       assetType: calc.assetType as AssetType,
+      currency: calc.currency, // IMPORTANTE: Pasar la moneda real del activo
       currentPrice: calc.currentPrice,
       predictedPrice: calc.predictedPriceMax,
       predictedPriceMin: calc.predictedPriceMin,
@@ -146,6 +147,7 @@ function toInvestmentPrediction(
       asset: ad.asset,
       symbol: ad.symbol,
       assetType: ad.assetType as AssetType,
+      currency: ad.currency || training.currency, // IMPORTANTE: Pasar la moneda real del activo (fallback a training.currency)
       currentPrice: ad.currentPrice,
       predictedPrice: ad.predictedPriceMax,
       predictedPriceMin: ad.predictedPriceMin,
@@ -212,6 +214,7 @@ export default function AssetDetailScreen() {
   const [lastPriceForPrediction, setLastPriceForPrediction] = useState<number>(0);
   const [lastTimestamp, setLastTimestamp] = useState<number>(0);
   const [priceInEur, setPriceInEur] = useState<number | null>(null);
+  const [showTableView, setShowTableView] = useState(false); // Toggle gráfico/tabla
   
   // Estado para el modal de tendencias
   const [showTrendsModal, setShowTrendsModal] = useState(false);
@@ -469,8 +472,16 @@ export default function AssetDetailScreen() {
         const investmentPred = toInvestmentPrediction(pred, null, symbol, selectedTimeframe);
         setFullPrediction(investmentPred);
 
-        // Guardar en cache para que persista al cambiar timeframes
-        const targetPrice = lastPriceForPrediction * (1 + pred.predictedChange / 100);
+        // IMPORTANTE: Usar precios del backend para consistencia
+        // pred.currentPrice = previousClose usado en el cálculo
+        // Usamos lastPriceForPrediction para el GRÁFICO (conexión visual)
+        // pero guardamos pred.currentPrice para el HISTORIAL (valor real del cálculo)
+        const backendBasePrice = pred.currentPrice;
+        const backendTargetPrice = (pred.predictedPriceMin + pred.predictedPriceMax) / 2;
+        
+        // Para el gráfico, calcular el targetPrice desde el último punto visible
+        const chartTargetPrice = lastPriceForPrediction * (1 + pred.predictedChange / 100);
+        
         await trainingCacheService.set(symbol, selectedTimeframe as TrainingTimeframe, {
           symbol,
           timeframe: selectedTimeframe as TrainingTimeframe,
@@ -479,8 +490,10 @@ export default function AssetDetailScreen() {
           direction: pred.direction,
           confidence: pred.confidence,
           predictedChange: pred.predictedChange,
-          currentPrice: lastPriceForPrediction,
-          targetPrice,
+          // Guardar precio del backend para historial consistente
+          currentPrice: backendBasePrice,
+          targetPrice: backendTargetPrice,
+          currency: pred.currency, // IMPORTANTE: Guardar la moneda real del activo
           reasoning: investmentPred?.reasoning || '',
           analysisData: pred,
           createdAt: new Date(),
@@ -492,10 +505,14 @@ export default function AssetDetailScreen() {
             symbol,
             asset: assetData?.name || symbol,
             assetType,
+            currency: pred.currency, // IMPORTANTE: Guardar la moneda real del activo
             direction: pred.direction,
             predictedChange: pred.predictedChange,
             confidence: pred.confidence,
-            currentPrice: lastPriceForPrediction,
+            currentPrice: backendBasePrice,
+            predictedPriceMin: pred.predictedPriceMin,
+            predictedPriceMax: pred.predictedPriceMax,
+            targetPrice: backendTargetPrice,
             timeframe: selectedTimeframe,
             timeframeDays: predictionDays,
             volatility: pred.historical?.volatility,
@@ -528,16 +545,17 @@ export default function AssetDetailScreen() {
         const totalMs = endTime - startTime;
 
         // Guardar metadata de la predicción
+        // Para el gráfico usamos chartTargetPrice (desde último punto visible)
         setPredictionMeta({
           startTimestamp: startTime,
           endTimestamp: endTime,
           startPrice: lastPriceForPrediction,
-          targetPrice,
+          targetPrice: chartTargetPrice,
         });
 
         for (let i = 0; i <= steps; i++) {
           const progress = i / steps;
-          const interpolatedValue = lastPriceForPrediction + (targetPrice - lastPriceForPrediction) * progress;
+          const interpolatedValue = lastPriceForPrediction + (chartTargetPrice - lastPriceForPrediction) * progress;
           const timestamp = startTime + (totalMs * progress);
           const date = new Date(timestamp);
           // Solo mostrar etiqueta en el último punto (fecha objetivo)
@@ -630,9 +648,11 @@ export default function AssetDetailScreen() {
         const investmentPred = toInvestmentPrediction(null, cached, symbol, selectedTimeframe);
         setFullPrediction(investmentPred);
         
-        // Usar precio y timestamp de cuando se creó la predicción
-        const predictionStartPrice = cached.currentPrice || lastPriceForPrediction;
-        const targetPrice = cached.targetPrice || predictionStartPrice * (1 + cached.predictedChange / 100);
+        // IMPORTANTE: Para el gráfico, usamos el precio actual y recalculamos el objetivo
+        // con el mismo % de cambio predicho. Esto evita inconsistencias visuales.
+        // El % de cambio original (cached.predictedChange) se mantiene intacto.
+        const predictionStartPrice = lastPriceForPrediction;
+        const targetPrice = lastPriceForPrediction * (1 + cached.predictedChange / 100);
         const config = TIMEFRAME_CONFIG[selectedTimeframe];
         let predictionDays = config.predictionDays;
         if (selectedTimeframe === 'longterm') {
@@ -640,17 +660,20 @@ export default function AssetDetailScreen() {
         }
         
         // Calcular timestamps de inicio y fin de la predicción
+        // IMPORTANTE: Usar lastTimestamp del histórico para que el gráfico conecte bien,
+        // pero mantener la fecha de expiración basada en cuando se creó la predicción
         const createdAtTime = cached.createdAt ? new Date(cached.createdAt).getTime() : Date.now();
+        const graphStartTime = lastTimestamp || createdAtTime; // Usar timestamp del último dato histórico
         const msPerDay = 24 * 60 * 60 * 1000;
         
-        // Calcular el endTime como las 17:30 del día de vencimiento
+        // Calcular el endTime como las 17:30 del día de vencimiento (desde la creación original)
         const endDate = new Date(createdAtTime + predictionDays * msPerDay);
         endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
         const predictionEndTime = endDate.getTime();
         
         // Guardar metadata de la predicción
         setPredictionMeta({
-          startTimestamp: createdAtTime,
+          startTimestamp: graphStartTime,
           endTimestamp: predictionEndTime,
           startPrice: predictionStartPrice,
           targetPrice,
@@ -664,6 +687,7 @@ export default function AssetDetailScreen() {
             symbol,
             asset: cached.name || symbol,
             assetType,
+            currency: cached.analysisData?.currency, // IMPORTANTE: Guardar la moneda real del activo
             direction: cached.direction,
             predictedChange: cached.predictedChange,
             confidence: cached.confidence,
@@ -676,15 +700,15 @@ export default function AssetDetailScreen() {
           console.warn('[AssetDetail] Error tracking cached prediction:', trackError);
         }
         
-        // Crear puntos de predicción desde el momento de creación hasta el final
+        // Crear puntos de predicción desde el último dato histórico hasta el final
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
-        const totalMs = predictionEndTime - createdAtTime;
+        const totalMs = predictionEndTime - graphStartTime;
         
         for (let i = 0; i <= steps; i++) {
           const progress = i / steps;
           const interpolatedValue = predictionStartPrice + (targetPrice - predictionStartPrice) * progress;
-          const timestamp = createdAtTime + (totalMs * progress);
+          const timestamp = graphStartTime + (totalMs * progress);
           const date = new Date(timestamp);
           const label = i === steps ? `${date.getDate()}/${date.getMonth() + 1}` : '';
           
@@ -1190,12 +1214,70 @@ export default function AssetDetailScreen() {
             : TIMEFRAME_CONFIG[selectedTimeframe].description}
         </Text>
 
-        {/* Gráfico */}
+        {/* Toggle Gráfico/Tabla */}
+        <View style={styles.viewToggle}>
+          <TouchableOpacity
+            style={[styles.viewToggleButton, !showTableView && styles.viewToggleButtonActive]}
+            onPress={() => setShowTableView(false)}
+          >
+            <Ionicons name="analytics" size={16} color={!showTableView ? '#fff' : '#9ca3af'} />
+            <Text style={[styles.viewToggleText, !showTableView && styles.viewToggleTextActive]}>Gráfico</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewToggleButton, showTableView && styles.viewToggleButtonActive]}
+            onPress={() => setShowTableView(true)}
+          >
+            <Ionicons name="list" size={16} color={showTableView ? '#fff' : '#9ca3af'} />
+            <Text style={[styles.viewToggleText, showTableView && styles.viewToggleTextActive]}>Tabla</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Gráfico o Tabla */}
         <View style={styles.chartContainer}>
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#6366f1" />
-              <Text style={styles.loadingText}>Cargando gráfico...</Text>
+              <Text style={styles.loadingText}>Cargando datos...</Text>
+            </View>
+          ) : showTableView ? (
+            /* Vista de Tabla */
+            <View style={styles.tableContainer}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderCell, { flex: 1.5 }]}>Fecha/Hora</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Precio</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Tipo</Text>
+              </View>
+              <ScrollView style={styles.tableBody} nestedScrollEnabled>
+                {/* Datos históricos */}
+                {mainChartData.slice(-20).map((point, index) => {
+                  const date = new Date(point.timestamp || 0);
+                  return (
+                    <View key={`hist-${index}`} style={styles.tableRow}>
+                      <Text style={[styles.tableCell, { flex: 1.5 }]}>
+                        {date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })} {date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                      <Text style={[styles.tableCell, { flex: 1 }]}>{formatPrice(point.value)} €</Text>
+                      <Text style={[styles.tableCell, styles.tableCellHistoric, { flex: 1 }]}>Histórico</Text>
+                    </View>
+                  );
+                })}
+                {/* Datos de predicción */}
+                {predictionData.filter(p => p.isPrediction).map((point, index) => {
+                  const date = new Date(point.timestamp || 0);
+                  return (
+                    <View key={`pred-${index}`} style={[styles.tableRow, styles.tableRowPrediction]}>
+                      <Text style={[styles.tableCell, { flex: 1.5 }]}>
+                        {date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })} {date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                      <Text style={[styles.tableCell, { flex: 1 }]}>{formatPrice(point.value)} €</Text>
+                      <Text style={[styles.tableCell, styles.tableCellPrediction, { flex: 1 }]}>Predicción</Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+              <Text style={styles.tableFooter}>
+                Mostrando últimos 20 puntos históricos + predicción
+              </Text>
             </View>
           ) : chartData.length > 0 ? (
             <>
@@ -1350,22 +1432,11 @@ export default function AssetDetailScreen() {
                 <Text
                   style={[
                     styles.predictionValue,
-                    { color: (() => {
-                      // Calcular el cambio actual desde el precio de ahora al objetivo (ambos en EUR)
-                      const currentPriceEur = lastPriceForPrediction || 0;
-                      const targetPrice = predictionMeta?.targetPrice || currentPriceEur * (1 + (prediction.change ?? 0) / 100);
-                      const actualChange = currentPriceEur > 0 ? ((targetPrice - currentPriceEur) / currentPriceEur) * 100 : (prediction.change ?? 0);
-                      return actualChange >= 0 ? '#22c55e' : '#ef4444';
-                    })() },
+                    { color: (prediction.change ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
                   ]}
                 >
-                  {(() => {
-                    // Mostrar el cambio real desde el precio actual al objetivo (ambos en EUR)
-                    const currentPriceEur = lastPriceForPrediction || 0;
-                    const targetPrice = predictionMeta?.targetPrice || currentPriceEur * (1 + (prediction.change ?? 0) / 100);
-                    const actualChange = currentPriceEur > 0 ? ((targetPrice - currentPriceEur) / currentPriceEur) * 100 : (prediction.change ?? 0);
-                    return `${actualChange >= 0 ? '+' : ''}${actualChange.toFixed(2)}%`;
-                  })()}
+                  {/* Mostrar el cambio predicho original - es el valor calculado por el modelo */}
+                  {`${(prediction.change ?? 0) >= 0 ? '+' : ''}${(prediction.change ?? 0).toFixed(2)}%`}
                 </Text>
               </View>
               <View style={styles.predictionItem}>
@@ -1683,5 +1754,86 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     flex: 1,
+  },
+  // Estilos para toggle gráfico/tabla
+  viewToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#1a1a2e',
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 12,
+  },
+  viewToggleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  viewToggleButtonActive: {
+    backgroundColor: '#6366f1',
+  },
+  viewToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9ca3af',
+  },
+  viewToggleTextActive: {
+    color: '#fff',
+  },
+  // Estilos para la tabla
+  tableContainer: {
+    backgroundColor: '#111111',
+    borderRadius: 12,
+    overflow: 'hidden',
+    maxHeight: 350,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#1a1a2e',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+  },
+  tableHeaderCell: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+  },
+  tableBody: {
+    maxHeight: 280,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1f1f2e',
+  },
+  tableRowPrediction: {
+    backgroundColor: '#1a1a3e',
+  },
+  tableCell: {
+    fontSize: 12,
+    color: '#e5e7eb',
+  },
+  tableCellHistoric: {
+    color: '#22c55e',
+    fontWeight: '600',
+  },
+  tableCellPrediction: {
+    color: '#818cf8',
+    fontWeight: '600',
+  },
+  tableFooter: {
+    fontSize: 11,
+    color: '#6b7280',
+    textAlign: 'center',
+    paddingVertical: 8,
+    backgroundColor: '#0a0a0f',
   },
 });

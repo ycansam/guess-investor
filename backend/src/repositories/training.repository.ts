@@ -18,6 +18,7 @@ export interface TrainingCacheData {
   direction: string;
   currentPrice: number;
   targetPrice: number;
+  currency?: string;
   analysisData?: any;
   expiresAt: Date;
 }
@@ -62,6 +63,7 @@ export const trainingRepository = {
         direction: data.direction,
         currentPrice: data.currentPrice,
         targetPrice: data.targetPrice,
+        currency: data.currency,
         analysisData: data.analysisData ? JSON.stringify(data.analysisData) : null,
         expiresAt: data.expiresAt,
       },
@@ -71,6 +73,7 @@ export const trainingRepository = {
         direction: data.direction,
         currentPrice: data.currentPrice,
         targetPrice: data.targetPrice,
+        currency: data.currency,
         analysisData: data.analysisData ? JSON.stringify(data.analysisData) : null,
         expiresAt: data.expiresAt,
       },

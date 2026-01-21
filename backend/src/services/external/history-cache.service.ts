@@ -184,6 +184,27 @@ export const historyCacheService = {
   },
   
   /**
+   * Limpiar caché de un símbolo específico (todos los intervalos)
+   */
+  clearSymbol(symbol: string): number {
+    const upperSymbol = symbol.toUpperCase();
+    let cleared = 0;
+    
+    for (const key of historyCache.keys()) {
+      if (key.startsWith(`${upperSymbol}:`)) {
+        historyCache.delete(key);
+        cleared++;
+      }
+    }
+    
+    if (cleared > 0) {
+      logger.info(`[HistoryCache] Cleared ${cleared} cache entries for ${upperSymbol}`);
+    }
+    
+    return cleared;
+  },
+  
+  /**
    * Limpiar todo el caché
    */
   clear(): void {

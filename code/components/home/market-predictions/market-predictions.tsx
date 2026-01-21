@@ -7,30 +7,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  FlatList,
-  PanResponder,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  useWindowDimensions,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    FlatList,
+    PanResponder,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-  TIMEFRAME_INFO,
-  trainingCacheService,
-  TrainingPrediction,
-  TrainingTimeframe,
+    TIMEFRAME_INFO,
+    trainingCacheService,
+    TrainingPrediction,
+    TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -424,11 +424,18 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       let predictedChange: number;
       let reasoning: string;
 
+      // Variables para precio base y objetivo - usar backend cuando esté disponible
+      let basePrice: number;
+      let targetPrice: number;
+
       if (calculatedPrediction) {
         direction = calculatedPrediction.direction;
         confidence = calculatedPrediction.confidence;
         predictedChange = calculatedPrediction.predictedChange;
         reasoning = calculatedPrediction.factorBreakdown?.confidenceExplanation || 'Análisis multi-factor';
+        // IMPORTANTE: Usar precio del backend (previousClose) para consistencia
+        basePrice = calculatedPrediction.currentPrice;
+        targetPrice = (calculatedPrediction.predictedPriceMin + calculatedPrediction.predictedPriceMax) / 2;
       } else {
         // Fallback a momentum si el calculador falla
         const momentum = asset.changePercent ?? 0;
@@ -436,6 +443,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         confidence = Math.round(Math.min(85, Math.max(45, 60 + Math.abs(momentum) * 2)));
         predictedChange = Math.round((direction === 'up' ? Math.abs(momentum) * 0.5 : direction === 'down' ? -Math.abs(momentum) * 0.5 : 0) * 100) / 100;
         reasoning = `Basado en momentum actual (${momentum.toFixed(2)}%)`;
+        basePrice = asset.price;
+        targetPrice = asset.price * (1 + predictedChange / 100);
       }
 
       const prediction = await trainingCacheService.set(asset.symbol, timeframe, {
@@ -446,8 +455,9 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         direction,
         confidence,
         predictedChange,
-        currentPrice: asset.price,
-        targetPrice: asset.price * (1 + predictedChange / 100),
+        currentPrice: basePrice,
+        targetPrice: targetPrice,
+        currency: calculatedPrediction?.currency, // IMPORTANTE: Guardar la moneda real del activo
         reasoning,
         analysisData: calculatedPrediction || undefined, // Guardar análisis completo
         createdAt: new Date(),
@@ -625,11 +635,18 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         let predictedChange: number;
         let reasoning: string;
 
+        // Variables para precio base y objetivo - usar backend cuando esté disponible
+        let basePrice: number = asset.price!;
+        let targetPriceCalc: number = asset.price! * (1 + predictedChange / 100);
+
         if (calculatedPrediction) {
           direction = calculatedPrediction.direction;
           confidence = calculatedPrediction.confidence;
           predictedChange = calculatedPrediction.predictedChange;
           reasoning = `Score: ${calculatedPrediction.factorBreakdown?.confidenceExplanation || 'Basado en análisis de 11 factores'}`;
+          // IMPORTANTE: Usar precio del backend (previousClose) para consistencia
+          basePrice = calculatedPrediction.currentPrice;
+          targetPriceCalc = (calculatedPrediction.predictedPriceMin + calculatedPrediction.predictedPriceMax) / 2;
         } else {
           // Fallback a momentum si el calculador falla
           const momentum = asset.changePercent ?? 0;
@@ -647,25 +664,31 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           direction,
           confidence,
           predictedChange,
-          currentPrice: asset.price!,
-          targetPrice: asset.price! * (1 + predictedChange / 100),
+          currentPrice: basePrice,
+          targetPrice: targetPriceCalc,
+          currency: calculatedPrediction?.currency, // IMPORTANTE: Guardar la moneda real del activo
           reasoning,
           analysisData: calculatedPrediction || undefined, // Guardar análisis completo
           createdAt: new Date(),
         });
 
         // Registrar predicción para tracking de estadísticas ML
+        // Usar valores del backend cuando disponibles
+        const predMinPrice = calculatedPrediction?.predictedPriceMin ?? basePrice * (1 + (predictedChange - 2) / 100);
+        const predMaxPrice = calculatedPrediction?.predictedPriceMax ?? basePrice * (1 + (predictedChange + 2) / 100);
+        
         try {
           await predictionTrackingService.trackPrediction({
             symbol: asset.symbol,
             asset: asset.name,
             assetType: 'stock',
+            currency: calculatedPrediction?.currency, // IMPORTANTE: Guardar la moneda real del activo
             direction,
             predictedChange,
-            predictedPriceMin: asset.price! * (1 + (predictedChange - 2) / 100),
-            predictedPriceMax: asset.price! * (1 + (predictedChange + 2) / 100),
+            predictedPriceMin: predMinPrice,
+            predictedPriceMax: predMaxPrice,
             confidence,
-            currentPrice: asset.price!,
+            currentPrice: basePrice,
             timeframe: selectedTimeframe, // Usar key (swing) en lugar de label (Swing)
             timeframeDays,
             volatility: calculatedPrediction?.historical?.volatility,

@@ -141,6 +141,7 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
           asset: response.prediction.asset || asset,
           symbol: response.prediction.symbol,
           assetType: response.prediction.assetType || 'other',
+          currency: response.prediction.currency, // Moneda del activo desde la API
           direction: response.prediction.direction || 'neutral',
           confidence: response.prediction.confidence || 50,
           timeframe: response.prediction.timeframe || 'No especificado',
@@ -184,6 +185,7 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
               symbol: prediction.symbol,
               asset: prediction.asset,
               assetType: prediction.assetType,
+              currency: prediction.currency, // Moneda del activo
               direction: prediction.direction,
               predictedChange: prediction.predictedChange || 0,
               predictedPriceMin: prediction.predictedPriceMin || prediction.currentPrice,
