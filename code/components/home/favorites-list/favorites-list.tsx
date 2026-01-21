@@ -6,16 +6,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Platform,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Modal,
+    Platform,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from 'react-native';
 import { currencyService } from '../../../services/currency-service';
 import { favoritesService } from '../../../services/favorites-service-v2';

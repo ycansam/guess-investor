@@ -199,11 +199,10 @@ export default function AssetDetailScreen() {
   const [assetData, setAssetData] = useState<AssetData | null>(null);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [predictionData, setPredictionData] = useState<ChartDataPoint[]>([]);
+  // predictionMeta ahora solo guarda timestamps - los precios se calculan dinámicamente
   const [predictionMeta, setPredictionMeta] = useState<{
     startTimestamp: number;
     endTimestamp: number;
-    startPrice: number;
-    targetPrice: number;
   } | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<ChartTimeframe>('intraday');
   const [longtermHistoryRange, setLongtermHistoryRange] = useState<'1m' | '3m'>('1m');
@@ -544,13 +543,11 @@ export default function AssetDetailScreen() {
         const endTime = endDate.getTime();
         const totalMs = endTime - startTime;
 
-        // Guardar metadata de la predicción
-        // Para el gráfico usamos chartTargetPrice (desde último punto visible)
+        // Guardar metadata de la predicción - SOLO timestamps
+        // Los precios se calculan dinámicamente en los useMemo
         setPredictionMeta({
           startTimestamp: startTime,
           endTimestamp: endTime,
-          startPrice: lastPriceForPrediction,
-          targetPrice: chartTargetPrice,
         });
 
         for (let i = 0; i <= steps; i++) {
@@ -671,12 +668,10 @@ export default function AssetDetailScreen() {
         endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
         const predictionEndTime = endDate.getTime();
         
-        // Guardar metadata de la predicción
+        // Guardar metadata de la predicción - SOLO timestamps, los precios se calculan dinámicamente
         setPredictionMeta({
           startTimestamp: graphStartTime,
           endTimestamp: predictionEndTime,
-          startPrice: predictionStartPrice,
-          targetPrice,
         });
         
         // Asegurar que la predicción cacheada está trackeada en el backend
@@ -827,11 +822,16 @@ export default function AssetDetailScreen() {
 
   // Calcular posición X y datos para la línea de predicción superpuesta
   const predictionOverlay = useMemo(() => {
-    if (!predictionMeta || mainChartData.length === 0) return null;
+    if (!predictionMeta || mainChartData.length === 0 || !prediction) return null;
+    
+    // Calcular precios dinámicamente desde el último precio del histórico y el % de cambio
+    const lastPoint = mainChartData[mainChartData.length - 1];
+    const startPrice = lastPoint?.value || lastPriceForPrediction;
+    const targetPrice = startPrice * (1 + prediction.change / 100);
     
     // Encontrar el rango de timestamps del histórico
     const firstTimestamp = mainChartData[0]?.timestamp || 0;
-    const lastTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || 0;
+    const lastTimestamp = lastPoint?.timestamp || 0;
     const timeRange = lastTimestamp - firstTimestamp;
     
     if (timeRange <= 0) return null;
@@ -855,14 +855,14 @@ export default function AssetDetailScreen() {
     const maxVal = Math.max(...allValues);
     
     // Incluir precios de predicción en el rango
-    const minWithPred = Math.min(minVal, predictionMeta.startPrice, predictionMeta.targetPrice);
-    const maxWithPred = Math.max(maxVal, predictionMeta.startPrice, predictionMeta.targetPrice);
+    const minWithPred = Math.min(minVal, startPrice, targetPrice);
+    const maxWithPred = Math.max(maxVal, startPrice, targetPrice);
     
     return {
       startX: startPx,
       width: Math.max(widthPx, 60), // Mínimo 60px de ancho
-      startPrice: predictionMeta.startPrice,
-      targetPrice: predictionMeta.targetPrice,
+      startPrice,
+      targetPrice,
       startTimestamp: predictionMeta.startTimestamp,
       endTimestamp: predictionMeta.endTimestamp,
       // Pasar el rango para calcular Y correctamente
@@ -870,7 +870,7 @@ export default function AssetDetailScreen() {
       maxValue: maxWithPred,
       yAxisOffset: yAxisOffset,
     };
-  }, [predictionMeta, mainChartData, chartAreaWidth, yAxisOffset]);
+  }, [predictionMeta, mainChartData, chartAreaWidth, yAxisOffset, prediction, lastPriceForPrediction]);
 
   // Timestamps importantes
   const { endOfToday, predictionEndTime } = useMemo(() => {
@@ -941,8 +941,12 @@ export default function AssetDetailScreen() {
     const lastPoint = mainChartData[mainChartData.length - 1];
     const lastTimestamp = lastPoint?.timestamp || Date.now();
     // Usar el último valor del histórico para que conecte visualmente
-    const startPrice = lastPoint?.value || predictionMeta?.startPrice || 0;
-    const targetPrice = predictionMeta?.targetPrice || startPrice;
+    const startPrice = lastPoint?.value || lastPriceForPrediction || 0;
+    
+    // IMPORTANTE: Recalcular targetPrice basándose en el startPrice actual + % cambio
+    // Esto asegura que el gráfico siempre conecte correctamente
+    const predictedChange = prediction?.change || 0;
+    const targetPrice = startPrice * (1 + predictedChange / 100);
     
     // Calcular intervalo entre puntos
     const prevTimestamp = mainChartData.length > 1 ? mainChartData[mainChartData.length - 2]?.timestamp : lastTimestamp;
@@ -984,7 +988,7 @@ export default function AssetDetailScreen() {
     }
     
     return result;
-  }, [mainChartData, predictionMeta, predictionPoints, extensionPoints, predictionEndTime, endOfToday]);
+  }, [mainChartData, predictionMeta, predictionPoints, extensionPoints, predictionEndTime, endOfToday, prediction, lastPriceForPrediction]);
 
   // Calcular spacing basado en el total de puntos para que quepa en pantalla
   const chartSpacing = useMemo(() => {
@@ -996,13 +1000,14 @@ export default function AssetDetailScreen() {
 
   // Datos para data2: histórico copiado + predicción interpolada + extensión null
   const predictionLineData = useMemo(() => {
-    if (!predictionMeta || mainChartData.length === 0) return null;
+    if (!predictionMeta || mainChartData.length === 0 || !prediction) return null;
     
     const lastValue = mainChartData[mainChartData.length - 1]?.value;
     // Usar el último valor del histórico como punto de inicio de la predicción
     // para que la línea conecte visualmente con el gráfico
-    const startPrice = lastValue || predictionMeta.startPrice;
-    const targetPrice = predictionMeta.targetPrice;
+    const startPrice = lastValue || lastPriceForPrediction;
+    // Calcular targetPrice dinámicamente desde el % de cambio
+    const targetPrice = startPrice * (1 + prediction.change / 100);
     
     // Copiar todos los puntos históricos reales (superpuestos a la línea verde)
     const data2: any[] = mainChartData.map((point) => ({
@@ -1024,7 +1029,7 @@ export default function AssetDetailScreen() {
     }
     
     return data2;
-  }, [predictionMeta, mainChartData, predictionPoints, extensionPoints]);
+  }, [predictionMeta, mainChartData, predictionPoints, extensionPoints, prediction, lastPriceForPrediction]);
 
   // Segmentos de color para data2: transparente histórico, morado predicción, transparente extensión
   const predictionLineSegments = useMemo(() => {
@@ -1261,8 +1266,8 @@ export default function AssetDetailScreen() {
                     </View>
                   );
                 })}
-                {/* Datos de predicción */}
-                {predictionData.filter(p => p.isPrediction).map((point, index) => {
+                {/* Datos de predicción - usar chartDataWithExtra para consistencia */}
+                {chartDataWithExtra.filter(p => p.isPrediction).map((point, index) => {
                   const date = new Date(point.timestamp || 0);
                   return (
                     <View key={`pred-${index}`} style={[styles.tableRow, styles.tableRowPrediction]}>
@@ -1446,9 +1451,8 @@ export default function AssetDetailScreen() {
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Precio objetivo</Text>
                 <Text style={styles.predictionValue}>
-                  {predictionMeta?.targetPrice 
-                    ? predictionMeta.targetPrice.toFixed(2)
-                    : (lastPriceForPrediction * (1 + (prediction.change ?? 0) / 100)).toFixed(2)} €
+                  {/* Siempre calcular dinámicamente desde lastPriceForPrediction para evitar inconsistencias */}
+                  {(lastPriceForPrediction * (1 + (prediction.change ?? 0) / 100)).toFixed(2)} €
                 </Text>
               </View>
             </View>
