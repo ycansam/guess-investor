@@ -1030,21 +1030,49 @@ export const predictionCalculatorService = {
     // Calcular coherencia de señales
     const positiveFactors = availableFactors.filter(f => f.score > 15);
     const negativeFactors = availableFactors.filter(f => f.score < -15);
+    const neutralFactors = availableFactors.filter(f => f.score >= -15 && f.score <= 15);
+    
+    // Factores con señal clara (no neutrales)
+    const signalFactors = positiveFactors.length + negativeFactors.length;
     
     let signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
     let signalCoherence = 50;
 
-    if (positiveFactors.length > 0 && negativeFactors.length > 0) {
-      signalSummary = 'mixed';
-      signalCoherence = 40;
-    } else if (positiveFactors.length === availableFactors.length && positiveFactors.length >= 2) {
+    if (signalFactors === 0) {
+      // Todos los factores son neutrales
+      signalSummary = 'neutral';
+      signalCoherence = 45;
+    } else if (positiveFactors.length > 0 && negativeFactors.length > 0) {
+      // Hay factores en ambas direcciones - evaluar proporción
+      const bullishRatio = positiveFactors.length / signalFactors;
+      const bearishRatio = negativeFactors.length / signalFactors;
+      
+      if (bullishRatio >= 0.7) {
+        // 70%+ alcistas → coherent_bullish (aunque haya alguno bajista)
+        signalSummary = 'coherent_bullish';
+        signalCoherence = 65 + (bullishRatio - 0.7) * 30; // 65-74
+      } else if (bearishRatio >= 0.7) {
+        // 70%+ bajistas → coherent_bearish
+        signalSummary = 'coherent_bearish';
+        signalCoherence = 65 + (bearishRatio - 0.7) * 30;
+      } else {
+        // Realmente mixto (ni alcistas ni bajistas dominan claramente)
+        signalSummary = 'mixed';
+        signalCoherence = 40;
+      }
+    } else if (positiveFactors.length >= 2) {
+      // Solo factores positivos (y posiblemente neutrales)
       signalSummary = 'coherent_bullish';
       signalCoherence = 75;
-    } else if (negativeFactors.length === availableFactors.length && negativeFactors.length >= 2) {
+    } else if (negativeFactors.length >= 2) {
+      // Solo factores negativos (y posiblemente neutrales)
       signalSummary = 'coherent_bearish';
       signalCoherence = 75;
-    } else if (positiveFactors.length > 0 || negativeFactors.length > 0) {
-      signalSummary = availableFactors.length === 1 ? 'neutral' : 'mixed';
+    } else if (positiveFactors.length === 1) {
+      signalSummary = neutralFactors.length > 0 ? 'neutral' : 'coherent_bullish';
+      signalCoherence = 55;
+    } else if (negativeFactors.length === 1) {
+      signalSummary = neutralFactors.length > 0 ? 'neutral' : 'coherent_bearish';
       signalCoherence = 55;
     } else {
       signalSummary = 'neutral';
@@ -1065,11 +1093,19 @@ export const predictionCalculatorService = {
     // Generar explicación
     let confidenceExplanation = '';
     if (signalSummary === 'coherent_bullish') {
-      confidenceExplanation = `${positiveFactors.length} factores coinciden en señal alcista: ${positiveFactors.map(f => f.name).join(', ')}.`;
+      if (negativeFactors.length > 0) {
+        confidenceExplanation = `${positiveFactors.length}/${signalFactors} factores alcistas: ${positiveFactors.map(f => f.name).join(', ')}. Minoritarios bajistas: ${negativeFactors.map(f => f.name).join(', ')}.`;
+      } else {
+        confidenceExplanation = `${positiveFactors.length} factores coinciden en señal alcista: ${positiveFactors.map(f => f.name).join(', ')}.`;
+      }
     } else if (signalSummary === 'coherent_bearish') {
-      confidenceExplanation = `${negativeFactors.length} factores coinciden en señal bajista: ${negativeFactors.map(f => f.name).join(', ')}.`;
+      if (positiveFactors.length > 0) {
+        confidenceExplanation = `${negativeFactors.length}/${signalFactors} factores bajistas: ${negativeFactors.map(f => f.name).join(', ')}. Minoritarios alcistas: ${positiveFactors.map(f => f.name).join(', ')}.`;
+      } else {
+        confidenceExplanation = `${negativeFactors.length} factores coinciden en señal bajista: ${negativeFactors.map(f => f.name).join(', ')}.`;
+      }
     } else if (signalSummary === 'mixed') {
-      confidenceExplanation = `Señales mixtas: ${positiveFactors.map(f => f.name).join(', ')} alcistas vs ${negativeFactors.map(f => f.name).join(', ')} bajistas.`;
+      confidenceExplanation = `Señales divididas: ${positiveFactors.map(f => f.name).join(', ')} alcistas vs ${negativeFactors.map(f => f.name).join(', ')} bajistas.`;
     } else {
       confidenceExplanation = 'Señales mayormente neutrales.';
     }
