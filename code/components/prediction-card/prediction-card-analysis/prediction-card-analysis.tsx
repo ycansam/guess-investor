@@ -1,9 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { currencyService } from '../../../services/currency-service';
 import { canTradeNow, getMarketHours, MarketHoursInfo } from '../../../services/market-hours-service';
 import { InvestmentPrediction } from '../../../types';
 import { styles } from './prediction-card-analysis.styles';
+
+// Tooltips explicativos para usuarios no expertos
+const TOOLTIPS: Record<string, { title: string; explanation: string }> = {
+  sentiment: {
+    title: '🌐 Sentimiento del Mercado',
+    explanation: 'Mide el estado emocional de los inversores. Bullish (🐂) = optimismo. Bearish (🐻) = pesimismo. Se calcula con índices de miedo/codicia.',
+  },
+  vix: {
+    title: '📊 VIX - Índice del Miedo',
+    explanation: 'Volatilidad esperada. <18: Complacencia (⚠️). 18-25: Normal. >25: Miedo (oportunidad contrarian). Cuando está bajo, el mercado ignora riesgos.',
+  },
+  putCallRatio: {
+    title: '📈 Put/Call Ratio',
+    explanation: 'Compara opciones de venta vs compra. <0.7: Optimismo excesivo. >1.0: Mucho miedo (señal contrarian alcista).',
+  },
+  overallScore: {
+    title: '🎯 Score Institucional',
+    explanation: 'Puntuación combinada (-100 a +100). Positivo = señales alcistas. Negativo = señales bajistas. Combina VIX, Put/Call y otros indicadores.',
+  },
+  bearish: {
+    title: '🐻 Bearish (Bajista)',
+    explanation: 'Pesimismo en el mercado, se esperan bajadas. Un sentimiento bearish no siempre es malo - puede ser oportunidad de compra.',
+  },
+};
 
 interface PredictionCardAnalysisProps {
   prediction: InvestmentPrediction;
@@ -37,6 +61,35 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
   const [marketInfo, setMarketInfo] = useState<MarketHoursInfo | null>(null);
   const [tradeStatus, setTradeStatus] = useState<{ canTrade: boolean; reason: string; suggestion: string } | null>(null);
   const [eurRate, setEurRate] = useState<number>(1);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+  // Componente de tooltip con hover para web y tap para móvil
+  const TooltipWrapper: React.FC<{ tooltipKey: string; children: React.ReactNode }> = ({ tooltipKey, children }) => {
+    const tooltip = TOOLTIPS[tooltipKey];
+    const isWeb = Platform.OS === 'web';
+    
+    return (
+      <View style={{ position: 'relative', zIndex: activeTooltip === tooltipKey ? 100 : 1 }}>
+        <Pressable
+          onHoverIn={isWeb ? () => setActiveTooltip(tooltipKey) : undefined}
+          onHoverOut={isWeb ? () => setActiveTooltip(null) : undefined}
+          onPress={() => setActiveTooltip(activeTooltip === tooltipKey ? null : tooltipKey)}
+          style={{ flexDirection: 'row', alignItems: 'center' }}
+        >
+          {children}
+          <Text style={{ fontSize: 11, marginLeft: 4, color: '#6366f1' }}>ⓘ</Text>
+        </Pressable>
+        
+        {/* Tooltip flotante */}
+        {activeTooltip === tooltipKey && tooltip && (
+          <View style={styles.hoverTooltip}>
+            <Text style={styles.hoverTooltipTitle}>{tooltip.title}</Text>
+            <Text style={styles.hoverTooltipText}>{tooltip.explanation}</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   // Obtener rate de conversión a EUR (usando la moneda real del activo, no adivinando por símbolo)
   useEffect(() => {
@@ -421,7 +474,9 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
 
       {/* Sentimiento RRSS */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🌐 Sentimiento del mercado:</Text>
+        <TooltipWrapper tooltipKey="sentiment">
+          <Text style={styles.sectionTitle}>🌐 Sentimiento del mercado:</Text>
+        </TooltipWrapper>
         {prediction.analysisData?.sentiment ? (
           <View style={styles.sentimentContainer}>
             {/* Barra de sentimiento general */}
@@ -436,11 +491,14 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               ]} />
             </View>
             <View style={styles.sentimentInfo}>
-              <Text style={styles.sentimentScore}>
-                {prediction.analysisData.sentiment.score}%
-                {prediction.analysisData.sentiment.score >= 60 ? ' Bullish 🐂' :
-                 prediction.analysisData.sentiment.score >= 40 ? ' Neutro 😐' : ' Bearish 🐻'}
-              </Text>
+              <Pressable onPress={() => setActiveTooltip('bearish')}>
+                <Text style={styles.sentimentScore}>
+                  {prediction.analysisData.sentiment.score}%
+                  {prediction.analysisData.sentiment.score >= 60 ? ' Bullish 🐂' :
+                   prediction.analysisData.sentiment.score >= 40 ? ' Neutro 😐' : ' Bearish 🐻'}
+                  <Text style={{ fontSize: 10, color: '#6366f1' }}> ⓘ</Text>
+                </Text>
+              </Pressable>
               <Text style={styles.sentimentSource}>
                 Fuente: {prediction.analysisData.sentiment.source}
               </Text>
@@ -451,7 +509,9 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               <View style={styles.institutionalSentiment}>
                 {prediction.analysisData.sentiment.vix && (
                   <View style={styles.vixContainer}>
-                    <Text style={styles.vixLabel}>📊 VIX (Índice del Miedo)</Text>
+                    <TooltipWrapper tooltipKey="vix">
+                      <Text style={styles.vixLabel}>📊 VIX (Índice del Miedo)</Text>
+                    </TooltipWrapper>
                     <Text style={[
                       styles.vixValue,
                       { color: prediction.analysisData.sentiment.vix.sentiment === 'extreme_fear' ? '#F44336' :
@@ -469,7 +529,9 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                 )}
                 {prediction.analysisData.sentiment.putCallRatio && (
                   <View style={styles.pcRatioContainer}>
-                    <Text style={styles.pcRatioLabel}>📈 Put/Call Ratio (SPX)</Text>
+                    <TooltipWrapper tooltipKey="putCallRatio">
+                      <Text style={styles.pcRatioLabel}>📈 Put/Call Ratio (SPX)</Text>
+                    </TooltipWrapper>
                     <Text style={[
                       styles.pcRatioValue,
                       { color: prediction.analysisData.sentiment.putCallRatio.sentiment === 'extreme_fear' ? '#F44336' :
@@ -486,13 +548,16 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                   </View>
                 )}
                 {prediction.analysisData.sentiment.overallScore !== undefined && (
-                  <Text style={[
-                    styles.overallSentimentScore,
-                    { color: prediction.analysisData.sentiment.overallScore > 20 ? '#4CAF50' :
-                             prediction.analysisData.sentiment.overallScore > -20 ? '#FF9800' : '#F44336' }
-                  ]}>
-                    Score institucional: {prediction.analysisData.sentiment.overallScore > 0 ? '+' : ''}{prediction.analysisData.sentiment.overallScore}
-                  </Text>
+                  <Pressable onPress={() => setActiveTooltip('overallScore')}>
+                    <Text style={[
+                      styles.overallSentimentScore,
+                      { color: prediction.analysisData.sentiment.overallScore > 20 ? '#4CAF50' :
+                               prediction.analysisData.sentiment.overallScore > -20 ? '#FF9800' : '#F44336' }
+                    ]}>
+                      Score institucional: {prediction.analysisData.sentiment.overallScore > 0 ? '+' : ''}{prediction.analysisData.sentiment.overallScore}
+                      <Text style={{ fontSize: 10, color: '#6366f1' }}> ⓘ</Text>
+                    </Text>
+                  </Pressable>
                 )}
               </View>
             )}

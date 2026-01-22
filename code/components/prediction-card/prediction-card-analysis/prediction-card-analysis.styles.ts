@@ -14,6 +14,77 @@ const DARK = {
 };
 
 export const styles = StyleSheet.create({
+  // Tooltip styles
+  tooltipOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  tooltipContainer: {
+    backgroundColor: DARK.bgCard,
+    borderRadius: 16,
+    padding: 20,
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: DARK.accent,
+  },
+  tooltipTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: DARK.text,
+    marginBottom: 12,
+  },
+  tooltipText: {
+    fontSize: 14,
+    color: DARK.textSecondary,
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  tooltipCloseButton: {
+    backgroundColor: DARK.accent,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  tooltipCloseText: {
+    color: DARK.text,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  // Hover tooltip (pequeño, flotante)
+  hoverTooltip: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    zIndex: 1000,
+    backgroundColor: '#1a1a2e',
+    borderRadius: 8,
+    padding: 10,
+    minWidth: 220,
+    maxWidth: 280,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: DARK.accent,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  hoverTooltipTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: DARK.accent,
+    marginBottom: 4,
+  },
+  hoverTooltipText: {
+    fontSize: 11,
+    color: DARK.textSecondary,
+    lineHeight: 16,
+  },
   container: {
     backgroundColor: DARK.bgCard,
     padding: 16,
