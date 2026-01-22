@@ -179,6 +179,12 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
           // Parsear timeframe a días
           const timeframeDays = parseTimeframeToDays(prediction.timeframe);
           
+          // DEBUG: Log del factorBreakdown antes de enviarlo
+          console.log('[PredictionStore] DEBUG - analysisData:', prediction.analysisData ? 'EXISTS' : 'NULL');
+          console.log('[PredictionStore] DEBUG - factorBreakdown:', prediction.analysisData?.factorBreakdown ? 
+            `EXISTS (assetGroup: ${prediction.analysisData.factorBreakdown.assetGroup}, availableFactors: ${prediction.analysisData.factorBreakdown.availableFactors?.length || 0})` : 
+            'NULL');
+          
           try {
             // El ID de la predicción trackeada se usa para sincronizar
             const trackedPrediction = await predictionTrackingService.trackPrediction({

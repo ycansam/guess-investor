@@ -19,7 +19,6 @@ export interface InvestmentPrediction {
   
   // Datos de análisis reales (para mostrar en el razonamiento)
   analysisData?: {
-  analysisData?: {
     sentiment: {
       score: number; // 0-100, donde 50 es neutral
       source: string; // "StockTwits", "Fear & Greed Index", etc.

@@ -23,6 +23,11 @@ class AIService {
 
       if (calculatedPrediction) {
         console.log('[AIService] Predicción calculada del backend');
+        // DEBUG: Log del factorBreakdown que llega del API
+        console.log('[AIService] DEBUG - factorBreakdown del API:', 
+          calculatedPrediction.factorBreakdown ? 
+            `EXISTS (assetGroup: ${calculatedPrediction.factorBreakdown.assetGroup}, availableFactors: ${calculatedPrediction.factorBreakdown.availableFactors?.length || 0})` : 
+            'NULL/UNDEFINED');
         return this.formatPredictionResponse(calculatedPrediction);
       }
 

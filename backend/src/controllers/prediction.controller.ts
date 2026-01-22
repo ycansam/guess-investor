@@ -352,6 +352,11 @@ export const predictionController = {
       throw BadRequestError('symbol, direction and currentPrice are required');
     }
 
+    // DEBUG: Log del factorBreakdown recibido
+    console.log(`[Track] ${symbol} - factorBreakdown received:`, 
+      factorBreakdown ? `YES (assetGroup: ${factorBreakdown.assetGroup}, availableFactors: ${factorBreakdown.availableFactors?.length || 0})` : 'NULL');
+    console.log(`[Track] ${symbol} - factorWeights received:`, factorWeights ? 'YES' : 'NULL');
+
     const normalizedSymbol = symbol.toUpperCase();
     const days = timeframeDays || 1;
 
