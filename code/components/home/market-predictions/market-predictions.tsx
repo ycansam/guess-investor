@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
-import { AssetCategory, MarketAsset, marketDataService } from '../../../services/market-data-service';
+import { MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
     TIMEFRAME_INFO,
@@ -97,8 +97,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   
   // Filtros (movidos desde MarketList/Explorar)
-  const [categories, setCategories] = useState<AssetCategory[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<AssetCategory | null>(null);
   type ExploreSortType = 'predicted' | 'gainers' | 'losers' | 'popular' | 'bullish';
   const [exploreSortBy, setExploreSortBy] = useState<ExploreSortType>('popular');
 
@@ -183,15 +181,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } catch (error) {
       console.error('[MarketPredictions] Error loading favorites/predictions:', error);
     }
-  }, []);
-
-  // Cargar categorías dinámicamente
-  useEffect(() => {
-    const loadCategories = async () => {
-      const cats = await marketDataService.getCategories();
-      setCategories(cats);
-    };
-    loadCategories();
   }, []);
 
   // Función para aplicar ordenamiento (favoritos siempre primero, luego predicciones)
@@ -281,7 +270,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         // Obtener activos paginados normal
         marketDataService.getAssetsPaginated(
           1,
-          selectedCategory || undefined,
+          undefined,
           debouncedSearchQuery
         )
       ]);
@@ -329,7 +318,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchQuery, favoriteSymbols, selectedCategory, exploreSortBy, cachedPredictions, applySorting, selectedTimeframe]);
+  }, [debouncedSearchQuery, favoriteSymbols, exploreSortBy, cachedPredictions, applySorting, selectedTimeframe]);
 
   // Cargar más datos (infinite scroll)
   const loadMore = useCallback(async () => {
@@ -354,7 +343,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         currentPage++;
         const result = await marketDataService.getAssetsPaginated(
           currentPage,
-          selectedCategory || undefined,
+          undefined,
           debouncedSearchQuery
         );
         
@@ -388,7 +377,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, page, debouncedSearchQuery, selectedCategory, exploreSortBy, cachedPredictions, applySorting, favoriteSymbols]);
+  }, [loadingMore, hasMore, page, debouncedSearchQuery, exploreSortBy, cachedPredictions, applySorting, favoriteSymbols]);
 
   // Estado para saber si favoritos están cargados
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
@@ -407,7 +396,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     if (favoritesLoaded) {
       loadData();
     }
-  }, [favoritesLoaded, debouncedSearchQuery, selectedCategory, loadData]);
+  }, [favoritesLoaded, debouncedSearchQuery, loadData]);
 
   // Reordenar cuando cambia exploreSortBy (sin recargar datos)
   useEffect(() => {
@@ -1011,42 +1000,9 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     { key: 'bullish', label: 'Alcistas', icon: '🐂' },
   ];
 
-  // Header con filtros de categorías, ordenamiento y selector de timeframe
+  // Header con filtros de ordenamiento y selector de timeframe
   const renderHeader = () => (
     <View>
-      {/* Categorías horizontales (movidas desde Explorar) */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoriesContainer}
-        contentContainerStyle={styles.categoriesContent}
-      >
-        <TouchableOpacity
-          style={[styles.categoryChip, !selectedCategory && styles.categoryChipActive]}
-          onPress={() => setSelectedCategory(null)}
-        >
-          <Text style={styles.categoryIcon}>🌐</Text>
-          <Text style={[styles.categoryLabel, !selectedCategory && styles.categoryLabelActive]}>
-            Todos
-          </Text>
-        </TouchableOpacity>
-        {categories.map(cat => (
-          <TouchableOpacity
-            key={cat.category}
-            style={[styles.categoryChip, selectedCategory === cat.category && styles.categoryChipActive]}
-            onPress={() => setSelectedCategory(cat.category)}
-          >
-            <Text style={styles.categoryIcon}>{cat.icon}</Text>
-            <Text style={[
-              styles.categoryLabel, 
-              selectedCategory === cat.category && styles.categoryLabelActive
-            ]}>
-              {cat.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
       {/* Ordenación de activos (movida desde Explorar) */}
       <ScrollView 
         horizontal 
@@ -1468,40 +1424,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     padding: 0,
-  },
-  // Categorías (movidas desde Explorar)
-  categoriesContainer: {
-    marginBottom: 8,
-  },
-  categoriesContent: {
-    paddingHorizontal: 12,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#2e2e2e',
-  },
-  categoryChipActive: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
-  },
-  categoryIcon: {
-    fontSize: 14,
-    marginRight: 4,
-  },
-  categoryLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#a0a0a0',
-  },
-  categoryLabelActive: {
-    color: '#ffffff',
   },
   // Ordenación de activos (movida desde Explorar)
   exploreSortContainer: {
