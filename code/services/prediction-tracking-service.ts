@@ -105,7 +105,9 @@ class PredictionTrackingService {
     factorWeightsUsed?: Record<string, number>;
     factorBreakdown?: any; // El objeto completo para aprendizaje de pesos
     volatility?: number;
+    reasoning?: string;
     uncertaintyScore?: number;
+    uncertaintyData?: any;
   }): Promise<{ id: string }> {
     try {
       // Usar el endpoint /track que guarda la predicción sin recalcular
@@ -125,7 +127,9 @@ class PredictionTrackingService {
         volatility: data.volatility,
         factorBreakdown: data.factorBreakdown, // CRÍTICO: pasar el factorBreakdown completo para aprendizaje
         factorWeights: data.factorWeightsUsed,
+        reasoning: data.reasoning,
         uncertaintyScore: data.uncertaintyScore,
+        uncertaintyData: data.uncertaintyData,
       });
       console.log(`[Tracking] Predicción registrada: ${result.id}`);
       return { id: result.id };

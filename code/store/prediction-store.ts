@@ -198,7 +198,9 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
               factorWeightsUsed,
               factorBreakdown: prediction.analysisData?.factorBreakdown, // CRÍTICO para aprendizaje
               volatility: prediction.analysisData?.historical?.volatility,
+              reasoning: prediction.reasoning,
               uncertaintyScore: prediction.analysisData?.uncertainty?.score,
+              uncertaintyData: prediction.analysisData?.uncertainty,
             });
             
             console.log('[PredictionStore] Predicción registrada con ID:', trackedPrediction?.id);

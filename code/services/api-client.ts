@@ -537,6 +537,7 @@ export const apiClient = {
     volatilityCategory?: string;
     factorBreakdown?: any;
     factorWeights?: any;
+    reasoning?: string;
     uncertaintyScore?: number;
     uncertaintyData?: any;
   }): Promise<{ id: string; symbol: string; direction: string; expiresAt: string }> => {

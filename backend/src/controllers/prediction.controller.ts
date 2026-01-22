@@ -343,6 +343,7 @@ export const predictionController = {
       volatilityCategory,
       factorBreakdown,
       factorWeights,
+      reasoning,
       uncertaintyScore,
       uncertaintyData,
     } = req.body;
@@ -388,6 +389,7 @@ export const predictionController = {
       volatilityCategory,
       factorBreakdown,
       factorWeights,
+      reasoning,
       uncertaintyScore,
       uncertaintyData,
     });
