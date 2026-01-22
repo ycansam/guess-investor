@@ -757,12 +757,14 @@ const styles = StyleSheet.create({
   weightValue: {
     flex: 0.8,
     fontSize: 11,
+    color: colors.text,
     textAlign: 'center',
     fontWeight: '600',
   },
   weightChange: {
     flex: 0.7,
     fontSize: 10,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   weightBar: {

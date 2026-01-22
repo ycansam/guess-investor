@@ -2,12 +2,12 @@ import { Request, Response, Router } from 'express';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import {
-    factorCorrelationService,
-    featureEngineeringService,
-    metaLearningService,
-    probabilisticModelService,
-    reinforcementLearningService,
-    temporalCrossValidationService,
+  factorCorrelationService,
+  featureEngineeringService,
+  metaLearningService,
+  probabilisticModelService,
+  reinforcementLearningService,
+  temporalCrossValidationService,
 } from '../services/ml/index.js';
 
 const router = Router();

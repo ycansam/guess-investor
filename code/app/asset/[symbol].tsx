@@ -76,6 +76,219 @@ const TIMEFRAME_CONFIG = {
 const LONGTERM_RANGES = ['1m', '3m'] as const;
 const LONGTERM_PREDICTIONS = [15, 30, 90] as const;
 
+// Descripciones de grupos de activos
+const ASSET_GROUP_DESCRIPTIONS: Record<string, { emoji: string; name: string }> = {
+  large_cap_stock: { emoji: '🏢', name: 'Acción Gran Cap.' },
+  small_cap_stock: { emoji: '🏪', name: 'Acción Pequeña Cap.' },
+  crypto_major: { emoji: '₿', name: 'Cripto Principal' },
+  crypto_alt: { emoji: '🪙', name: 'Altcoin' },
+  etf_index: { emoji: '📊', name: 'ETF / Índice' },
+  commodity: { emoji: '🥇', name: 'Materia Prima' },
+  reit: { emoji: '🏠', name: 'Inmobiliario (REIT)' },
+  forex: { emoji: '💱', name: 'Divisa (Forex)' },
+  adr: { emoji: '🌍', name: 'ADR' },
+  default: { emoji: '📋', name: 'General' },
+};
+
+// Componente desplegable para mostrar pesos y clasificador
+interface WeightsDropdownProps {
+  factorBreakdown: {
+    assetGroup: string;
+    assetGroupDescription?: string;
+    weightsUsed: Record<string, number>;
+    usingLearnedWeights: boolean;
+  };
+}
+
+function WeightsDropdown({ factorBreakdown }: WeightsDropdownProps) {
+  const [expanded, setExpanded] = useState(false);
+  
+  const groupInfo = ASSET_GROUP_DESCRIPTIONS[factorBreakdown.assetGroup] || ASSET_GROUP_DESCRIPTIONS.default;
+  
+  // Ordenar pesos de mayor a menor
+  const sortedWeights = Object.entries(factorBreakdown.weightsUsed || {})
+    .sort((a, b) => b[1] - a[1]);
+
+  return (
+    <View style={weightsDropdownStyles.container}>
+      <TouchableOpacity 
+        style={weightsDropdownStyles.header}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.7}
+      >
+        <View style={weightsDropdownStyles.headerLeft}>
+          <Text style={weightsDropdownStyles.headerIcon}>⚙️</Text>
+          <Text style={weightsDropdownStyles.headerTitle}>Configuración ML</Text>
+          {factorBreakdown.usingLearnedWeights && (
+            <View style={weightsDropdownStyles.learnedBadge}>
+              <Text style={weightsDropdownStyles.learnedBadgeText}>Aprendido</Text>
+            </View>
+          )}
+        </View>
+        <Ionicons 
+          name={expanded ? 'chevron-up' : 'chevron-down'} 
+          size={18} 
+          color="#9ca3af" 
+        />
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={weightsDropdownStyles.content}>
+          {/* Clasificador */}
+          <View style={weightsDropdownStyles.classifierSection}>
+            <Text style={weightsDropdownStyles.sectionTitle}>Clasificador</Text>
+            <View style={weightsDropdownStyles.classifierInfo}>
+              <Text style={weightsDropdownStyles.classifierEmoji}>{groupInfo.emoji}</Text>
+              <View>
+                <Text style={weightsDropdownStyles.classifierName}>{groupInfo.name}</Text>
+                <Text style={weightsDropdownStyles.classifierCode}>{factorBreakdown.assetGroup}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Pesos utilizados */}
+          <View style={weightsDropdownStyles.weightsSection}>
+            <Text style={weightsDropdownStyles.sectionTitle}>Pesos Utilizados</Text>
+            <View style={weightsDropdownStyles.weightsGrid}>
+              {sortedWeights.map(([factor, weight]) => (
+                <View key={factor} style={weightsDropdownStyles.weightItem}>
+                  <Text style={weightsDropdownStyles.weightName}>{factor}</Text>
+                  <View style={weightsDropdownStyles.weightBarContainer}>
+                    <View 
+                      style={[
+                        weightsDropdownStyles.weightBar, 
+                        { width: `${Math.min(weight * 400, 100)}%` }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={weightsDropdownStyles.weightValue}>{(weight * 100).toFixed(1)}%</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const weightsDropdownStyles = StyleSheet.create({
+  container: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#2d2d44',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: '#1a1a2e',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIcon: {
+    fontSize: 16,
+  },
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#e5e5e5',
+  },
+  learnedBadge: {
+    backgroundColor: '#22c55e20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  learnedBadgeText: {
+    fontSize: 10,
+    color: '#22c55e',
+    fontWeight: '600',
+  },
+  content: {
+    padding: 12,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#2d2d44',
+  },
+  classifierSection: {
+    marginBottom: 12,
+    paddingTop: 12,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  classifierInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#252540',
+    padding: 10,
+    borderRadius: 8,
+  },
+  classifierEmoji: {
+    fontSize: 24,
+  },
+  classifierName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  classifierCode: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  weightsSection: {
+    marginTop: 4,
+  },
+  weightsGrid: {
+    gap: 6,
+  },
+  weightItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weightName: {
+    width: 80,
+    fontSize: 11,
+    color: '#9ca3af',
+  },
+  weightBarContainer: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#2d2d44',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  weightBar: {
+    height: '100%',
+    backgroundColor: '#6366f1',
+    borderRadius: 3,
+  },
+  weightValue: {
+    width: 45,
+    fontSize: 11,
+    color: '#e5e5e5',
+    textAlign: 'right',
+    fontWeight: '500',
+  },
+});
+
 // Helper para obtener el timeframe efectivo (incluyendo días para longterm)
 function getEffectiveTimeframe(timeframe: ChartTimeframe, longtermDays?: number): TrainingTimeframe {
   if (timeframe === 'longterm' && longtermDays) {
@@ -1592,6 +1805,11 @@ export default function AssetDetailScreen() {
               </View>
             </View>
           </View>
+        )}
+
+        {/* Desplegable de Pesos ML y Clasificador */}
+        {fullPrediction?.analysisData?.factorBreakdown && (
+          <WeightsDropdown factorBreakdown={fullPrediction.analysisData.factorBreakdown} />
         )}
 
         {/* Botón de Tendencias */}
