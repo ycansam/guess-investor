@@ -1,7 +1,7 @@
 # 🎯 Guess Investor
 
-**Última actualización:** 15 de enero de 2026  
-**Versión:** 1.4.0
+**Última actualización:** 22 de enero de 2026  
+**Versión:** 1.5.0
 
 **Aplicación de predicción de inversiones con IA híbrida** que combina análisis cuantitativo en tiempo real con machine learning para generar predicciones de precios de activos financieros.
 
@@ -9,7 +9,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-Backend-green?logo=node.js)
 ![Python](https://img.shields.io/badge/Python-ML_Server-green?logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Version](https://img.shields.io/badge/version-1.4.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.5.0-brightgreen)
 
 ---
 
@@ -43,22 +43,22 @@ Guess Investor analiza **11 factores** diferentes para cada activo financiero y 
 guess-investor/
 ├── code/                    # App React Native (Expo)
 │   ├── app/                 # Pantallas (file-based routing)
-│   ├── components/          # Componentes React
-│   ├── services/            # Servicios (Yahoo, AI, tracking, ML)
+│   ├── components/          # Componentes React organizados por feature
+│   ├── services/            # Servicios (API, AI, tracking, market data)
 │   ├── store/               # Estado global (Zustand)
 │   ├── types/               # Tipos TypeScript
-│   └── utils/               # Utilidades
+│   └── config/              # Configuración y pesos aprendidos
 ├── backend/                 # API REST (Express + Prisma)
 │   ├── src/
 │   │   ├── controllers/     # Handlers de endpoints
 │   │   ├── services/
 │   │   │   ├── external/    # APIs externas (20+ servicios)
 │   │   │   ├── prediction/  # Cálculo y predicciones (7 servicios)
-│   │   │   └── ml/          # Machine Learning avanzado (7 servicios)
+│   │   │   └── ml/          # Machine Learning avanzado (9 servicios)
 │   │   ├── routes/          # Definición de rutas
 │   │   └── repositories/    # Acceso a datos (Prisma)
 │   ├── prisma/              # Schema de base de datos
-│   └── python/              # Scripts de entrenamiento
+│   └── scripts/             # Scripts de mantenimiento y diagnóstico
 ├── python/                  # Servidor ML (Gradient Descent + Clasificador)
 │   ├── src/
 │   │   ├── config/          # Configuración
@@ -279,10 +279,10 @@ MIT © 2025
 
 Ver [CHANGELOG.md](./CHANGELOG.md) para el historial completo de cambios.
 
-### Últimas actualizaciones (29/12/2025)
-- 🎯 **Ensemble de 7 modelos**: Global, Symbol, Regime, Momentum, Mean Reversion, Fundamental, Sentiment
-- 🔄 **Selección dinámica**: Los modelos se activan/desactivan según datos disponibles
-- 🐍 **Clasificador Python**: Clasifica activos por volatilidad (intraday/swing/long)
-- 📊 **Pesos por activo**: El clasificador recomienda pesos personalizados por tipo de activo
-- 🧠 **Python ML Client**: Integración completa backend ↔ Python ML server
+### Últimas actualizaciones (22/01/2026)
+- 🧠 **Classifier Learning**: El sistema ML ahora aprende de predicciones verificadas con multiplicadores dinámicos
+- 🎯 **UI Simplificada**: Eliminados selectores de categorías para una interfaz más limpia
+- 🔧 **factorBreakdown Fix**: Los datos de factores ahora se guardan correctamente para entrenamiento
+- 📊 **Ensemble de 7 modelos**: Global, Symbol, Regime, Momentum, Mean Reversion, Fundamental, Sentiment
+- 🐍 **Python ML Server**: Clasificador de activos por volatilidad integrado
 

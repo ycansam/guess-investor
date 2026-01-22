@@ -1,15 +1,16 @@
 # Guess Investor Backend
 
-**Última actualización:** 15 de enero de 2026
+**Última actualización:** 22 de enero de 2026  
+**Versión:** 1.5.0
 
 API REST para el servicio de predicción de inversiones con ML avanzado, ensemble de 7 modelos dinámicos y soporte multi-timeframe (Intraday, Swing, Long).
 
-## 🆕 Novedades v1.4.0
+## 🆕 Novedades v1.5.0
 
-- **yahoo-finance2**: Nueva integración para autenticación automática
-- **Multi-Timeframe**: Soporte completo para predicciones Swing (7d) y Long (30d)
-- **Import Active**: Nuevo endpoint para sincronizar predicciones activas al cache
-- **11 Factores**: Todos los factores de análisis ahora funcionan correctamente
+- **Classifier Learning Service**: Aprendizaje automático de multiplicadores por grupo de activo
+- **factorBreakdown Persistente**: Los datos de factores se guardan correctamente al trackear predicciones
+- **Scripts de Diagnóstico**: Nuevos scripts para forzar reentrenamiento y verificar datos
+- **Logging Mejorado**: Debug más detallado en el proceso de tracking
 
 ## 🚀 Quick Start
 
@@ -135,13 +136,15 @@ GET    /api/health                   # Estado del servidor
 ### ML Services (`services/ml/`)
 | Servicio | Descripción |
 |----------|-------------|
+| `classifier-learning.service.ts` | **Aprendizaje de multiplicadores por grupo de activo** |
+| `factor-weight-learning.service.ts` | Ajuste de pesos de factores basado en historial |
 | `reinforcement-learning.service.ts` | Q-Learning para CUÁNDO predecir |
 | `factor-correlation.service.ts` | Sinergias/conflictos entre factores |
 | `temporal-cross-validation.service.ts` | Walk-forward validation |
 | `meta-learning.service.ts` | Few-shot learning para nuevos símbolos |
 | `probabilistic-model.service.ts` | Distribuciones de probabilidad |
 | `feature-engineering.service.ts` | Features derivados automáticos |
-| `python-ml.service.ts` | Cliente para clasificador Python (NEW) |
+| `python-ml.service.ts` | Cliente para clasificador Python |
 
 ## 🎯 Ensemble de 7 Modelos
 

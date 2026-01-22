@@ -1,15 +1,16 @@
 # Guess Investor - App React Native
 
-**Última actualización:** 15 de enero de 2026
+**Última actualización:** 22 de enero de 2026  
+**Versión:** 1.5.0
 
 Aplicación móvil de predicción de inversiones construida con [Expo](https://expo.dev) y React Native.
 
-## 🆕 Novedades v1.4.0
+## 🆕 Novedades v1.5.0
 
-- **Multi-Timeframe**: Soporte completo para predicciones Intraday, Swing (7d) y Long (30d)
-- **Vista de Tendencias**: Nueva página con análisis de mercado
-- **Modal de Predicciones**: Vista detallada de predicciones activas
-- **Clasificador Mejorado**: Sistema de bonus para predicciones
+- **Classifier Learning**: El sistema ML aprende de predicciones verificadas
+- **UI Simplificada**: Eliminados selectores de categorías (Tech USA, Crypto, España)
+- **factorBreakdown Fix**: Los datos de factores se guardan correctamente para entrenamiento
+- **Multiplicadores Dinámicos**: Ajuste automático de pesos por grupo de activo
 
 ## 🚀 Get Started
 
@@ -44,33 +45,40 @@ Aplicación móvil de predicción de inversiones construida con [Expo](https://e
 ```
 code/
 ├── app/                     # Pantallas (file-based routing)
-│   ├── _layout.tsx          # Layout principal con tabs
-│   ├── index.tsx            # Tab de predicciones
-│   ├── explore.tsx          # Explorar activos
-│   ├── favorites.tsx        # Gestión de favoritos
-│   └── profile.tsx          # Perfil y estadísticas
-├── components/              # Componentes reutilizables
-│   ├── AddInvestmentForm.tsx
-│   ├── PredictionCard.tsx
-│   └── ...
+│   ├── _layout.tsx          # Layout principal
+│   ├── index.tsx            # Home con tabs
+│   └── asset/               # Página de detalle de activo
+├── components/              # Componentes organizados por feature
+│   ├── home/                # Componentes de la pantalla principal
+│   │   ├── market-predictions/  # Lista de activos con predicciones
+│   │   ├── favorites-list/      # Lista de favoritos
+│   │   └── tab-bar/             # Barra de pestañas
+│   ├── prediction-card/     # Tarjeta de predicción
+│   ├── predictions-list/    # Lista de predicciones
+│   ├── top-trends/          # Tendencias del mercado
+│   ├── ml-diagnostics-modal/    # Diagnóstico de ML
+│   ├── TrackingStatsCard.tsx    # Estadísticas de tracking
+│   └── _shared/             # Componentes compartidos
 ├── services/                # Servicios y lógica
-│   ├── api.service.ts       # Cliente API del backend
-│   ├── yahoo.service.ts     # Yahoo Finance
-│   └── ...
+│   ├── api-client.ts        # Cliente API del backend
+│   ├── ai-service.ts        # Servicio de predicciones IA
+│   ├── market-data-service.ts   # Datos de mercado
+│   ├── training-cache-service.ts # Cache de predicciones
+│   └── favorites-service-v2.ts  # Gestión de favoritos
 ├── store/                   # Estado global (Zustand)
-│   └── investmentStore.ts
+│   └── prediction-store.ts
 ├── types/                   # Tipos TypeScript
-└── utils/                   # Utilidades
+└── config/                  # Configuración
+    └── learned_weights.json # Pesos aprendidos
 ```
 
-## 📱 Pantallas
+## 📱 Pestañas
 
 | Tab | Descripción |
 |-----|-------------|
-| **Predicciones** | Lista de predicciones activas con favoritos primero |
-| **Explorar** | Buscar y explorar +120 activos |
-| **Favoritos** | Gestionar activos favoritos |
-| **Perfil** | Estadísticas y configuración |
+| **Predicciones** | Lista de activos con predicciones, filtros de ordenamiento y timeframe |
+| **Favoritos** | Activos guardados para acceso rápido |
+| **Tendencias** | Top gainers, losers y rachas del mercado |
 
 ## 🔗 Conexión con Backend
 

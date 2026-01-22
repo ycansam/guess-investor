@@ -1,6 +1,7 @@
 # 🧠 Sistema de Aprendizaje Automático - Guess Investor
 
-**Última actualización:** 29 de diciembre de 2025
+**Última actualización:** 22 de enero de 2026  
+**Versión:** 1.5.0
 
 Este sistema permite que la app aprenda de sus errores y mejore las predicciones con el tiempo.
 El proceso es **completamente automático** - el backend sincroniza predicciones y entrena sin intervención del usuario.
