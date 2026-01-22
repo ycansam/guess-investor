@@ -354,6 +354,12 @@ export interface MLWeightsStatus {
     long: Record<string, WeightComparison> | null;
   };
   assetGroupMultipliers: Record<string, Record<string, number>>;
+  assetGroupStats: Record<string, {
+    sampleCount: number;
+    successRate: number;
+    avgAccuracy: number;
+    lastUpdated: string;
+  }>;
   availableAssetGroups: string[];
 }
 

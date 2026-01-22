@@ -6,6 +6,7 @@ import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import { factorWeightLearningService } from '../services/ml/factor-weight-learning.service.js';
+import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 import { ensembleService } from '../services/prediction/ensemble.service.js';
 
 // ============================================================================
@@ -892,6 +893,85 @@ export const trainingController = {
         ...results,
         pythonResult,
         finalStatus: status,
+      },
+    });
+  }),
+
+  /**
+   * POST /api/training/backfill-factor-breakdown
+   * Genera factorBreakdown básico para predicciones verificadas que no lo tienen
+   * Esto permite que el classifier learning funcione con predicciones antiguas
+   */
+  backfillFactorBreakdown: asyncHandler(async (_req: Request, res: Response) => {
+    // Obtener predicciones verificadas sin factorBreakdown
+    const predictions = await prisma.prediction.findMany({
+      where: {
+        verified: true,
+        factorBreakdown: null,
+      },
+      select: {
+        id: true,
+        symbol: true,
+        asset: true,
+        assetType: true,
+      },
+    });
+
+    if (predictions.length === 0) {
+      res.json({
+        success: true,
+        message: 'No hay predicciones para actualizar. Todas ya tienen factorBreakdown.',
+        data: { updated: 0 },
+      });
+      return;
+    }
+
+    let updated = 0;
+    const errors: string[] = [];
+
+    for (const pred of predictions) {
+      try {
+        // Detectar el grupo del activo
+        const type = pred.assetType === 'crypto' ? 'crypto' : 'stock';
+        const assetGroup = predictionCalculatorService.detectAssetGroup(
+          pred.symbol,
+          type as 'stock' | 'crypto',
+          pred.asset || ''
+        );
+
+        // Crear un factorBreakdown básico
+        const factorBreakdown = {
+          assetGroup,
+          assetGroupDescription: `Grupo detectado: ${assetGroup}`,
+          relevantFactors: ['trend', 'technical', 'sentiment', 'news'], // Factores básicos
+          availableFactors: [], // No tenemos los scores originales
+          weightsUsed: {}, // No tenemos los pesos originales
+          usingLearnedWeights: false,
+          confidenceExplanation: 'Datos reconstruidos - predicción histórica',
+          signalSummary: 'insufficient' as const,
+        };
+
+        // Actualizar la predicción
+        await prisma.prediction.update({
+          where: { id: pred.id },
+          data: {
+            factorBreakdown: JSON.stringify(factorBreakdown),
+          },
+        });
+
+        updated++;
+      } catch (err: any) {
+        errors.push(`${pred.symbol}: ${err.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Actualizadas ${updated}/${predictions.length} predicciones con factorBreakdown básico.`,
+      data: {
+        total: predictions.length,
+        updated,
+        errors: errors.length > 0 ? errors : undefined,
       },
     });
   }),

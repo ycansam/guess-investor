@@ -94,4 +94,7 @@ router.delete('/reset-all', trainingController.resetAll);
 // POST /api/training/force-relearn - Forzar re-aprendizaje de pesos y clasificadores
 router.post('/force-relearn', trainingController.forceRelearn);
 
+// POST /api/training/backfill-factor-breakdown - Generar factorBreakdown para predicciones antiguas
+router.post('/backfill-factor-breakdown', trainingController.backfillFactorBreakdown);
+
 export const trainingRoutes = router;

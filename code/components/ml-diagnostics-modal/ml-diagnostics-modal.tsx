@@ -267,8 +267,24 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       default: { emoji: '📋', description: 'Clasificación genérica' },
     };
 
+    // Multiplicadores base estáticos (los iniciales del código)
+    const BASE_STATIC_MULTIPLIERS: Record<string, Record<string, number>> = {
+      large_cap_stock: { financials: 1.3, institutional: 1.2, expectations: 1.3, forex: 0.8 },
+      small_cap_stock: { technical: 1.3, sentiment: 1.2, news: 1.3, institutional: 0.7, financials: 0.8 },
+      crypto_major: { sentiment: 1.5, news: 1.3, macro: 1.2, financials: 0.1, competitors: 0.3, expectations: 0.2 },
+      crypto_alt: { sentiment: 1.8, technical: 1.3, news: 1.4, financials: 0.05, competitors: 0.2, macro: 0.7, expectations: 0.1 },
+      etf_index: { macro: 1.4, trend: 1.2, forex: 1.1, financials: 0.3, competitors: 0.4, expectations: 0.5 },
+      commodity: { macro: 1.5, forex: 2.0, seasonality: 1.5, sentiment: 0.7, financials: 0.1, competitors: 0.2, expectations: 0.3 },
+      reit: { macro: 1.4, institutional: 1.3, financials: 1.2, forex: 0.6, competitors: 0.7 },
+      forex: { macro: 1.8, sentiment: 1.3, news: 1.2, financials: 0.1, competitors: 0.1, institutional: 0.3, expectations: 0.2 },
+      adr: { forex: 1.5, macro: 1.3, sentiment: 1.2, competitors: 0.8 },
+      default: {},
+    };
+
     const selectedInfo = groupDescriptions[selectedAssetGroup] || { emoji: '📋', description: 'Sin descripción' };
     const multipliers = weightsData.assetGroupMultipliers[selectedAssetGroup] || {};
+    const baseMultipliers = BASE_STATIC_MULTIPLIERS[selectedAssetGroup] || {};
+    const stats = weightsData.assetGroupStats?.[selectedAssetGroup];
     const allFactors = ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'];
 
     const getMultiplierColor = (mult: number) => {
@@ -284,6 +300,9 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       if (mult < 1) return `${((mult - 1) * 100).toFixed(0)}%`;
       return '0%';
     };
+
+    // Verificar si hay cambios respecto al base
+    const hasLearnedChanges = stats && stats.sampleCount >= 5;
 
     return (
       <View style={styles.tabContent}>
@@ -336,24 +355,45 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
               <Text style={styles.selectedGroupDescription}>{selectedInfo.description}</Text>
             </View>
           </View>
+          {/* Estadísticas de aprendizaje */}
+          <View style={styles.classifierStats}>
+            <View style={styles.classifierStatItem}>
+              <Text style={styles.classifierStatValue}>{stats?.sampleCount || 0}</Text>
+              <Text style={styles.classifierStatLabel}>Muestras</Text>
+            </View>
+            <View style={styles.classifierStatItem}>
+              <Text style={[styles.classifierStatValue, { color: (stats?.successRate || 0) > 0.5 ? colors.success : colors.textSecondary }]}>
+                {stats?.successRate ? `${(stats.successRate * 100).toFixed(0)}%` : '-'}
+              </Text>
+              <Text style={styles.classifierStatLabel}>Éxito</Text>
+            </View>
+            <View style={styles.classifierStatItem}>
+              <Text style={[styles.classifierStatValue, { color: hasLearnedChanges ? colors.success : colors.textSecondary }]}>
+                {hasLearnedChanges ? '✓' : '⏳'}
+              </Text>
+              <Text style={styles.classifierStatLabel}>{hasLearnedChanges ? 'Aprendido' : 'Min 5'}</Text>
+            </View>
+          </View>
         </View>
 
         {/* Multipliers Table (like weights) */}
         <View style={styles.weightsContainer}>
           <View style={styles.weightsHeader}>
             <Text style={styles.weightsHeaderText}>Factor</Text>
-            <Text style={styles.weightsHeaderText}>Multiplicador</Text>
-            <Text style={styles.weightsHeaderText}>Ajuste</Text>
-            <Text style={styles.weightsHeaderText}>Impacto</Text>
+            <Text style={styles.weightsHeaderText}>Base</Text>
+            <Text style={styles.weightsHeaderText}>Actual</Text>
+            <Text style={styles.weightsHeaderText}>Δ</Text>
           </View>
           {allFactors.map((factor) => {
             const mult = (multipliers[factor] as number) || 1;
+            const baseMult = (baseMultipliers[factor] as number) || 1;
+            const changed = Math.abs(mult - baseMult) > 0.01;
             return (
               <View key={factor} style={styles.weightRow}>
                 <Text style={styles.weightName}>{factor}</Text>
-                <Text style={styles.weightValue}>{(mult * 100).toFixed(0)}%</Text>
-                <Text style={[styles.weightChange, { color: getMultiplierColor(mult) }]}>
-                  {getMultiplierLabel(mult)}
+                <Text style={[styles.weightBase, { opacity: 0.6 }]}>{(baseMult * 100).toFixed(0)}%</Text>
+                <Text style={[styles.weightValue, changed && { color: getMultiplierColor(mult) }]}>
+                  {(mult * 100).toFixed(0)}%
                 </Text>
                 <View style={styles.weightBar}>
                   <View 
@@ -907,6 +947,27 @@ const styles = StyleSheet.create({
   },
   selectedGroupDescription: {
     fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  classifierStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  classifierStatItem: {
+    alignItems: 'center',
+  },
+  classifierStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  classifierStatLabel: {
+    fontSize: 10,
     color: colors.textSecondary,
     marginTop: 2,
   },
