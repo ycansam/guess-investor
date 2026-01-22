@@ -453,10 +453,10 @@ export const predictionCalculatorService = {
         sentimentService.getSentiment(symbol, type),
         newsService.getNews(symbol, type),
         macroService.getIndicators(symbol, type),
-        Promise.resolve(seasonalityService.analyze(symbol)),
+        seasonalityService.analyze(symbol, quote.name), // Ahora es async
         expectationsService.getExpectations(symbol),
         institutionalService.getInstitutionalActivity(symbol, type),
-        forexService.analyzeForexImpact(symbol),
+        forexService.analyzeForexImpact(symbol, quote.name),
         financialsService.getFinancials(symbol, quote.price),
       ]);
 

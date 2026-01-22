@@ -2,12 +2,12 @@ import { Request, Response, Router } from 'express';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  featureEngineeringService,
-  metaLearningService,
-  probabilisticModelService,
-  reinforcementLearningService,
-  temporalCrossValidationService,
+    factorCorrelationService,
+    featureEngineeringService,
+    metaLearningService,
+    probabilisticModelService,
+    reinforcementLearningService,
+    temporalCrossValidationService,
 } from '../services/ml/index.js';
 
 const router = Router();
@@ -205,11 +205,12 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
     const diff: Record<string, { base: number; learned: number; change: string; changePercent: number }> = {};
     for (const [key, baseVal] of Object.entries(BASE_WEIGHTS)) {
       const learnedVal = learned[key] ?? baseVal;
-      const changePercent = ((learnedVal - baseVal) / baseVal) * 100;
+      // Cambio relativo en porcentaje
+      const changePercent = baseVal > 0 ? ((learnedVal - baseVal) / baseVal) * 100 : 0;
       diff[key] = {
         base: baseVal,
         learned: learnedVal,
-        change: changePercent > 0 ? `+${changePercent.toFixed(1)}%` : `${changePercent.toFixed(1)}%`,
+        change: changePercent >= 0 ? `+${changePercent.toFixed(1)}%` : `${changePercent.toFixed(1)}%`,
         changePercent,
       };
     }

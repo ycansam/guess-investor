@@ -5,13 +5,13 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { colors } from '../../config/theme';
 import { apiClient, MLModelsStatus, MLWeightsStatus, WeightComparison } from '../../services/api-client';
@@ -136,7 +136,10 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const renderWeightRow = (name: string, comparison: WeightComparison) => (
     <View key={name} style={styles.weightRow}>
       <Text style={styles.weightName}>{name}</Text>
-      <Text style={styles.weightValue}>{(comparison.learned * 100).toFixed(1)}%</Text>
+      <Text style={styles.weightBase}>{(comparison.base * 100).toFixed(0)}%</Text>
+      <Text style={[styles.weightValue, { color: getChangeColor(comparison.changePercent) }]}>
+        {(comparison.learned * 100).toFixed(2)}%
+      </Text>
       <Text style={[styles.weightChange, { color: getChangeColor(comparison.changePercent) }]}>
         {comparison.change}
       </Text>
@@ -197,9 +200,10 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
         <View style={styles.weightsContainer}>
           <View style={styles.weightsHeader}>
             <Text style={styles.weightsHeaderText}>Factor</Text>
-            <Text style={styles.weightsHeaderText}>Peso</Text>
-            <Text style={styles.weightsHeaderText}>Cambio</Text>
-            <Text style={styles.weightsHeaderText}>Visual</Text>
+            <Text style={styles.weightsHeaderText}>Base</Text>
+            <Text style={styles.weightsHeaderText}>Actual</Text>
+            <Text style={styles.weightsHeaderText}>Δ%</Text>
+            <Text style={styles.weightsHeaderText}></Text>
           </View>
           {comparison && Object.entries(comparison)
             .sort((a, b) => b[1].learned - a[1].learned)
@@ -740,21 +744,26 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   weightName: {
-    flex: 1,
-    fontSize: 12,
+    flex: 1.2,
+    fontSize: 11,
     color: colors.text,
   },
-  weightValue: {
-    flex: 1,
-    fontSize: 12,
+  weightBase: {
+    flex: 0.6,
+    fontSize: 11,
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  weightChange: {
-    flex: 1,
-    fontSize: 12,
+  weightValue: {
+    flex: 0.8,
+    fontSize: 11,
     textAlign: 'center',
     fontWeight: '600',
+  },
+  weightChange: {
+    flex: 0.7,
+    fontSize: 10,
+    textAlign: 'center',
   },
   weightBar: {
     flex: 1,
