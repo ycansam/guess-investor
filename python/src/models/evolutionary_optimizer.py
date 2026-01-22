@@ -163,41 +163,65 @@ class EvolutionaryOptimizer:
             if verbose:
                 print(f"  Buenos: {len(good_preds)}, Malos: {len(bad_preds)}")
             
-            # Calcular pesos promedio de buenos vs malos
-            if good_preds and bad_preds:
+            # Verificar si tenemos factor_weights
+            has_factor_weights = any(p.factor_weights for p in preds)
+            
+            if has_factor_weights and good_preds and bad_preds:
+                # Estrategia 1: Comparar pesos usados entre buenos y malos
                 good_weights = self._average_weights(good_preds)
                 bad_weights = self._average_weights(bad_preds)
                 
-                # Si un factor tuvo peso mayor en los buenos, aumentarlo
-                # Si tuvo peso mayor en los malos, reducirlo
                 for factor in FACTORS:
                     gw = good_weights.get(factor, 0.0)
                     bw = bad_weights.get(factor, 0.0)
                     
                     if gw > 0 or bw > 0:
-                        # Diferencia ponderada por tamaño de grupos
                         diff = (gw - bw)
                         weight_changes[timeframe][factor] = diff
                         
                         if verbose and abs(diff) > 0.01:
                             direction = "↑" if diff > 0 else "↓"
                             print(f"    {factor}: good={gw:.3f}, bad={bw:.3f} → {direction}{abs(diff):.3f}")
-            
-            # Alternativa: aprender de factor_weights de las predicciones
-            weights_used = [p.factor_weights for p in preds if p.factor_weights]
-            if weights_used and len(weights_used) >= 3:
-                # Correlacionar pesos usados con rendimiento
-                for factor in FACTORS:
-                    high_weight_preds = [p for p in preds if p.factor_weights.get(factor, 0) > 0.1]
-                    low_weight_preds = [p for p in preds if p.factor_weights.get(factor, 0) <= 0.1]
-                    
-                    if high_weight_preds and low_weight_preds:
-                        high_accuracy = sum(1 for p in high_weight_preds if p.direction_correct) / len(high_weight_preds)
-                        low_accuracy = sum(1 for p in low_weight_preds if p.direction_correct) / len(low_weight_preds)
-                        
-                        # Si alto peso correlaciona con mejor precisión, aumentar
-                        accuracy_diff = high_accuracy - low_accuracy
-                        weight_changes[timeframe][factor] += accuracy_diff * 0.1
+            else:
+                # Estrategia 2: SIN factor_weights - usar accuracy para ajustar pesos actuales
+                # Si accuracy < 50%, reducimos los pesos dominantes
+                # Si accuracy > 50%, reforzamos ligeramente los pesos
+                accuracy = len(good_preds) / len(preds) if preds else 0.5
+                current_weights = self.weights[timeframe]
+                
+                if verbose:
+                    print(f"  Sin factor_weights, usando estrategia por precisión ({accuracy:.1%})")
+                
+                # Encontrar factores dominantes y subordinados
+                sorted_factors = sorted(FACTORS, key=lambda f: current_weights.get(f, 0), reverse=True)
+                dominant = sorted_factors[:3]  # Top 3 factores
+                subordinate = sorted_factors[-3:]  # Bottom 3 factores
+                
+                if accuracy < 0.48:
+                    # Precisión baja: reducir dominantes significativamente
+                    adjustment = (0.50 - accuracy) * 0.3  # Más agresivo
+                    if verbose:
+                        print(f"  Precisión baja ({accuracy:.1%}): reduciendo {dominant}, aumentando {subordinate}")
+                    for f in dominant:
+                        weight_changes[timeframe][f] -= adjustment
+                    for f in subordinate:
+                        weight_changes[timeframe][f] += adjustment * 0.6
+                elif accuracy > 0.52:
+                    # Precisión alta: reforzar configuración actual
+                    adjustment = (accuracy - 0.50) * 0.2
+                    if verbose:
+                        print(f"  Precisión alta ({accuracy:.1%}): reforzando configuración actual")
+                    for f in dominant:
+                        weight_changes[timeframe][f] += adjustment * 0.5
+                else:
+                    # Precisión neutral (~50%): explorar más agresivamente
+                    if verbose:
+                        print(f"  Precisión neutral ({accuracy:.1%}): explorando variaciones")
+                    # Redistribuir peso de dominantes a subordinados
+                    for f in subordinate:
+                        weight_changes[timeframe][f] += 0.02
+                    for f in dominant:
+                        weight_changes[timeframe][f] -= 0.015
         
         # Aplicar cambios con momentum
         weights_before = {tf: dict(self.weights[tf]) for tf in self.TIMEFRAMES}

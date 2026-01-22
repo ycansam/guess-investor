@@ -1,11 +1,16 @@
 import { Prediction } from '@prisma/client';
 import { Request, Response } from 'express';
+import { prisma } from '../config/database.js';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
 import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
 import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
+import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
+import { factorWeightLearningService } from '../services/ml/factor-weight-learning.service.js';
+import { probabilisticModelService } from '../services/ml/probabilistic-model.service.js';
+import { reinforcementLearningService } from '../services/ml/reinforcement-learning.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 import { trackRecordService } from '../services/prediction/track-record.service.js';
 
@@ -27,16 +32,32 @@ interface PeriodExtremes {
 function computeVerificationData(
   prediction: Prediction, 
   actualPrice: number,
-  periodExtremes?: PeriodExtremes | null
+  periodExtremes?: PeriodExtremes | null,
+  basePrice?: number // Precio base para comparar (cierre del día anterior). Si no se provee, usa prediction.currentPrice
 ): VerifyPredictionData {
-  const actualChange = ((actualPrice - prediction.currentPrice) / prediction.currentPrice) * 100;
+  // Usar basePrice si se provee (cierre del día anterior), si no usar el precio de creación
+  const referencePrice = basePrice ?? prediction.currentPrice;
+  const actualChange = ((actualPrice - referencePrice) / referencePrice) * 100;
 
   const actualDirection: 'up' | 'down' | 'neutral' =
     actualChange > DIRECTION_THRESHOLD_PCT ? 'up' :
     actualChange < -DIRECTION_THRESHOLD_PCT ? 'down' : 'neutral';
 
-  const directionCorrect = prediction.direction === actualDirection ||
-    (prediction.direction !== 'neutral' && actualDirection === 'neutral');
+  // Dirección correcta: más estricto
+  // - Si predijo UP y bajó (cualquier cantidad) = error
+  // - Si predijo DOWN y subió (cualquier cantidad) = error
+  // - Neutral solo es correcto si el movimiento fue mínimo (dentro del threshold)
+  let directionCorrect = false;
+  if (prediction.direction === 'up') {
+    // Predijo subida: correcto solo si realmente subió (no bajó)
+    directionCorrect = actualChange >= 0;
+  } else if (prediction.direction === 'down') {
+    // Predijo bajada: correcto solo si realmente bajó (no subió)
+    directionCorrect = actualChange <= 0;
+  } else {
+    // Predijo neutral: correcto si se mantuvo dentro del threshold
+    directionCorrect = actualDirection === 'neutral';
+  }
 
   const withinRange = prediction.predictedPriceMin !== null &&
     prediction.predictedPriceMax !== null &&
@@ -149,6 +170,89 @@ function computeVerificationData(
   };
 }
 
+/**
+ * Entrena los modelos ML (RL y Probabilístico) con una predicción verificada
+ */
+async function trainMLModelsFromVerification(
+  prediction: Prediction,
+  verifyData: VerifyPredictionData
+): Promise<{ rlTrained: boolean; probCalibrated: boolean }> {
+  let rlTrained = false;
+  let probCalibrated = false;
+
+  try {
+    // Parsear datos históricos
+    const historicalData = prediction.historicalData ? JSON.parse(prediction.historicalData) : null;
+    const sentimentData = prediction.sentimentData ? JSON.parse(prediction.sentimentData) : null;
+    const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+
+    const volatility = historicalData?.volatility ?? prediction.volatility ?? 25;
+    const vix = sentimentData?.vix?.value ?? 20;
+    const signalSummary = factorBreakdown?.signalSummary ?? 'mixed';
+    const avgScore = factorBreakdown?.availableFactors
+      ? factorBreakdown.availableFactors.reduce((sum: number, f: { score: number }) => sum + Math.abs(f.score), 0) / factorBreakdown.availableFactors.length
+      : 30;
+
+    // Determinar timeframe en días
+    const timeframeDays = prediction.timeframeDays || 1;
+
+    // ===== ENTRENAR REINFORCEMENT LEARNING =====
+    try {
+      // Discretizar estado
+      const state = reinforcementLearningService.discretizeState({
+        vix,
+        volatility,
+        timeframeDays,
+        combinedScore: avgScore * (prediction.direction === 'up' ? 1 : prediction.direction === 'down' ? -1 : 0),
+        signalCoherence: signalSummary === 'aligned' ? 'coherent_bullish' : signalSummary === 'conflicting' ? 'mixed' : 'neutral',
+        hasUpcomingEvents: false,
+        recentAccuracy: verifyData.accuracyScore ?? 50,
+      });
+
+      // Determinar acción basada en confianza original
+      let action: 'skip' | 'predict_low' | 'predict_medium' | 'predict_high' = 'predict_medium';
+      if (prediction.confidence < 40) action = 'predict_low';
+      else if (prediction.confidence > 70) action = 'predict_high';
+
+      // Registrar experiencia
+      await reinforcementLearningService.recordExperience(
+        state,
+        action,
+        verifyData.accuracyScore ?? null,
+        verifyData.directionCorrect ?? null,
+        null
+      );
+      rlTrained = true;
+      console.log(`[ML] RL trained for ${prediction.symbol}: action=${action}, reward based on score=${verifyData.accuracyScore}`);
+    } catch (err) {
+      console.log(`[ML] RL training failed for ${prediction.symbol}:`, err);
+    }
+
+    // ===== CALIBRAR MODELO PROBABILÍSTICO =====
+    try {
+      const predictedMean = prediction.predictedChange ?? 0;
+      const predictedStdDev = volatility / Math.sqrt(252) * Math.sqrt(timeframeDays);
+      const actualChange = verifyData.actualChange ?? 0;
+
+      await probabilisticModelService.recordCalibration(
+        prediction.symbol,
+        predictedMean,
+        predictedStdDev,
+        actualChange
+      );
+      probCalibrated = true;
+      console.log(`[ML] Probabilistic model calibrated for ${prediction.symbol}: predicted=${predictedMean.toFixed(2)}%, actual=${actualChange.toFixed(2)}%`);
+    } catch (err) {
+      console.log(`[ML] Probabilistic calibration failed for ${prediction.symbol}:`, err);
+    }
+
+  } catch (err) {
+    console.log(`[ML] Error training ML models for ${prediction.symbol}:`, err);
+  }
+
+  return { rlTrained, probCalibrated };
+}
+
 export const predictionController = {
   /**
    * POST /api/predictions
@@ -226,6 +330,7 @@ export const predictionController = {
       symbol,
       asset,
       assetType,
+      currency,
       timeframe,
       timeframeDays,
       direction,
@@ -238,6 +343,7 @@ export const predictionController = {
       volatilityCategory,
       factorBreakdown,
       factorWeights,
+      reasoning,
       uncertaintyScore,
       uncertaintyData,
     } = req.body;
@@ -245,6 +351,11 @@ export const predictionController = {
     if (!symbol || !direction || currentPrice === undefined) {
       throw BadRequestError('symbol, direction and currentPrice are required');
     }
+
+    // DEBUG: Log del factorBreakdown recibido
+    console.log(`[Track] ${symbol} - factorBreakdown received:`, 
+      factorBreakdown ? `YES (assetGroup: ${factorBreakdown.assetGroup}, availableFactors: ${factorBreakdown.availableFactors?.length || 0})` : 'NULL');
+    console.log(`[Track] ${symbol} - factorWeights received:`, factorWeights ? 'YES' : 'NULL');
 
     const normalizedSymbol = symbol.toUpperCase();
     const days = timeframeDays || 1;
@@ -270,6 +381,7 @@ export const predictionController = {
       symbol: normalizedSymbol,
       asset,
       assetType: assetType || 'stock',
+      currency: currency || 'EUR', // Moneda del activo
       timeframe: timeframe || '1 día',
       timeframeDays: days,
       direction,
@@ -282,6 +394,7 @@ export const predictionController = {
       volatilityCategory,
       factorBreakdown,
       factorWeights,
+      reasoning,
       uncertaintyScore,
       uncertaintyData,
     });
@@ -423,6 +536,8 @@ export const predictionController = {
     }
 
     // Si no se proporciona precio, obtener el precio de cierre de la fecha de expiración
+    let basePrice: number | undefined; // Precio base para comparar (cierre del día anterior)
+    
     if (actualPrice === undefined) {
       try {
         // Usar el precio de cierre del día de expiración (o último día de mercado)
@@ -431,6 +546,16 @@ export const predictionController = {
         if (priceAtExpiry) {
           actualPrice = priceAtExpiry.price;
           console.log(`[Verify] Using historical price for ${prediction.symbol} at ${priceAtExpiry.actualDate.toISOString().split('T')[0]}: ${actualPrice}`);
+          
+          // Obtener el precio de cierre del día ANTERIOR a la expiración como base
+          const dayBefore = new Date(priceAtExpiry.actualDate);
+          dayBefore.setDate(dayBefore.getDate() - 1);
+          const previousClose = await yahooService.getPriceAtDate(prediction.symbol, dayBefore);
+          
+          if (previousClose) {
+            basePrice = previousClose.price;
+            console.log(`[Verify] Base price (previous close ${previousClose.actualDate.toISOString().split('T')[0]}): ${basePrice}`);
+          }
         } else {
           // Fallback al precio actual si no hay datos históricos
           const quote = await yahooService.getQuote(prediction.symbol);
@@ -438,7 +563,8 @@ export const predictionController = {
             throw BadRequestError('Could not fetch price for verification. Please provide actualPrice.');
           }
           actualPrice = quote.price;
-          console.log(`[Verify] Using current price for ${prediction.symbol} (no historical data): ${actualPrice}`);
+          basePrice = quote.previousClose;
+          console.log(`[Verify] Using current price for ${prediction.symbol} (no historical data): ${actualPrice}, previousClose: ${basePrice}`);
         }
       } catch (error) {
         throw BadRequestError('Could not fetch price for verification. Please provide actualPrice.');
@@ -464,7 +590,7 @@ export const predictionController = {
       console.log('[Verify] Could not get period extremes, continuing without bonus check');
     }
 
-    const verifyData = computeVerificationData(prediction, actualPrice, periodExtremes);
+    const verifyData = computeVerificationData(prediction, actualPrice, periodExtremes, basePrice);
 
     const verified = await predictionRepository.verify(id, verifyData);
 
@@ -482,6 +608,62 @@ export const predictionController = {
     // Limpiar cache del track record para este símbolo
     trackRecordService.clearCache(prediction.symbol);
 
+    // Aprender de la predicción verificada para ajustar clasificadores
+    try {
+      const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+      if (factorBreakdown?.assetGroup) {
+        const factorScores: Record<string, number> = {};
+        const factorWeights: Record<string, number> = {};
+        
+        if (factorBreakdown.availableFactors) {
+          for (const f of factorBreakdown.availableFactors) {
+            factorScores[f.name] = f.score;
+          }
+        }
+        if (factorBreakdown.weightsUsed) {
+          Object.assign(factorWeights, factorBreakdown.weightsUsed);
+        }
+
+        // Actualizar clasificadores por grupo de activo
+        await classifierLearningService.learnFromVerifiedPrediction({
+          assetGroup: factorBreakdown.assetGroup,
+          directionCorrect: verifyData.directionCorrect,
+          accuracyScore: verifyData.accuracyScore,
+          factorScores,
+          factorWeights,
+          predictedChange: prediction.predictedChange,
+          actualChange: verifyData.actualChange,
+        });
+        console.log(`[Verify] Classifier learning updated for ${factorBreakdown.assetGroup}`);
+
+        // Actualizar pesos de factores (technical, trend, news, etc.)
+        const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+          timeframeDays: prediction.timeframeDays,
+          directionCorrect: verifyData.directionCorrect,
+          accuracyScore: verifyData.accuracyScore,
+          factorScores,
+          factorWeights,
+          predictedChange: prediction.predictedChange,
+          actualChange: verifyData.actualChange,
+        });
+        if (weightLearningResult.adjusted) {
+          console.log(`[Verify] Factor weights adjusted:`, weightLearningResult.changes.join(', '));
+        }
+
+        // Marcar predicción como usada para training (evitar re-entrenamiento)
+        await prisma.prediction.update({
+          where: { id: prediction.id },
+          data: { usedForTraining: true, trainedAt: new Date() },
+        });
+      }
+    } catch (err) {
+      console.log('[Verify] Could not update classifier learning:', err);
+    }
+
+    // Entrenar modelos ML (RL y Probabilístico)
+    const mlResult = await trainMLModelsFromVerification(prediction, verifyData);
+    console.log(`[Verify] ML training: RL=${mlResult.rlTrained}, Prob=${mlResult.probCalibrated}`);
+
     // Sincronizar con Python en background (no bloqueante)
     pythonTrainingService.syncAndTrain().catch(err => {
       console.log('[PythonSync] Background sync skipped:', err.message || 'Python server not available');
@@ -493,6 +675,7 @@ export const predictionController = {
         predictionId: verified.id,
         ...verifyData,
         predictedChange: prediction.predictedChange,
+        mlTrained: mlResult,
       },
     });
   }),
@@ -510,11 +693,24 @@ export const predictionController = {
       try {
         // Obtener precio de cierre del día de expiración (o último día de mercado)
         let actualPrice: number;
+        let basePrice: number | undefined; // Precio de cierre del día anterior (base para comparar)
         const priceAtExpiry = await yahooService.getPriceAtDate(prediction.symbol, prediction.expiresAt);
         
         if (priceAtExpiry) {
           actualPrice = priceAtExpiry.price;
           console.log(`[VerifyPending] ${prediction.symbol}: Using price at ${priceAtExpiry.actualDate.toISOString().split('T')[0]}: ${actualPrice}`);
+          
+          // Obtener el precio de cierre del día ANTERIOR a la expiración como base
+          const dayBefore = new Date(priceAtExpiry.actualDate);
+          dayBefore.setDate(dayBefore.getDate() - 1);
+          const previousClose = await yahooService.getPriceAtDate(prediction.symbol, dayBefore);
+          
+          if (previousClose) {
+            basePrice = previousClose.price;
+            console.log(`[VerifyPending] ${prediction.symbol}: Base price (previous close ${previousClose.actualDate.toISOString().split('T')[0]}): ${basePrice}`);
+          } else {
+            console.log(`[VerifyPending] ${prediction.symbol}: Could not get previous close, using creation price as base`);
+          }
         } else {
           // Fallback al precio actual
           const quote = await yahooService.getQuote(prediction.symbol);
@@ -523,10 +719,11 @@ export const predictionController = {
             continue;
           }
           actualPrice = quote.price;
-          console.log(`[VerifyPending] ${prediction.symbol}: Using current price (no historical): ${actualPrice}`);
+          basePrice = quote.previousClose; // Yahoo provee el cierre anterior
+          console.log(`[VerifyPending] ${prediction.symbol}: Using current price (no historical): ${actualPrice}, previousClose: ${basePrice}`);
         }
         
-        const verifyData = computeVerificationData(prediction, actualPrice);
+        const verifyData = computeVerificationData(prediction, actualPrice, null, basePrice);
 
         await predictionRepository.verify(prediction.id, verifyData);
 
@@ -539,12 +736,72 @@ export const predictionController = {
           // No es crítico
         }
 
+        // Limpiar cache del track record para este símbolo
+        trackRecordService.clearCache(prediction.symbol);
+
+        // Aprender de la predicción verificada para ajustar clasificadores y pesos
+        try {
+          const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+          if (factorBreakdown?.assetGroup) {
+            const factorScores: Record<string, number> = {};
+            const factorWeights: Record<string, number> = {};
+            
+            if (factorBreakdown.availableFactors) {
+              for (const f of factorBreakdown.availableFactors) {
+                factorScores[f.name] = f.score;
+              }
+            }
+            if (factorBreakdown.weightsUsed) {
+              Object.assign(factorWeights, factorBreakdown.weightsUsed);
+            }
+
+            // Actualizar clasificadores por grupo de activo
+            await classifierLearningService.learnFromVerifiedPrediction({
+              assetGroup: factorBreakdown.assetGroup,
+              directionCorrect: verifyData.directionCorrect,
+              accuracyScore: verifyData.accuracyScore,
+              factorScores,
+              factorWeights,
+              predictedChange: prediction.predictedChange,
+              actualChange: verifyData.actualChange,
+            });
+            console.log(`[VerifyPending] Classifier learning updated for ${prediction.symbol} (${factorBreakdown.assetGroup})`);
+
+            // Actualizar pesos de factores (technical, trend, news, etc.)
+            const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+              timeframeDays: prediction.timeframeDays,
+              directionCorrect: verifyData.directionCorrect,
+              accuracyScore: verifyData.accuracyScore,
+              factorScores,
+              factorWeights,
+              predictedChange: prediction.predictedChange,
+              actualChange: verifyData.actualChange,
+            });
+            if (weightLearningResult.adjusted) {
+              console.log(`[VerifyPending] Factor weights adjusted for ${prediction.symbol}:`, weightLearningResult.changes.join(', '));
+            }
+
+            // Marcar predicción como usada para training (evitar re-entrenamiento)
+            await prisma.prediction.update({
+              where: { id: prediction.id },
+              data: { usedForTraining: true, trainedAt: new Date() },
+            });
+          }
+        } catch (err) {
+          console.log(`[VerifyPending] Could not update classifier learning for ${prediction.symbol}:`, err);
+        }
+
+        // Entrenar modelos ML (RL y Probabilístico)
+        const mlResult = await trainMLModelsFromVerification(prediction, verifyData);
+
         results.push({
           id: prediction.id,
           symbol: prediction.symbol,
           directionCorrect: verifyData.directionCorrect,
           quality: verifyData.quality,
           priceDate: priceAtExpiry?.actualDate.toISOString().split('T')[0] || 'current',
+          learningUpdated: true,
+          mlTrained: mlResult,
         });
       } catch (error: any) {
         results.push({
@@ -555,6 +812,13 @@ export const predictionController = {
       }
     }
 
+    // Contar ML entrenados
+    const mlStats = {
+      rlTrained: results.filter(r => r.mlTrained?.rlTrained).length,
+      probCalibrated: results.filter(r => r.mlTrained?.probCalibrated).length,
+    };
+    console.log(`[VerifyPending] ML training complete: RL=${mlStats.rlTrained}, Prob=${mlStats.probCalibrated}`);
+
     // Sincronizar con Python después de verificar todas las pendientes
     const pythonSync = await pythonTrainingService.syncAndTrain();
 
@@ -563,6 +827,7 @@ export const predictionController = {
       data: {
         processed: results.length,
         results,
+        mlStats,
         pythonSync: {
           available: pythonSync.available,
           synced: pythonSync.synced,
@@ -735,8 +1000,17 @@ export const recalculateScores = asyncHandler(async (_req: Request, res: Respons
       actualChange > DIRECTION_THRESHOLD_PCT ? 'up' :
       actualChange < -DIRECTION_THRESHOLD_PCT ? 'down' : 'neutral';
 
-    const directionCorrect = prediction.direction === actualDirection ||
-      (prediction.direction !== 'neutral' && actualDirection === 'neutral');
+    // Dirección correcta: más estricto
+    // - Si predijo UP y bajó (cualquier cantidad) = error
+    // - Si predijo DOWN y subió (cualquier cantidad) = error
+    let directionCorrect = false;
+    if (prediction.direction === 'up') {
+      directionCorrect = actualChange >= 0;
+    } else if (prediction.direction === 'down') {
+      directionCorrect = actualChange <= 0;
+    } else {
+      directionCorrect = actualDirection === 'neutral';
+    }
 
     // Nueva fórmula de accuracyScore
     let newAccuracyScore = 0;
@@ -784,13 +1058,14 @@ export const recalculateScores = asyncHandler(async (_req: Request, res: Respons
 
     const oldScore = prediction.accuracyScore || 0;
     const oldQuality = prediction.quality || 'failed';
+    const oldDirectionCorrect = prediction.directionCorrect ?? true;
 
-    // Siempre actualizar si la quality cambió (para migración a nuevo sistema)
-    // o si el score cambió
+    // Siempre actualizar si la quality, score o directionCorrect cambió
     const qualityChanged = oldQuality !== newQuality;
     const scoreChanged = oldScore !== newAccuracyScore;
+    const directionChanged = oldDirectionCorrect !== directionCorrect;
     
-    if (scoreChanged || qualityChanged) {
+    if (scoreChanged || qualityChanged || directionChanged) {
       await predictionRepository.updateScores(prediction.id, {
         accuracyScore: newAccuracyScore,
         quality: newQuality,
@@ -870,5 +1145,60 @@ export const fixIntradayExpiry = asyncHandler(async (_req: Request, res: Respons
     success: true,
     message: `Fixed ${updated} intraday predictions`,
     data: { total: predictions.length, updated },
+  });
+});
+
+/**
+ * POST /api/predictions/cleanup-duplicates
+ * Eliminar predicciones duplicadas (mismo símbolo, mismo día)
+ * Mantiene solo la primera predicción de cada día por símbolo
+ */
+export const cleanupDuplicates = asyncHandler(async (_req: Request, res: Response) => {
+  // Obtener todas las predicciones no verificadas
+  const unverified = await prisma.prediction.findMany({
+    where: { verified: false },
+    orderBy: [{ symbol: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  // Agrupar por símbolo + día
+  const groups = new Map<string, typeof unverified>();
+  
+  for (const pred of unverified) {
+    const day = new Date(pred.createdAt).toISOString().split('T')[0];
+    const key = `${pred.symbol}:${day}`;
+    
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(pred);
+  }
+
+  // Identificar duplicados (todos excepto el primero de cada grupo)
+  const toDelete: string[] = [];
+  
+  for (const [_key, preds] of groups) {
+    if (preds.length > 1) {
+      // Mantener el primero (más antiguo), eliminar el resto
+      for (let i = 1; i < preds.length; i++) {
+        toDelete.push(preds[i].id);
+      }
+    }
+  }
+
+  // Eliminar duplicados
+  if (toDelete.length > 0) {
+    await prisma.prediction.deleteMany({
+      where: { id: { in: toDelete } },
+    });
+  }
+
+  res.json({
+    success: true,
+    message: `Deleted ${toDelete.length} duplicate predictions`,
+    data: {
+      totalUnverified: unverified.length,
+      duplicatesRemoved: toDelete.length,
+      remaining: unverified.length - toDelete.length,
+    },
   });
 });

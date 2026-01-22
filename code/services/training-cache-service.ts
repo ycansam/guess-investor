@@ -18,6 +18,7 @@ export interface TrainingPrediction {
   predictedChange: number;
   currentPrice: number;
   targetPrice: number;
+  currency?: string; // Moneda del activo (EUR, USD, GBP, etc.)
   reasoning: string;
   analysisData?: CalculatedPrediction;
   createdAt: Date;
@@ -116,6 +117,7 @@ class TrainingCacheService {
       predictedChange: data.predictedChange,
       currentPrice: data.currentPrice,
       targetPrice: data.targetPrice,
+      currency: data.currency || data.analysisData?.currency, // IMPORTANTE: Obtener currency
       reasoning: data.reasoning || '',
       analysisData: data.analysisData,
       createdAt: new Date(data.createdAt),
@@ -191,6 +193,7 @@ class TrainingCacheService {
         direction: prediction.direction,
         currentPrice: prediction.currentPrice,
         targetPrice: prediction.targetPrice,
+        currency: prediction.currency, // IMPORTANTE: Guardar la moneda
         analysisData: prediction.analysisData,
         expiresAt: expiresAt.toISOString(),
       });

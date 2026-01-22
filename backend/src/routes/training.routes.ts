@@ -88,4 +88,13 @@ router.post('/python/import-weights', trainingController.pythonImportWeights);
 // GET /api/training/python/weights - Obtener pesos de Python
 router.get('/python/weights', trainingController.pythonGetWeights);
 
+// DELETE /api/training/reset-all - Resetear TODO el sistema ML
+router.delete('/reset-all', trainingController.resetAll);
+
+// POST /api/training/force-relearn - Forzar re-aprendizaje de pesos y clasificadores
+router.post('/force-relearn', trainingController.forceRelearn);
+
+// POST /api/training/backfill-factor-breakdown - Generar factorBreakdown para predicciones antiguas
+router.post('/backfill-factor-breakdown', trainingController.backfillFactorBreakdown);
+
 export const trainingRoutes = router;

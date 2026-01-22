@@ -93,11 +93,26 @@ export const predictionRepository = {
     let expiresAt: Date;
     
     if (timeframeDays === 1) {
-      // Para predicciones intradía: expirar al cierre del día siguiente (17:30 España = 16:30 UTC)
-      // Sin salto de fin de semana - la verificación usará el precio del último día de mercado
+      // Para predicciones intradía:
+      // - Si se crea ANTES de las 16:30 UTC (17:30 España) → expira HOY a las 16:30 UTC
+      // - Si se crea DESPUÉS de las 16:30 UTC → expira MAÑANA a las 16:30 UTC
+      const marketCloseHour = 16; // 16:30 UTC = 17:30 España (CET)
+      const marketCloseMinute = 30;
+      
       expiresAt = new Date(now);
-      expiresAt.setDate(expiresAt.getDate() + 1); // Siempre el día siguiente
-      expiresAt.setUTCHours(16, 30, 0, 0); // 17:30 hora España (CET)
+      expiresAt.setUTCHours(marketCloseHour, marketCloseMinute, 0, 0);
+      
+      // Si ya pasó el cierre de hoy, expira mañana
+      if (now >= expiresAt) {
+        expiresAt.setDate(expiresAt.getDate() + 1);
+      }
+      
+      // Ajustar si cae en fin de semana (stocks)
+      if (data.assetType === 'stock') {
+        const day = expiresAt.getDay();
+        if (day === 0) expiresAt.setDate(expiresAt.getDate() + 1); // Domingo → Lunes
+        if (day === 6) expiresAt.setDate(expiresAt.getDate() + 2); // Sábado → Lunes
+      }
     } else {
       // Para predicciones de más días: sumar días completos
       expiresAt = new Date(now);
@@ -147,17 +162,19 @@ export const predictionRepository = {
   },
 
   /**
-   * Buscar predicción reciente duplicada (misma combinación symbol+timeframeDays en las últimas 4 horas)
+   * Buscar predicción reciente duplicada (mismo symbol el mismo día)
+   * Solo permite UNA predicción por activo por día calendario
    */
-  async findRecentDuplicate(symbol: string, timeframeDays: number): Promise<Prediction | null> {
-    const fourHoursAgo = new Date();
-    fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
+  async findRecentDuplicate(symbol: string, _timeframeDays: number): Promise<Prediction | null> {
+    // Inicio del día actual (00:00)
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
     
     return prisma.prediction.findFirst({
       where: {
         symbol: symbol.toUpperCase(),
-        timeframeDays,
-        createdAt: { gte: fourHoursAgo },
+        // Ya no filtramos por timeframeDays - solo 1 predicción por día por símbolo
+        createdAt: { gte: startOfDay },
         verified: false, // Solo predicciones no verificadas
       },
       orderBy: { createdAt: 'desc' },

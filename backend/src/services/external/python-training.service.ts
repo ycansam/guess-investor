@@ -107,7 +107,8 @@ export const pythonTrainingService = {
   },
 
   /**
-   * Sincroniza predicciones verificadas al servidor Python
+   * Cuenta predicciones verificadas disponibles para training.
+   * Python lee directamente del backend via API, no necesitamos enviar.
    */
   async syncPredictions(): Promise<{
     success: boolean;
@@ -115,110 +116,19 @@ export const pythonTrainingService = {
     error?: string;
   }> {
     try {
-      // Obtener predicciones verificadas del backend
-      const verified = await prisma.prediction.findMany({
+      // Solo contamos las predicciones verificadas - Python las leerá del backend
+      const count = await prisma.prediction.count({
         where: {
           verified: true,
           actualPrice: { not: null },
           accuracyScore: { not: null },
         },
-        orderBy: { createdAt: 'desc' },
       });
 
-      if (verified.length === 0) {
-        return { success: true, synced: 0 };
-      }
-
-      // Convertir al formato que espera Python
-      const predictions: PythonPrediction[] = verified.map(p => {
-        // Extraer factor_scores del factorBreakdown
-        let factorScores: Record<string, number> | undefined;
-        let factorWeights: Record<string, number> | undefined;
-        
-        if (p.factorBreakdown) {
-          try {
-            const breakdown = typeof p.factorBreakdown === 'string' 
-              ? JSON.parse(p.factorBreakdown) 
-              : p.factorBreakdown;
-            
-            // Extraer scores de availableFactors
-            if (breakdown.availableFactors && Array.isArray(breakdown.availableFactors)) {
-              factorScores = {};
-              for (const f of breakdown.availableFactors) {
-                if (f.name && typeof f.score === 'number') {
-                  factorScores[f.name] = f.score;
-                }
-              }
-            }
-            
-            // Extraer pesos usados
-            if (breakdown.weightsUsed && typeof breakdown.weightsUsed === 'object') {
-              factorWeights = breakdown.weightsUsed;
-            }
-          } catch (e) {
-            // Ignorar errores de parsing
-          }
-        }
-        
-        // Fallback para factor_weights si no estaban en breakdown
-        if (!factorWeights && p.factorWeights) {
-          try {
-            factorWeights = typeof p.factorWeights === 'string'
-              ? JSON.parse(p.factorWeights)
-              : p.factorWeights as Record<string, number>;
-          } catch (e) {
-            // Ignorar
-          }
-        }
-        
-        return {
-          id: p.id,
-          symbol: p.symbol,
-          asset_type: p.assetType || 'stock',
-          timeframe: p.timeframe || '1 día',
-          timeframe_days: p.timeframeDays,
-          direction: p.direction,
-          predicted_change: p.predictedChange,
-          confidence: p.confidence,
-          current_price: p.currentPrice,
-          actual_price: p.actualPrice!,
-          actual_change: p.actualChange || 0,
-          direction_correct: p.directionCorrect || false,
-          accuracy_score: p.accuracyScore || 0,
-          created_at: p.createdAt.toISOString(),
-          verified_at: p.verifiedAt?.toISOString() || new Date().toISOString(),
-          factor_scores: factorScores,
-          factor_weights: factorWeights,
-        };
-      });
-
-      // Enviar a Python
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
-
-      const response = await fetch(`${PYTHON_SERVER_URL}/predictions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ predictions }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        const error = await response.text();
-        return { success: false, synced: 0, error };
-      }
-
-      const result = await response.json() as { predictions_received: number };
-      logger.info(`[PythonBridge] Synced ${result.predictions_received} predictions to Python`);
-
-      return { success: true, synced: result.predictions_received };
+      logger.info(`[PythonBridge] ${count} verified predictions available for training`);
+      return { success: true, synced: count };
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        return { success: false, synced: 0, error: 'Sync timeout' };
-      }
-      logger.error('[PythonBridge] Sync error:', error.message);
+      logger.error('[PythonBridge] Error counting predictions:', error.message);
       return { success: false, synced: 0, error: error.message };
     }
   },
@@ -287,7 +197,8 @@ export const pythonTrainingService = {
 
   /**
    * Sincroniza predicciones Y dispara entrenamiento
-   * Útil para llamar después de verificar predicciones
+   * Útil para llamar después de verificar predicciones.
+   * Python escribe los pesos directamente al archivo learned_weights.json
    */
   async syncAndTrain(): Promise<{
     available: boolean;
@@ -317,6 +228,13 @@ export const pythonTrainingService = {
     // Si hay suficientes predicciones, entrenar
     if (syncResult.synced >= 5) {
       const trainResult = await this.triggerTraining();
+      
+      // Python escribe los pesos directamente al archivo JSON (code/config/learned_weights.json)
+      // No necesitamos importarlos a la DB - el archivo JSON es la única fuente de verdad
+      if (trainResult.success) {
+        logger.info('[PythonBridge] Training successful, weights updated in learned_weights.json');
+      }
+      
       return {
         available: true,
         synced: syncResult.synced,
@@ -334,51 +252,32 @@ export const pythonTrainingService = {
   },
 
   /**
-   * Importa pesos desde Python y los guarda en el backend
+   * Resetea todo el sistema ML de Python (predicciones y pesos)
    */
-  async importWeightsFromPython(): Promise<{
+  async resetAll(): Promise<{
     success: boolean;
-    imported?: boolean;
     error?: string;
   }> {
-    const weightsResult = await this.getTrainedWeights();
-    
-    if (!weightsResult.success || !weightsResult.weights) {
-      return { success: false, error: weightsResult.error };
-    }
-
-    const pythonWeights = weightsResult.weights;
-    
-    // Usar los pesos de 'swing' como default (balance entre corto y largo)
-    const swingWeights = pythonWeights.weights.swing;
-    
     try {
-      // Guardar en el backend
-      await prisma.learnedWeights.create({
-        data: {
-          trend: swingWeights.trend || 0.091,
-          technical: swingWeights.technical || 0.091,
-          sentiment: swingWeights.sentiment || 0.091,
-          news: swingWeights.news || 0.091,
-          macro: swingWeights.macro || 0.091,
-          competitors: swingWeights.competitors || 0.091,
-          forex: swingWeights.forex || 0.091,
-          institutional: swingWeights.institutional || 0.091,
-          seasonality: swingWeights.seasonality || 0.091,
-          financials: swingWeights.financials || 0.091,
-          expectations: swingWeights.expectations || 0.091,
-          sampleCount: pythonWeights.training_samples,
-          accuracy: pythonWeights.metadata?.final_loss 
-            ? Math.round((1 - pythonWeights.metadata.final_loss) * 100) 
-            : undefined,
-          version: pythonWeights.version,
-        },
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(`${PYTHON_SERVER_URL}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
       });
-
-      logger.info(`[PythonBridge] Imported weights v${pythonWeights.version} from Python`);
-      return { success: true, imported: true };
+      clearTimeout(timeout);
+      
+      if (!response.ok) {
+        return { success: false, error: `HTTP ${response.status}` };
+      }
+      
+      const result = await response.json() as { success: boolean; message?: string };
+      logger.info('[PythonBridge] Reset completo en Python');
+      return { success: result.success };
     } catch (error: any) {
-      logger.error('[PythonBridge] Error importing weights:', error.message);
+      logger.error('[PythonBridge] Error reseteando Python:', error.message);
       return { success: false, error: error.message };
     }
   },

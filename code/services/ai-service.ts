@@ -23,6 +23,11 @@ class AIService {
 
       if (calculatedPrediction) {
         console.log('[AIService] Predicción calculada del backend');
+        // DEBUG: Log del factorBreakdown que llega del API
+        console.log('[AIService] DEBUG - factorBreakdown del API:', 
+          calculatedPrediction.factorBreakdown ? 
+            `EXISTS (assetGroup: ${calculatedPrediction.factorBreakdown.assetGroup}, availableFactors: ${calculatedPrediction.factorBreakdown.availableFactors?.length || 0})` : 
+            'NULL/UNDEFINED');
         return this.formatPredictionResponse(calculatedPrediction);
       }
 
@@ -93,6 +98,7 @@ ${directionEmoji} Predicción: ${directionText} (${prediction.predictedChange >=
         asset: prediction.asset,
         symbol: prediction.symbol,
         assetType: prediction.assetType as any,
+        currency: prediction.currency, // Moneda del activo
         direction: prediction.direction,
         confidence: prediction.confidence,
         timeframe: prediction.timeframe,

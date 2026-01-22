@@ -106,6 +106,26 @@ class CurrencyService {
     
     return 'USD';
   }
+
+  /**
+   * Obtiene el rate de forma síncrona usando fallback rates
+   * Útil para formateo rápido de precios
+   */
+  getExchangeRateSync(currency: string): number {
+    const currencyUpper = currency?.toUpperCase() || 'EUR';
+    if (currencyUpper === 'EUR') return 1;
+    return FALLBACK_RATES[currencyUpper] || 0.95; // Default USD rate
+  }
+
+  /**
+   * Convierte precio a EUR de forma síncrona
+   */
+  convertToEURSync(price: number, fromCurrency: string): number {
+    return price * this.getExchangeRateSync(fromCurrency);
+  }
 }
 
 export const currencyService = new CurrencyService();
+
+// Exportar FALLBACK_RATES para uso directo si es necesario
+export const CURRENCY_RATES = FALLBACK_RATES;

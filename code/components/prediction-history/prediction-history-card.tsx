@@ -12,6 +12,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { currencyService } from '../../services/currency-service';
 import { predictionTrackingService, TrackedPrediction } from '../../services/prediction-tracking-service';
 
 interface PredictionHistoryCardProps {
@@ -88,7 +89,17 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
     loadPredictions();
   }, [loadPredictions]);
 
-  // Formatear fecha
+  // Formatear fecha corta (día/mes hora:min)
+  const formatDateShort = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const mins = date.getMinutes().toString().padStart(2, '0');
+    return `${day}/${month} ${hours}:${mins}`;
+  };
+
+  // Formatear fecha completa con hora
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const day = date.getDate().toString().padStart(2, '0');
@@ -96,6 +107,27 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
     const hours = date.getHours().toString().padStart(2, '0');
     const mins = date.getMinutes().toString().padStart(2, '0');
     return `${day}/${month} ${hours}:${mins}`;
+  };
+
+  // Formatear timeframe para mostrar
+  const formatTimeframe = (timeframe: string, days: number) => {
+    if (days === 1) return '1d';
+    if (days <= 7) return `${days}d`;
+    if (days <= 30) return `${days}d`;
+    return timeframe;
+  };
+
+  // Formatear precio de forma compacta, convirtiendo a EUR si es necesario
+  const formatPrice = (price: number | null | undefined, currency?: string) => {
+    if (price === null || price === undefined) return '?';
+    
+    // Convertir a EUR usando el servicio de moneda (síncrono)
+    const priceInEur = currencyService.convertToEURSync(price, currency || 'EUR');
+    
+    if (priceInEur >= 1000) return priceInEur.toFixed(0);
+    if (priceInEur >= 100) return priceInEur.toFixed(1);
+    if (priceInEur >= 1) return priceInEur.toFixed(2);
+    return priceInEur.toFixed(4);
   };
 
   // Color según calidad
@@ -259,7 +291,20 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
                   color={getDirectionColor(pred.direction)} 
                 />
                 <View style={styles.predictionInfo}>
-                  <Text style={styles.predictionDate}>{formatDate(pred.createdAt)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.predictionDate}>
+                      {formatDateShort(pred.createdAt)} → {formatDateShort(pred.expiresAt)}
+                    </Text>
+                    <View style={styles.timeframeBadge}>
+                      <Text style={styles.timeframeText}>
+                        {formatTimeframe(pred.timeframe, pred.timeframeDays)}
+                      </Text>
+                    </View>
+                  </View>
+                  {/* Precio base → Precio objetivo */}
+                  <Text style={styles.priceRange}>
+                    {formatPrice(pred.currentPrice, pred.currency)} → {formatPrice(pred.targetPrice, pred.currency)}
+                  </Text>
                   <Text style={styles.predictionChange}>
                     {pred.predictedChange >= 0 ? '+' : ''}{pred.predictedChange.toFixed(2)}%
                     <Text style={styles.predictionConfidence}> ({pred.confidence}% conf.)</Text>
@@ -452,6 +497,23 @@ const styles = StyleSheet.create({
   predictionDate: {
     fontSize: 11,
     color: '#6b7280',
+  },
+  timeframeBadge: {
+    backgroundColor: '#6366f120',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  timeframeText: {
+    fontSize: 9,
+    color: '#818cf8',
+    fontWeight: '600',
+  },
+  priceRange: {
+    fontSize: 11,
+    color: '#9ca3af',
+    fontWeight: '400',
+    marginBottom: 2,
   },
   predictionChange: {
     fontSize: 14,

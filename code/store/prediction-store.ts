@@ -141,6 +141,7 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
           asset: response.prediction.asset || asset,
           symbol: response.prediction.symbol,
           assetType: response.prediction.assetType || 'other',
+          currency: response.prediction.currency, // Moneda del activo desde la API
           direction: response.prediction.direction || 'neutral',
           confidence: response.prediction.confidence || 50,
           timeframe: response.prediction.timeframe || 'No especificado',
@@ -178,12 +179,19 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
           // Parsear timeframe a días
           const timeframeDays = parseTimeframeToDays(prediction.timeframe);
           
+          // DEBUG: Log del factorBreakdown antes de enviarlo
+          console.log('[PredictionStore] DEBUG - analysisData:', prediction.analysisData ? 'EXISTS' : 'NULL');
+          console.log('[PredictionStore] DEBUG - factorBreakdown:', prediction.analysisData?.factorBreakdown ? 
+            `EXISTS (assetGroup: ${prediction.analysisData.factorBreakdown.assetGroup}, availableFactors: ${prediction.analysisData.factorBreakdown.availableFactors?.length || 0})` : 
+            'NULL');
+          
           try {
             // El ID de la predicción trackeada se usa para sincronizar
             const trackedPrediction = await predictionTrackingService.trackPrediction({
               symbol: prediction.symbol,
               asset: prediction.asset,
               assetType: prediction.assetType,
+              currency: prediction.currency, // Moneda del activo
               direction: prediction.direction,
               predictedChange: prediction.predictedChange || 0,
               predictedPriceMin: prediction.predictedPriceMin || prediction.currentPrice,
@@ -194,8 +202,11 @@ export const usePredictionStore = create<PredictionStore>((set, get) => ({
               timeframeDays,
               factorScores,
               factorWeightsUsed,
+              factorBreakdown: prediction.analysisData?.factorBreakdown, // CRÍTICO para aprendizaje
               volatility: prediction.analysisData?.historical?.volatility,
+              reasoning: prediction.reasoning,
               uncertaintyScore: prediction.analysisData?.uncertainty?.score,
+              uncertaintyData: prediction.analysisData?.uncertainty,
             });
             
             console.log('[PredictionStore] Predicción registrada con ID:', trackedPrediction?.id);

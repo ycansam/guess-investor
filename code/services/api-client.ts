@@ -354,6 +354,12 @@ export interface MLWeightsStatus {
     long: Record<string, WeightComparison> | null;
   };
   assetGroupMultipliers: Record<string, Record<string, number>>;
+  assetGroupStats: Record<string, {
+    sampleCount: number;
+    successRate: number;
+    avgAccuracy: number;
+    lastUpdated: string;
+  }>;
   availableAssetGroups: string[];
 }
 
@@ -415,6 +421,27 @@ export const apiClient = {
       `/assets/${encodeURIComponent(symbol)}/history?range=${range}&interval=${interval}`
     );
     return response.prices;
+  },
+
+  /**
+   * Limpiar caché de historial de un símbolo específico
+   */
+  clearSymbolCache: (symbol: string): Promise<{ symbol: string; clearedEntries: number; message: string }> => {
+    return del(`/assets/${encodeURIComponent(symbol)}/cache`);
+  },
+
+  /**
+   * Obtener estadísticas del caché de historial
+   */
+  getCacheStats: (): Promise<{ entries: number; symbols: string[] }> => {
+    return get('/assets/cache/stats');
+  },
+
+  /**
+   * Limpiar todo el caché de historial
+   */
+  clearAllCache: (): Promise<{ clearedEntries: number; message: string }> => {
+    return del('/assets/cache');
   },
 
   // -------------------------------------------------------------------------
@@ -497,6 +524,7 @@ export const apiClient = {
     symbol: string;
     asset?: string;
     assetType?: string;
+    currency?: string; // Moneda del activo
     direction: string;
     predictedChange: number;
     predictedPriceMin?: number;
@@ -509,6 +537,7 @@ export const apiClient = {
     volatilityCategory?: string;
     factorBreakdown?: any;
     factorWeights?: any;
+    reasoning?: string;
     uncertaintyScore?: number;
     uncertaintyData?: any;
   }): Promise<{ id: string; symbol: string; direction: string; expiresAt: string }> => {
@@ -661,6 +690,7 @@ export const apiClient = {
     direction: string;
     currentPrice: number;
     targetPrice: number;
+    currency?: string;
     analysisData?: any;
     expiresAt: string;
   }): Promise<any> => {
@@ -700,6 +730,35 @@ export const apiClient = {
    */
   clearAllTrainingCache: (): Promise<{ deleted: number }> => {
     return del('/training/cache/all');
+  },
+
+  /**
+   * Resetear TODO el sistema ML: predicciones, cache, pesos y Python
+   */
+  resetAllML: (): Promise<{
+    predictions: number;
+    cache: number;
+    weights: boolean;
+    pythonReset: boolean;
+  }> => {
+    return del('/training/reset-all');
+  },
+
+  /**
+   * Forzar re-aprendizaje de pesos y clasificadores desde predicciones verificadas
+   */
+  forceRelearn: (): Promise<{
+    message: string;
+    weightsLearned: number;
+    classifiersLearned: number;
+    totalVerified: number;
+    withFactorData: number;
+    withoutFactorData: number;
+    errors: string[];
+    details: string[];
+    pythonResult: { success: boolean; message: string };
+  }> => {
+    return post('/training/force-relearn', {});
   },
 
   /**
@@ -793,6 +852,19 @@ export const apiClient = {
    */
   getMLWeightsStatus: (): Promise<MLWeightsStatus> => {
     return get('/ml/weights/status');
+  },
+
+  /**
+   * Obtener comparación de pesos para un símbolo (incluye clasificación)
+   */
+  getWeightsComparison: (symbol: string): Promise<{
+    symbol: string;
+    assetGroup: string;
+    assetGroupDescription: string;
+    weightsApplied: Record<string, number>;
+    usingLearnedWeights: boolean;
+  }> => {
+    return get(`/ml/weights/compare/${encodeURIComponent(symbol)}`);
   },
 
   /**

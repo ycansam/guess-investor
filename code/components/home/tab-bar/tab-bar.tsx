@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export type TabType = 'favorites' | 'predictions';
+export type TabType = 'favorites' | 'predictions' | 'trends';
 
 interface TabBarProps {
   activeTab: TabType;
@@ -51,6 +51,20 @@ export function TabBar({ activeTab, onTabChange, predictionsCount, favoritesCoun
           </View>
         )}
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'trends' && styles.activeTab]}
+        onPress={() => onTabChange('trends')}
+      >
+        <Ionicons
+          name="flame-outline"
+          size={18}
+          color={activeTab === 'trends' ? '#f97316' : '#6b7280'}
+        />
+        <Text style={[styles.tabText, activeTab === 'trends' && styles.activeTabTextTrends]}>
+          Trends
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -97,6 +111,10 @@ const styles = StyleSheet.create({
   },
   activeTabTextPred: {
     color: '#f59e0b',
+    fontWeight: '600',
+  },
+  activeTabTextTrends: {
+    color: '#f97316',
     fontWeight: '600',
   },
   badge: {

@@ -4,6 +4,9 @@ import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { predictionRepository } from '../repositories/prediction.repository.js';
 import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
+import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
+import { factorWeightLearningService } from '../services/ml/factor-weight-learning.service.js';
+import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
 import { ensembleService } from '../services/prediction/ensemble.service.js';
 
 // ============================================================================
@@ -59,6 +62,7 @@ export const trainingController = {
       direction: data.direction,
       currentPrice: data.currentPrice,
       targetPrice: data.targetPrice,
+      currency: data.currency, // IMPORTANTE: Guardar la moneda
       analysisData: data.analysisData,
       expiresAt: new Date(data.expiresAt),
     });
@@ -465,16 +469,17 @@ export const trainingController = {
   /**
    * POST /api/training/python/import-weights
    * Importar pesos entrenados desde Python al backend
+   * NOTA: Los pesos ahora se leen directamente del archivo JSON, no se importan
    */
   pythonImportWeights: asyncHandler(async (_req: Request, res: Response) => {
-    const result = await pythonTrainingService.importWeightsFromPython();
-    
+    // Los pesos ahora se leen directamente de learned_weights.json
+    // Este endpoint ya no necesita importar porque Python escribe directamente al archivo
     res.json({
-      success: result.success,
+      success: true,
       data: {
-        imported: result.imported,
+        imported: false,
+        message: 'Weights are now read directly from learned_weights.json file',
       },
-      error: result.error,
     });
   }),
 
@@ -646,6 +651,327 @@ export const trainingController = {
         removed,
         removedItems,
         remaining: cache.length - removed,
+      },
+    });
+  }),
+
+  /**
+   * DELETE /api/training/reset-all
+   * Resetear TODO el sistema ML: predicciones, pesos, cache y Python
+   */
+  resetAll: asyncHandler(async (_req: Request, res: Response) => {
+    const results = {
+      predictions: 0,
+      cache: 0,
+      mlModels: 0,
+      weights: false,
+      pythonReset: false,
+    };
+
+    // 1. Borrar todas las predicciones
+    const deletedPreds = await predictionRepository.clear();
+    results.predictions = deletedPreds;
+
+    // 2. Borrar todo el cache de training
+    const cacheResult = await prisma.trainingCache.deleteMany({});
+    results.cache = cacheResult.count;
+
+    // 3. Borrar estados de modelos ML (RL, probabilístico, correlación, meta-learning)
+    const mlModelsResult = await prisma.mLModelState.deleteMany({});
+    results.mlModels = mlModelsResult.count;
+
+    // 4. Resetear pesos aprendidos a valores por defecto (no uniformes)
+    // Estos son los pesos por defecto para swing (balance entre corto y largo plazo)
+    const defaultWeights = {
+      trend: 0.12,
+      technical: 0.18,
+      sentiment: 0.10,
+      news: 0.15,
+      macro: 0.08,
+      competitors: 0.07,
+      forex: 0.06,
+      institutional: 0.10,
+      seasonality: 0.04,
+      financials: 0.05,
+      expectations: 0.05,
+      sampleCount: 0,
+      accuracy: 0,
+    };
+    await trainingRepository.saveLearnedWeights(defaultWeights);
+    results.weights = true;
+
+    // 5. Resetear Python (predicciones verificadas y pesos)
+    try {
+      const pythonResult = await pythonTrainingService.resetAll();
+      results.pythonReset = pythonResult.success;
+    } catch (error) {
+      console.warn('[Training] Python reset failed:', error);
+      results.pythonReset = false;
+    }
+
+    res.json({
+      success: true,
+      message: 'Sistema ML reseteado completamente',
+      data: results,
+    });
+  }),
+
+  /**
+   * POST /api/training/force-relearn
+   * Forzar re-aprendizaje de pesos y clasificadores desde predicciones verificadas
+   */
+  forceRelearn: asyncHandler(async (_req: Request, res: Response) => {
+    const results = {
+      weightsLearned: 0,
+      classifiersLearned: 0,
+      totalVerified: 0,
+      alreadyTrained: 0,
+      withFactorData: 0,
+      withoutFactorData: 0,
+      newlyProcessed: 0,
+      errors: [] as string[],
+      details: [] as string[],
+    };
+
+    // Contar predicciones verificadas totales
+    const totalVerified = await prisma.prediction.count({
+      where: { verified: true },
+    });
+    results.totalVerified = totalVerified;
+
+    // Contar ya entrenadas
+    const alreadyTrained = await prisma.prediction.count({
+      where: { verified: true, usedForTraining: true },
+    });
+    results.alreadyTrained = alreadyTrained;
+
+    // Obtener SOLO predicciones verificadas NO entrenadas con factorBreakdown
+    const untrainedPredictions = await prisma.prediction.findMany({
+      where: {
+        verified: true,
+        usedForTraining: false, // Solo las que NO han sido usadas
+        factorBreakdown: { not: null },
+      },
+      orderBy: { verifiedAt: 'asc' },
+    });
+
+    // Contar las que no tienen factorBreakdown (sin datos)
+    const withoutFactorData = await prisma.prediction.count({
+      where: {
+        verified: true,
+        usedForTraining: false,
+        factorBreakdown: null,
+      },
+    });
+    results.withoutFactorData = withoutFactorData;
+    results.withFactorData = untrainedPredictions.length;
+
+    console.log(`[ForceRelearn] Total: ${totalVerified}, Ya entrenadas: ${alreadyTrained}, Pendientes con datos: ${untrainedPredictions.length}`);
+    
+    if (alreadyTrained > 0) {
+      results.details.push(`✅ ${alreadyTrained} predicciones ya fueron usadas para entrenar`);
+    }
+    if (withoutFactorData > 0) {
+      results.details.push(`⚠️ ${withoutFactorData} predicciones sin datos de factores (no procesables)`);
+    }
+    results.details.push(`🆕 ${untrainedPredictions.length} predicciones nuevas para procesar`);
+
+    // Procesar cada predicción NO entrenada
+    const processedIds: string[] = [];
+    
+    for (const prediction of untrainedPredictions) {
+      try {
+        const factorBreakdown = prediction.factorBreakdown 
+          ? JSON.parse(prediction.factorBreakdown) 
+          : null;
+
+        if (!factorBreakdown?.availableFactors) {
+          continue;
+        }
+
+        // Extraer scores y weights
+        const factorScores: Record<string, number> = {};
+        const factorWeights: Record<string, number> = {};
+
+        for (const f of factorBreakdown.availableFactors) {
+          factorScores[f.name] = f.score;
+        }
+
+        if (factorBreakdown.weightsUsed) {
+          Object.assign(factorWeights, factorBreakdown.weightsUsed);
+        }
+
+        // Aprender pesos de factores
+        const weightResult = await factorWeightLearningService.learnFromVerification({
+          timeframeDays: prediction.timeframeDays,
+          directionCorrect: prediction.directionCorrect || false,
+          accuracyScore: prediction.accuracyScore || 0,
+          factorScores,
+          factorWeights,
+          predictedChange: prediction.predictedChange,
+          actualChange: prediction.actualChange || 0,
+        });
+
+        if (weightResult.adjusted) {
+          results.weightsLearned++;
+        }
+
+        // Aprender clasificadores por grupo de activo
+        if (factorBreakdown.assetGroup) {
+          await classifierLearningService.learnFromVerifiedPrediction({
+            assetGroup: factorBreakdown.assetGroup,
+            directionCorrect: prediction.directionCorrect || false,
+            accuracyScore: prediction.accuracyScore || 0,
+            factorScores,
+            factorWeights,
+            predictedChange: prediction.predictedChange,
+            actualChange: prediction.actualChange || 0,
+          });
+          results.classifiersLearned++;
+        }
+
+        // Marcar como procesada
+        processedIds.push(prediction.id);
+        results.newlyProcessed++;
+      } catch (err: any) {
+        results.errors.push(`${prediction.symbol}: ${err.message}`);
+      }
+    }
+
+    // Marcar todas las predicciones procesadas como usadas para training
+    if (processedIds.length > 0) {
+      await prisma.prediction.updateMany({
+        where: { id: { in: processedIds } },
+        data: { 
+          usedForTraining: true,
+          trainedAt: new Date(),
+        },
+      });
+      console.log(`[ForceRelearn] Marcadas ${processedIds.length} predicciones como entrenadas`);
+    }
+
+    // También intentar entrenar con Python
+    let pythonResult = { success: false, message: 'No intentado' };
+    try {
+      const syncResult = await pythonTrainingService.syncAndTrain();
+      pythonResult = {
+        success: syncResult.trained,
+        message: syncResult.trained 
+          ? 'Entrenamiento Python exitoso' 
+          : 'Python no disponible o sin cambios',
+      };
+      results.details.push(`🐍 Python: ${pythonResult.message}`);
+    } catch (err: any) {
+      pythonResult = { success: false, message: err.message };
+      results.details.push(`🐍 Python error: ${err.message}`);
+    }
+
+    const status = factorWeightLearningService.getStatus();
+    results.details.push(`📁 Muestras en archivo de pesos: ${status.trainingSamples}`);
+
+    // Construir mensaje según los resultados
+    let message = '';
+    if (untrainedPredictions.length === 0) {
+      if (alreadyTrained > 0) {
+        message = `ℹ️ Todas las predicciones (${alreadyTrained}) ya fueron procesadas. No hay nuevos datos para entrenar.`;
+      } else if (withoutFactorData > 0) {
+        message = `⚠️ Hay ${withoutFactorData} predicciones verificadas pero sin datos de factores (creadas antes del fix). Las nuevas predicciones sí tendrán datos.`;
+      } else {
+        message = 'No hay predicciones verificadas para procesar.';
+      }
+      if (pythonResult.success) {
+        message += ' Python sí pudo entrenar.';
+      }
+    } else {
+      message = `✅ Procesadas ${results.newlyProcessed} predicciones nuevas: ${results.weightsLearned} ajustes de pesos, ${results.classifiersLearned} clasificadores.`;
+    }
+
+    res.json({
+      success: true,
+      message,
+      data: {
+        ...results,
+        pythonResult,
+        finalStatus: status,
+      },
+    });
+  }),
+
+  /**
+   * POST /api/training/backfill-factor-breakdown
+   * Genera factorBreakdown básico para predicciones verificadas que no lo tienen
+   * Esto permite que el classifier learning funcione con predicciones antiguas
+   */
+  backfillFactorBreakdown: asyncHandler(async (_req: Request, res: Response) => {
+    // Obtener predicciones verificadas sin factorBreakdown
+    const predictions = await prisma.prediction.findMany({
+      where: {
+        verified: true,
+        factorBreakdown: null,
+      },
+      select: {
+        id: true,
+        symbol: true,
+        asset: true,
+        assetType: true,
+      },
+    });
+
+    if (predictions.length === 0) {
+      res.json({
+        success: true,
+        message: 'No hay predicciones para actualizar. Todas ya tienen factorBreakdown.',
+        data: { updated: 0 },
+      });
+      return;
+    }
+
+    let updated = 0;
+    const errors: string[] = [];
+
+    for (const pred of predictions) {
+      try {
+        // Detectar el grupo del activo
+        const type = pred.assetType === 'crypto' ? 'crypto' : 'stock';
+        const assetGroup = predictionCalculatorService.detectAssetGroup(
+          pred.symbol,
+          type as 'stock' | 'crypto',
+          pred.asset || ''
+        );
+
+        // Crear un factorBreakdown básico
+        const factorBreakdown = {
+          assetGroup,
+          assetGroupDescription: `Grupo detectado: ${assetGroup}`,
+          relevantFactors: ['trend', 'technical', 'sentiment', 'news'], // Factores básicos
+          availableFactors: [], // No tenemos los scores originales
+          weightsUsed: {}, // No tenemos los pesos originales
+          usingLearnedWeights: false,
+          confidenceExplanation: 'Datos reconstruidos - predicción histórica',
+          signalSummary: 'insufficient' as const,
+        };
+
+        // Actualizar la predicción
+        await prisma.prediction.update({
+          where: { id: pred.id },
+          data: {
+            factorBreakdown: JSON.stringify(factorBreakdown),
+          },
+        });
+
+        updated++;
+      } catch (err: any) {
+        errors.push(`${pred.symbol}: ${err.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Actualizadas ${updated}/${predictions.length} predicciones con factorBreakdown básico.`,
+      data: {
+        total: predictions.length,
+        updated,
+        errors: errors.length > 0 ? errors : undefined,
       },
     });
   }),

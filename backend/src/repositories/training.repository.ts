@@ -1,5 +1,10 @@
 import { AssetAdjustment, ConfidenceCalibration, LearnedWeights, TrainingCache } from '@prisma/client';
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
 import { prisma } from '../config/database.js';
+
+// Ruta al archivo JSON de pesos (única fuente de verdad)
+const WEIGHTS_FILE = resolve(process.cwd(), '../code/config/learned_weights.json');
 
 // ============================================================================
 // TIPOS
@@ -13,6 +18,7 @@ export interface TrainingCacheData {
   direction: string;
   currentPrice: number;
   targetPrice: number;
+  currency?: string;
   analysisData?: any;
   expiresAt: Date;
 }
@@ -57,6 +63,7 @@ export const trainingRepository = {
         direction: data.direction,
         currentPrice: data.currentPrice,
         targetPrice: data.targetPrice,
+        currency: data.currency,
         analysisData: data.analysisData ? JSON.stringify(data.analysisData) : null,
         expiresAt: data.expiresAt,
       },
@@ -66,6 +73,7 @@ export const trainingRepository = {
         direction: data.direction,
         currentPrice: data.currentPrice,
         targetPrice: data.targetPrice,
+        currency: data.currency,
         analysisData: data.analysisData ? JSON.stringify(data.analysisData) : null,
         expiresAt: data.expiresAt,
       },
@@ -180,18 +188,52 @@ export const trainingRepository = {
   // -------------------------------------------------------------------------
 
   /**
-   * Obtener pesos aprendidos actuales
+   * Obtener pesos aprendidos actuales (lee del archivo JSON)
    */
   async getLearnedWeights(): Promise<LearnedWeights | null> {
-    return prisma.learnedWeights.findFirst({
-      orderBy: { version: 'desc' },
-    });
+    try {
+      if (!existsSync(WEIGHTS_FILE)) {
+        return null;
+      }
+      const content = readFileSync(WEIGHTS_FILE, 'utf-8');
+      const data = JSON.parse(content);
+      
+      // Usar swing como balance entre timeframes
+      const swingWeights = data.weights?.swing || {};
+      
+      // Devolver formato compatible con LearnedWeights de Prisma
+      return {
+        id: 'file-based',
+        trend: swingWeights.trend || 0.091,
+        technical: swingWeights.technical || 0.091,
+        sentiment: swingWeights.sentiment || 0.091,
+        news: swingWeights.news || 0.091,
+        macro: swingWeights.macro || 0.091,
+        competitors: swingWeights.competitors || 0.091,
+        forex: swingWeights.forex || 0.091,
+        institutional: swingWeights.institutional || 0.091,
+        seasonality: swingWeights.seasonality || 0.091,
+        financials: swingWeights.financials || 0.091,
+        expectations: swingWeights.expectations || 0.091,
+        version: parseInt(data.version) || 1,
+        trainedAt: new Date(data.updated_at || Date.now()),
+        sampleCount: data.training_samples || 0,
+        accuracy: data.metadata?.final_loss 
+          ? Math.round((1 - data.metadata.final_loss) * 100) 
+          : null,
+      } as LearnedWeights;
+    } catch (error) {
+      console.error('[TrainingRepository] Error reading weights file:', error);
+      return null;
+    }
   },
 
   /**
    * Guardar nuevos pesos aprendidos
+   * NOTA: Esta función ya no guarda en DB. Python escribe directamente al archivo JSON.
+   * Se mantiene por compatibilidad pero devuelve los pesos actuales del archivo.
    */
-  async saveLearnedWeights(weights: {
+  async saveLearnedWeights(_weights: {
     trend: number;
     technical: number;
     sentiment: number;
@@ -206,16 +248,13 @@ export const trainingRepository = {
     sampleCount: number;
     accuracy?: number;
   }): Promise<LearnedWeights> {
-    // Obtener versión actual
+    // Los pesos se gestionan mediante Python que escribe al archivo JSON
+    // Retornamos los pesos actuales del archivo
     const current = await this.getLearnedWeights();
-    const nextVersion = (current?.version || 0) + 1;
-
-    return prisma.learnedWeights.create({
-      data: {
-        ...weights,
-        version: nextVersion,
-      },
-    });
+    if (!current) {
+      throw new Error('No weights file available. Train with Python first.');
+    }
+    return current;
   },
 
   // -------------------------------------------------------------------------

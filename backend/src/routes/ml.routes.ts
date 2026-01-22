@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import {
   factorCorrelationService,
   featureEngineeringService,
@@ -13,9 +14,10 @@ const router = Router();
 
 // GET /api/ml/status - Estado de todos los modelos ML
 router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
-  const [rl, probStats] = await Promise.all([
+  const [rl, probStats, classifierDiagnostics] = await Promise.all([
     reinforcementLearningService.getStats(),
     probabilisticModelService.getCalibrationStats(),
+    Promise.resolve(classifierLearningService.getDiagnostics()),
   ]);
 
   res.json({
@@ -28,6 +30,13 @@ router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
       probabilisticModel: {
         ...probStats,
         status: probStats.sampleCount > 0 ? 'calibrating' : 'uncalibrated',
+      },
+      classifierLearning: {
+        isInitialized: classifierDiagnostics.isInitialized,
+        version: classifierDiagnostics.version,
+        totalGroups: classifierDiagnostics.totalGroups,
+        totalSamples: classifierDiagnostics.totalSamples,
+        status: classifierDiagnostics.totalSamples > 0 ? 'learning' : 'static',
       },
       factorCorrelation: { status: 'active' },
       metaLearning: { status: 'active' },
@@ -196,16 +205,21 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
     const diff: Record<string, { base: number; learned: number; change: string; changePercent: number }> = {};
     for (const [key, baseVal] of Object.entries(BASE_WEIGHTS)) {
       const learnedVal = learned[key] ?? baseVal;
-      const changePercent = ((learnedVal - baseVal) / baseVal) * 100;
+      // Cambio relativo en porcentaje
+      const changePercent = baseVal > 0 ? ((learnedVal - baseVal) / baseVal) * 100 : 0;
       diff[key] = {
         base: baseVal,
         learned: learnedVal,
-        change: changePercent > 0 ? `+${changePercent.toFixed(1)}%` : `${changePercent.toFixed(1)}%`,
+        change: changePercent >= 0 ? `+${changePercent.toFixed(1)}%` : `${changePercent.toFixed(1)}%`,
         changePercent,
       };
     }
     return diff;
   };
+
+  // Obtener multiplicadores aprendidos (o estáticos si no hay)
+  const learnedMultipliers = classifierLearningService.getAllMultipliers();
+  const classifierStats = classifierLearningService.getStats();
 
   res.json({
     success: true,
@@ -223,8 +237,9 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
         swing: calculateDiff(learnedWeights?.swing),
         long: calculateDiff(learnedWeights?.long),
       },
-      assetGroupMultipliers: ASSET_GROUP_MULTIPLIERS,
-      availableAssetGroups: Object.keys(ASSET_GROUP_MULTIPLIERS),
+      assetGroupMultipliers: learnedMultipliers, // Ahora usa los aprendidos
+      assetGroupStats: classifierStats,
+      availableAssetGroups: Object.keys(learnedMultipliers),
     },
   });
 }));
@@ -267,6 +282,225 @@ router.get('/weights/compare/:symbol', asyncHandler(async (req: Request, res: Re
       error: err instanceof Error ? err.message : 'Error getting weights for symbol' 
     });
   }
+}));
+
+// POST /api/ml/train-from-verified - Entrena RL y calibra Probabilístico con predicciones verificadas
+router.post('/train-from-verified', asyncHandler(async (_req: Request, res: Response) => {
+  const { predictionRepository } = await import('../repositories/prediction.repository.js');
+  
+  // Obtener predicciones verificadas
+  const verified = await predictionRepository.findVerified(500);
+  
+  if (verified.length === 0) {
+    res.json({ success: false, error: 'No verified predictions found' });
+    return;
+  }
+  
+  let rlTrained = 0;
+  let probCalibrated = 0;
+  const errors: string[] = [];
+  
+  for (const pred of verified) {
+    try {
+      // Entrenar RL
+      const historicalData = pred.historicalData ? JSON.parse(pred.historicalData) : null;
+      const sentimentData = pred.sentimentData ? JSON.parse(pred.sentimentData) : null;
+      const factorBreakdown = pred.factorBreakdown ? JSON.parse(pred.factorBreakdown) : null;
+      
+      const volatility = historicalData?.volatility ?? pred.volatility ?? 25;
+      const vix = sentimentData?.vix?.value ?? 20;
+      const signalSummary = factorBreakdown?.signalSummary ?? 'mixed';
+      const avgScore = factorBreakdown?.availableFactors 
+        ? factorBreakdown.availableFactors.reduce((sum: number, f: { score: number }) => sum + Math.abs(f.score), 0) / factorBreakdown.availableFactors.length
+        : 30;
+      
+      // Determinar timeframe en días
+      let timeframeDays = 1;
+      if (pred.timeframe === 'swing') timeframeDays = 7;
+      else if (pred.timeframe === 'longterm') timeframeDays = 30;
+      
+      // Discretizar estado
+      const state = reinforcementLearningService.discretizeState({
+        vix,
+        volatility,
+        timeframeDays,
+        combinedScore: avgScore * (pred.direction === 'up' ? 1 : pred.direction === 'down' ? -1 : 0),
+        signalCoherence: signalSummary === 'aligned' ? 'coherent_bullish' : signalSummary === 'conflicting' ? 'mixed' : 'neutral',
+        hasUpcomingEvents: false,
+        recentAccuracy: pred.accuracyScore ?? 50,
+      });
+      
+      // Determinar acción basada en confianza original
+      let action: 'skip' | 'predict_low' | 'predict_medium' | 'predict_high' = 'predict_medium';
+      if (pred.confidence < 40) action = 'predict_low';
+      else if (pred.confidence > 70) action = 'predict_high';
+      
+      // Registrar experiencia
+      await reinforcementLearningService.recordExperience(
+        state,
+        action,
+        pred.accuracyScore ?? null,
+        pred.directionCorrect ?? null,
+        null
+      );
+      rlTrained++;
+      
+      // Calibrar modelo probabilístico
+      const predictedMean = pred.predictedChange ?? 0;
+      const predictedStdDev = volatility / Math.sqrt(252) * Math.sqrt(timeframeDays);
+      const actualChange = pred.actualChange ?? 0;
+      
+      await probabilisticModelService.recordCalibration(
+        pred.symbol,
+        predictedMean,
+        predictedStdDev,
+        actualChange
+      );
+      probCalibrated++;
+      
+    } catch (err) {
+      errors.push(`${pred.symbol}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+  
+  // Obtener stats actualizados
+  const [rlStats, probStats] = await Promise.all([
+    reinforcementLearningService.getStats(),
+    probabilisticModelService.getCalibrationStats(),
+  ]);
+  
+  res.json({
+    success: true,
+    data: {
+      totalPredictions: verified.length,
+      rlTrained,
+      probCalibrated,
+      errors: errors.slice(0, 10),
+      rlStats,
+      probStats,
+    },
+  });
+}));
+
+// =====================================================================
+// CLASSIFIER LEARNING ENDPOINTS
+// =====================================================================
+
+// GET /api/ml/classifiers/status - Estado del aprendizaje de clasificadores
+router.get('/classifiers/status', asyncHandler(async (_req: Request, res: Response) => {
+  const diagnostics = classifierLearningService.getDiagnostics();
+  
+  res.json({
+    success: true,
+    data: diagnostics,
+  });
+}));
+
+// GET /api/ml/classifiers/multipliers - Obtener todos los multiplicadores aprendidos
+router.get('/classifiers/multipliers', asyncHandler(async (_req: Request, res: Response) => {
+  const multipliers = classifierLearningService.getAllMultipliers();
+  const stats = classifierLearningService.getStats();
+  
+  res.json({
+    success: true,
+    data: {
+      multipliers,
+      stats,
+    },
+  });
+}));
+
+// GET /api/ml/classifiers/:group/multipliers - Multiplicadores de un clasificador específico
+router.get('/classifiers/:group/multipliers', asyncHandler(async (req: Request, res: Response) => {
+  const { group } = req.params;
+  const multipliers = classifierLearningService.getMultipliers(group);
+  const stats = classifierLearningService.getStats();
+  
+  res.json({
+    success: true,
+    data: {
+      assetGroup: group,
+      multipliers,
+      stats: stats[group] || { sampleCount: 0, successRate: 0, avgAccuracy: 0, lastUpdated: null },
+    },
+  });
+}));
+
+// POST /api/ml/classifiers/train - Entrenar clasificadores con predicciones verificadas existentes
+router.post('/classifiers/train', asyncHandler(async (_req: Request, res: Response) => {
+  const { predictionRepository } = await import('../repositories/prediction.repository.js');
+  
+  // Obtener predicciones verificadas
+  const verified = await predictionRepository.findVerified(500);
+  
+  if (verified.length === 0) {
+    res.json({ success: false, error: 'No verified predictions found' });
+    return;
+  }
+  
+  const trainingData: Array<{
+    assetGroup: string;
+    directionCorrect: boolean;
+    accuracyScore: number;
+    factorScores: Record<string, number>;
+    factorWeights: Record<string, number>;
+    predictedChange: number;
+    actualChange: number;
+  }> = [];
+  
+  for (const pred of verified) {
+    try {
+      const factorBreakdown = pred.factorBreakdown ? JSON.parse(pred.factorBreakdown) : null;
+      if (!factorBreakdown?.assetGroup) continue;
+      
+      const factorScores: Record<string, number> = {};
+      const factorWeights: Record<string, number> = {};
+      
+      if (factorBreakdown.availableFactors) {
+        for (const f of factorBreakdown.availableFactors) {
+          factorScores[f.name] = f.score;
+        }
+      }
+      if (factorBreakdown.weightsUsed) {
+        Object.assign(factorWeights, factorBreakdown.weightsUsed);
+      }
+      
+      trainingData.push({
+        assetGroup: factorBreakdown.assetGroup,
+        directionCorrect: pred.directionCorrect || false,
+        accuracyScore: pred.accuracyScore || 0,
+        factorScores,
+        factorWeights,
+        predictedChange: pred.predictedChange,
+        actualChange: pred.actualChange || 0,
+      });
+    } catch (err) {
+      // Skip malformed predictions
+    }
+  }
+  
+  const result = await classifierLearningService.trainFromBatch(trainingData);
+  const diagnostics = classifierLearningService.getDiagnostics();
+  
+  res.json({
+    success: true,
+    data: {
+      ...result,
+      diagnostics,
+    },
+  });
+}));
+
+// POST /api/ml/classifiers/reset - Reiniciar multiplicadores a valores estáticos
+router.post('/classifiers/reset', asyncHandler(async (_req: Request, res: Response) => {
+  await classifierLearningService.reset();
+  const diagnostics = classifierLearningService.getDiagnostics();
+  
+  res.json({
+    success: true,
+    message: 'Classifier multipliers reset to static values',
+    data: diagnostics,
+  });
 }));
 
 export default router;

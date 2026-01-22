@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { currencyService } from '../../../services/currency-service';
 import { canTradeNow, getMarketHours, MarketHoursInfo } from '../../../services/market-hours-service';
 import { InvestmentPrediction } from '../../../types';
 import { styles } from './prediction-card-analysis.styles';
@@ -35,6 +36,16 @@ function getEssentialFactors(symbol: string): string[] {
 export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ prediction }) => {
   const [marketInfo, setMarketInfo] = useState<MarketHoursInfo | null>(null);
   const [tradeStatus, setTradeStatus] = useState<{ canTrade: boolean; reason: string; suggestion: string } | null>(null);
+  const [eurRate, setEurRate] = useState<number>(1);
+
+  // Obtener rate de conversión a EUR (usando la moneda real del activo, no adivinando por símbolo)
+  useEffect(() => {
+    if (prediction.symbol) {
+      // Usar la moneda de la predicción si está disponible, sino detectar del símbolo
+      const currency = (prediction as any).currency || currencyService.getCurrencyFromSymbol(prediction.symbol);
+      currencyService.getExchangeRateToEUR(currency).then(setEurRate);
+    }
+  }, [prediction.symbol, (prediction as any).currency]);
 
   // Actualizar info del mercado automáticamente
   useEffect(() => {
@@ -882,11 +893,15 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
           )}
 
           {/* Fórmula final */}
-          {prediction.analysisData?.audit?.expectedChangeBreakdown && (
+          {prediction.currentPrice && prediction.predictedChange !== undefined && (
           <View style={styles.auditFinalFormula}>
             <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
             <Text style={styles.auditFormulaText}>
-              {prediction.analysisData.audit.expectedChangeBreakdown}
+              {(() => {
+                const basePrice = prediction.currentPrice * eurRate;
+                const targetPrice = basePrice * (1 + prediction.predictedChange / 100);
+                return `Precio objetivo = ${basePrice.toFixed(2)} × (1 + ${prediction.predictedChange.toFixed(2)}%) = ${targetPrice.toFixed(2)} EUR`;
+              })()}
             </Text>
           </View>
           )}

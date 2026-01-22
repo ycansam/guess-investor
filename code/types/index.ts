@@ -5,6 +5,7 @@ export interface InvestmentPrediction {
   asset: string;
   symbol?: string; // Símbolo del activo (ej: "AMZN", "ITX.MC", "BTC-USD")
   assetType: AssetType;
+  currency?: string; // Moneda del activo (EUR, USD, GBP, etc.)
   currentPrice?: number;
   predictedPrice?: number;
   predictedPriceMin?: number;

@@ -50,7 +50,7 @@ LOSS_BETA = 0.35   # Peso de pérdida por magnitud
 LOSS_GAMMA = 0.15  # Peso de pérdida por rango
 
 # Hiperparámetros de entrenamiento
-DEFAULT_LEARNING_RATE = 0.01
+DEFAULT_LEARNING_RATE = 0.05  # Aumentado para cambios más visibles
 DEFAULT_MOMENTUM = 0.9
 DEFAULT_EPOCHS = 100
 EARLY_STOPPING_PATIENCE = 10

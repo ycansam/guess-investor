@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { searchTradeRepublicAssets, tradeRepublicAssets } from '../data/trade-republic-assets.js';
 import { asyncHandler, NotFoundError } from '../middleware/error-handler.js';
+import { historyCacheService } from '../services/external/history-cache.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 
 export const assetController = {
@@ -121,6 +122,57 @@ export const assetController = {
     res.json({
       success: true,
       data: combined.slice(0, 20),
+    });
+  }),
+
+  /**
+   * DELETE /api/assets/:symbol/cache
+   * Limpiar caché de historial para un símbolo
+   */
+  clearCache: asyncHandler(async (req: Request, res: Response) => {
+    const { symbol } = req.params;
+    
+    const cleared = historyCacheService.clearSymbol(symbol);
+    
+    res.json({
+      success: true,
+      data: {
+        symbol: symbol.toUpperCase(),
+        clearedEntries: cleared,
+        message: cleared > 0 
+          ? `Cache cleared for ${symbol.toUpperCase()}` 
+          : `No cache entries found for ${symbol.toUpperCase()}`,
+      },
+    });
+  }),
+
+  /**
+   * GET /api/assets/cache/stats
+   * Obtener estadísticas del caché
+   */
+  getCacheStats: asyncHandler(async (_req: Request, res: Response) => {
+    const stats = historyCacheService.getStats();
+    
+    res.json({
+      success: true,
+      data: stats,
+    });
+  }),
+
+  /**
+   * DELETE /api/assets/cache
+   * Limpiar todo el caché de historial
+   */
+  clearAllCache: asyncHandler(async (_req: Request, res: Response) => {
+    const statsBefore = historyCacheService.getStats();
+    historyCacheService.clear();
+    
+    res.json({
+      success: true,
+      data: {
+        clearedEntries: statsBefore.entries,
+        message: 'All history cache cleared',
+      },
     });
   }),
 };

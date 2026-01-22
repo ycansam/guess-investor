@@ -23,6 +23,7 @@ interface MLDiagnosticsModalProps {
 
 type TabType = 'weights' | 'classifiers' | 'models';
 type TimeframeType = 'intraday' | 'swing' | 'long';
+type AssetGroupType = string;
 
 export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   visible,
@@ -34,10 +35,20 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const [modelsData, setModelsData] = useState<MLModelsStatus | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('weights');
   const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeType>('intraday');
+  const [selectedAssetGroup, setSelectedAssetGroup] = useState<AssetGroupType>('large_cap_stock');
+  const [isRelearning, setIsRelearning] = useState(false);
+  const [relearnResult, setRelearnResult] = useState<string | null>(null);
+  const [isResettingModels, setIsResettingModels] = useState(false);
+  const [resetModelsResult, setResetModelsResult] = useState<string | null>(null);
+  const [isRetrainingClassifiers, setIsRetrainingClassifiers] = useState(false);
+  const [retrainClassifiersResult, setRetrainClassifiersResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       loadData();
+      setRelearnResult(null);
+      setResetModelsResult(null);
+      setRetrainClassifiersResult(null);
     }
   }, [visible]);
 
@@ -55,6 +66,50 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       setError(err instanceof Error ? err.message : 'Error cargando datos ML');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForceRelearn = async () => {
+    setIsRelearning(true);
+    setRelearnResult(null);
+    try {
+      const result = await apiClient.forceRelearn();
+      // Usar el mensaje del backend que ya tiene el contexto completo
+      setRelearnResult(result.message);
+      // Recargar datos después del aprendizaje
+      await loadData();
+    } catch (err) {
+      setRelearnResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsRelearning(false);
+    }
+  };
+
+  const handleResetModels = async () => {
+    setIsResettingModels(true);
+    setResetModelsResult(null);
+    try {
+      const result = await apiClient.resetAllML();
+      setResetModelsResult(`✅ Reset completado: ${result.predictions} predicciones, ${result.cache} cache, pesos: ${result.weights ? 'sí' : 'no'}, Python: ${result.pythonReset ? 'sí' : 'no'}`);
+      await loadData();
+    } catch (err) {
+      setResetModelsResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsResettingModels(false);
+    }
+  };
+
+  const handleRetrainClassifiers = async () => {
+    setIsRetrainingClassifiers(true);
+    setRetrainClassifiersResult(null);
+    try {
+      const result = await apiClient.forceRelearn();
+      setRetrainClassifiersResult(`✅ Clasificadores actualizados: ${result.classifiersLearned} grupos procesados de ${result.withFactorData} predicciones`);
+      await loadData();
+    } catch (err) {
+      setRetrainClassifiersResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsRetrainingClassifiers(false);
     }
   };
 
@@ -81,7 +136,10 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const renderWeightRow = (name: string, comparison: WeightComparison) => (
     <View key={name} style={styles.weightRow}>
       <Text style={styles.weightName}>{name}</Text>
-      <Text style={styles.weightValue}>{(comparison.learned * 100).toFixed(1)}%</Text>
+      <Text style={styles.weightBase}>{(comparison.base * 100).toFixed(0)}%</Text>
+      <Text style={[styles.weightValue, { color: getChangeColor(comparison.changePercent) }]}>
+        {(comparison.learned * 100).toFixed(2)}%
+      </Text>
       <Text style={[styles.weightChange, { color: getChangeColor(comparison.changePercent) }]}>
         {comparison.change}
       </Text>
@@ -142,9 +200,10 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
         <View style={styles.weightsContainer}>
           <View style={styles.weightsHeader}>
             <Text style={styles.weightsHeaderText}>Factor</Text>
-            <Text style={styles.weightsHeaderText}>Peso</Text>
-            <Text style={styles.weightsHeaderText}>Cambio</Text>
-            <Text style={styles.weightsHeaderText}>Visual</Text>
+            <Text style={styles.weightsHeaderText}>Base</Text>
+            <Text style={styles.weightsHeaderText}>Actual</Text>
+            <Text style={styles.weightsHeaderText}>Δ%</Text>
+            <Text style={styles.weightsHeaderText}></Text>
           </View>
           {comparison && Object.entries(comparison)
             .sort((a, b) => b[1].learned - a[1].learned)
@@ -159,6 +218,34 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
             <Text style={{ color: colors.danger }}>Rojo</Text>: El ML aprendió que es menos importante{'\n'}
             <Text style={{ color: colors.textSecondary }}>Gris</Text>: Similar al peso base
           </Text>
+        </View>
+
+        {/* Force Relearn Button */}
+        <View style={styles.forceRelearnContainer}>
+          <TouchableOpacity 
+            style={[styles.forceRelearnButton, isRelearning && styles.forceRelearnButtonDisabled]}
+            onPress={handleForceRelearn}
+            disabled={isRelearning}
+          >
+            {isRelearning ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={styles.forceRelearnText}>🔄 Forzar Re-aprendizaje</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.forceRelearnHint}>
+            Usa este botón si los pesos no se actualizaron automáticamente
+          </Text>
+          {relearnResult && (
+            <View style={[
+              styles.relearnResultBox, 
+              relearnResult.startsWith('❌') ? styles.relearnResultBoxError : 
+              relearnResult.startsWith('⚠️') ? styles.relearnResultBoxWarning : 
+              styles.relearnResultBoxSuccess
+            ]}>
+              <Text style={styles.relearnResultText}>{relearnResult}</Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -180,58 +267,185 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       default: { emoji: '📋', description: 'Clasificación genérica' },
     };
 
+    // Multiplicadores base estáticos (los iniciales del código)
+    const BASE_STATIC_MULTIPLIERS: Record<string, Record<string, number>> = {
+      large_cap_stock: { financials: 1.3, institutional: 1.2, expectations: 1.3, forex: 0.8 },
+      small_cap_stock: { technical: 1.3, sentiment: 1.2, news: 1.3, institutional: 0.7, financials: 0.8 },
+      crypto_major: { sentiment: 1.5, news: 1.3, macro: 1.2, financials: 0.1, competitors: 0.3, expectations: 0.2 },
+      crypto_alt: { sentiment: 1.8, technical: 1.3, news: 1.4, financials: 0.05, competitors: 0.2, macro: 0.7, expectations: 0.1 },
+      etf_index: { macro: 1.4, trend: 1.2, forex: 1.1, financials: 0.3, competitors: 0.4, expectations: 0.5 },
+      commodity: { macro: 1.5, forex: 2.0, seasonality: 1.5, sentiment: 0.7, financials: 0.1, competitors: 0.2, expectations: 0.3 },
+      reit: { macro: 1.4, institutional: 1.3, financials: 1.2, forex: 0.6, competitors: 0.7 },
+      forex: { macro: 1.8, sentiment: 1.3, news: 1.2, financials: 0.1, competitors: 0.1, institutional: 0.3, expectations: 0.2 },
+      adr: { forex: 1.5, macro: 1.3, sentiment: 1.2, competitors: 0.8 },
+      default: {},
+    };
+
+    const selectedInfo = groupDescriptions[selectedAssetGroup] || { emoji: '📋', description: 'Sin descripción' };
+    const multipliers = weightsData.assetGroupMultipliers[selectedAssetGroup] || {};
+    const baseMultipliers = BASE_STATIC_MULTIPLIERS[selectedAssetGroup] || {};
+    const stats = weightsData.assetGroupStats?.[selectedAssetGroup];
+    const allFactors = ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'];
+
+    const getMultiplierColor = (mult: number) => {
+      if (mult > 1.3) return colors.success;
+      if (mult < 0.7) return colors.danger;
+      if (mult > 1.1) return '#22c55e88';
+      if (mult < 0.9) return '#ef444488';
+      return colors.textSecondary;
+    };
+
+    const getMultiplierLabel = (mult: number) => {
+      if (mult > 1) return `+${((mult - 1) * 100).toFixed(0)}%`;
+      if (mult < 1) return `${((mult - 1) * 100).toFixed(0)}%`;
+      return '0%';
+    };
+
+    // Verificar si hay cambios respecto al base
+    const hasLearnedChanges = stats && stats.sampleCount >= 5;
+
     return (
       <View style={styles.tabContent}>
-        <Text style={styles.sectionTitle}>🏷️ Clasificadores de Activos</Text>
-        <Text style={styles.sectionSubtitle}>
-          Cada tipo de activo recibe multiplicadores diferentes para los factores de predicción
-        </Text>
+        {/* Summary Card */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>🏷️ Clasificadores activos</Text>
+            <Text style={styles.summaryValue}>{weightsData.availableAssetGroups.length}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>📊 Factores ajustables</Text>
+            <Text style={styles.summaryValue}>{allFactors.length}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>🎯 Detección dinámica</Text>
+            <Text style={[styles.summaryValue, { color: colors.success }]}>Activa</Text>
+          </View>
+        </View>
 
-        <ScrollView style={styles.classifiersList}>
-          {weightsData.availableAssetGroups.map((group) => {
-            const info = groupDescriptions[group] || { emoji: '📋', description: group };
-            const multipliers = weightsData.assetGroupMultipliers[group] || {};
-            const hasMultipliers = Object.keys(multipliers).length > 0;
+        {/* Asset Group Selector - 2 rows */}
+        <View style={styles.assetGroupSelectorContainer}>
+          <Text style={styles.selectorLabel}>Selecciona un clasificador:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.assetGroupScroll}>
+            <View style={styles.assetGroupRow}>
+              {weightsData.availableAssetGroups.map((group) => {
+                const info = groupDescriptions[group] || { emoji: '📋', description: group };
+                return (
+                  <TouchableOpacity
+                    key={group}
+                    style={[styles.assetGroupButton, selectedAssetGroup === group && styles.assetGroupButtonActive]}
+                    onPress={() => setSelectedAssetGroup(group)}
+                  >
+                    <Text style={styles.assetGroupEmoji}>{info.emoji}</Text>
+                    <Text style={[styles.assetGroupText, selectedAssetGroup === group && styles.assetGroupTextActive]}>
+                      {group.replace(/_/g, ' ')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
 
+        {/* Selected Group Detail */}
+        <View style={styles.selectedGroupCard}>
+          <View style={styles.selectedGroupHeader}>
+            <Text style={styles.selectedGroupEmoji}>{selectedInfo.emoji}</Text>
+            <View style={styles.selectedGroupInfo}>
+              <Text style={styles.selectedGroupName}>{selectedAssetGroup.replace(/_/g, ' ')}</Text>
+              <Text style={styles.selectedGroupDescription}>{selectedInfo.description}</Text>
+            </View>
+          </View>
+          {/* Estadísticas de aprendizaje */}
+          <View style={styles.classifierStats}>
+            <View style={styles.classifierStatItem}>
+              <Text style={styles.classifierStatValue}>{stats?.sampleCount || 0}</Text>
+              <Text style={styles.classifierStatLabel}>Muestras</Text>
+            </View>
+            <View style={styles.classifierStatItem}>
+              <Text style={[styles.classifierStatValue, { color: (stats?.successRate || 0) > 0.5 ? colors.success : colors.textSecondary }]}>
+                {stats?.successRate ? `${(stats.successRate * 100).toFixed(0)}%` : '-'}
+              </Text>
+              <Text style={styles.classifierStatLabel}>Éxito</Text>
+            </View>
+            <View style={styles.classifierStatItem}>
+              <Text style={[styles.classifierStatValue, { color: hasLearnedChanges ? colors.success : colors.textSecondary }]}>
+                {hasLearnedChanges ? '✓' : '⏳'}
+              </Text>
+              <Text style={styles.classifierStatLabel}>{hasLearnedChanges ? 'Aprendido' : 'Min 5'}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Multipliers Table (like weights) */}
+        <View style={styles.weightsContainer}>
+          <View style={styles.weightsHeader}>
+            <Text style={styles.weightsHeaderText}>Factor</Text>
+            <Text style={styles.weightsHeaderText}>Base</Text>
+            <Text style={styles.weightsHeaderText}>Actual</Text>
+            <Text style={styles.weightsHeaderText}>Δ</Text>
+          </View>
+          {allFactors.map((factor) => {
+            const mult = (multipliers[factor] as number) || 1;
+            const baseMult = (baseMultipliers[factor] as number) || 1;
+            const changed = Math.abs(mult - baseMult) > 0.01;
             return (
-              <View key={group} style={styles.classifierCard}>
-                <View style={styles.classifierHeader}>
-                  <Text style={styles.classifierEmoji}>{info.emoji}</Text>
-                  <View style={styles.classifierInfo}>
-                    <Text style={styles.classifierName}>{group.replace(/_/g, ' ')}</Text>
-                    <Text style={styles.classifierDescription}>{info.description}</Text>
-                  </View>
+              <View key={factor} style={styles.weightRow}>
+                <Text style={styles.weightName}>{factor}</Text>
+                <Text style={[styles.weightBase, { opacity: 0.6 }]}>{(baseMult * 100).toFixed(0)}%</Text>
+                <Text style={[styles.weightValue, changed && { color: getMultiplierColor(mult) }]}>
+                  {(mult * 100).toFixed(0)}%
+                </Text>
+                <View style={styles.weightBar}>
+                  <View 
+                    style={[
+                      styles.weightBarFill, 
+                      { 
+                        width: `${Math.min(mult * 50, 100)}%`,
+                        backgroundColor: getMultiplierColor(mult),
+                      }
+                    ]} 
+                  />
                 </View>
-
-                {hasMultipliers && (
-                  <View style={styles.multipliersList}>
-                    {Object.entries(multipliers).map(([factor, mult]) => {
-                      const multNum = mult as number;
-                      const isBoost = multNum > 1;
-                      const isReduce = multNum < 1;
-                      return (
-                        <View key={factor} style={styles.multiplierItem}>
-                          <Text style={styles.multiplierFactor}>{factor}</Text>
-                          <Text style={[
-                            styles.multiplierValue,
-                            isBoost && styles.multiplierBoost,
-                            isReduce && styles.multiplierReduce,
-                          ]}>
-                            {isBoost ? '↑' : isReduce ? '↓' : '='} {(multNum * 100).toFixed(0)}%
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-
-                {!hasMultipliers && (
-                  <Text style={styles.noMultipliers}>Sin ajustes especiales (usa pesos base)</Text>
-                )}
               </View>
             );
           })}
-        </ScrollView>
+        </View>
+
+        {/* Legend */}
+        <View style={styles.legend}>
+          <Text style={styles.legendTitle}>📖 Interpretación:</Text>
+          <Text style={styles.legendText}>
+            <Text style={{ color: colors.success }}>Verde (+%)</Text>: Factor potenciado para este tipo{'\n'}
+            <Text style={{ color: colors.danger }}>Rojo (-%)</Text>: Factor reducido para este tipo{'\n'}
+            <Text style={{ color: colors.textSecondary }}>Gris (0%)</Text>: Sin ajuste especial (100%)
+          </Text>
+        </View>
+
+        {/* Retrain Classifiers Button */}
+        <View style={styles.forceRelearnContainer}>
+          <TouchableOpacity 
+            style={[styles.forceRelearnButton, isRetrainingClassifiers && styles.forceRelearnButtonDisabled]}
+            onPress={handleRetrainClassifiers}
+            disabled={isRetrainingClassifiers}
+          >
+            {isRetrainingClassifiers ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={styles.forceRelearnText}>🔄 Reentrenar Clasificadores</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.forceRelearnHint}>
+            Recalcula los multiplicadores de cada grupo de activos
+          </Text>
+          {retrainClassifiersResult && (
+            <View style={[
+              styles.relearnResultBox, 
+              retrainClassifiersResult.startsWith('❌') ? styles.relearnResultBoxError : styles.relearnResultBoxSuccess
+            ]}>
+              <Text style={styles.relearnResultText}>{retrainClassifiersResult}</Text>
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -299,6 +513,32 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
             <Text style={styles.qualityLabel}>Muestras calibración</Text>
             <Text style={styles.qualityValue}>{modelsData.probabilisticModel.sampleCount}</Text>
           </View>
+        </View>
+
+        {/* Reset Models Button */}
+        <View style={styles.forceRelearnContainer}>
+          <TouchableOpacity 
+            style={[styles.resetButton, isResettingModels && styles.forceRelearnButtonDisabled]}
+            onPress={handleResetModels}
+            disabled={isResettingModels}
+          >
+            {isResettingModels ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={styles.forceRelearnText}>🗑️ Reset Completo del Sistema ML</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.forceRelearnHint}>
+            ⚠️ Borra TODAS las predicciones, cache, pesos aprendidos y datos de Python
+          </Text>
+          {resetModelsResult && (
+            <View style={[
+              styles.relearnResultBox, 
+              resetModelsResult.startsWith('❌') ? styles.relearnResultBoxError : styles.relearnResultBoxSuccess
+            ]}>
+              <Text style={styles.relearnResultText}>{resetModelsResult}</Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -544,21 +784,28 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   weightName: {
-    flex: 1,
-    fontSize: 12,
+    flex: 1.2,
+    fontSize: 11,
     color: colors.text,
   },
-  weightValue: {
-    flex: 1,
-    fontSize: 12,
+  weightBase: {
+    flex: 0.6,
+    fontSize: 11,
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  weightChange: {
-    flex: 1,
-    fontSize: 12,
+  weightValue: {
+    flex: 0.8,
+    fontSize: 11,
+    color: colors.text,
     textAlign: 'center',
     fontWeight: '600',
+  },
+  weightChange: {
+    flex: 0.7,
+    fontSize: 10,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   weightBar: {
     flex: 1,
@@ -627,6 +874,100 @@ const styles = StyleSheet.create({
   },
   classifierDescription: {
     fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  // Nuevos estilos para el selector de asset groups
+  assetGroupSelectorContainer: {
+    marginBottom: 16,
+  },
+  selectorLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  assetGroupScroll: {
+    flexGrow: 0,
+  },
+  assetGroupRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 16,
+  },
+  assetGroupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: colors.backgroundTertiary,
+    borderRadius: 8,
+    gap: 6,
+  },
+  assetGroupButtonActive: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  assetGroupEmoji: {
+    fontSize: 16,
+  },
+  assetGroupText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'capitalize',
+  },
+  assetGroupTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  selectedGroupCard: {
+    backgroundColor: colors.backgroundTertiary,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  selectedGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectedGroupEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  selectedGroupInfo: {
+    flex: 1,
+  },
+  selectedGroupName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'capitalize',
+  },
+  selectedGroupDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  classifierStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  classifierStatItem: {
+    alignItems: 'center',
+  },
+  classifierStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  classifierStatLabel: {
+    fontSize: 10,
     color: colors.textSecondary,
     marginTop: 2,
   },
@@ -736,5 +1077,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  // Force Relearn styles
+  forceRelearnContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  forceRelearnButton: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 200,
+  },
+  resetButton: {
+    backgroundColor: colors.danger,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 200,
+  },
+  forceRelearnButtonDisabled: {
+    backgroundColor: colors.neutralLight,
+  },
+  forceRelearnText: {
+    color: colors.background,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  forceRelearnHint: {
+    marginTop: 8,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  relearnResultBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 8,
+  },
+  relearnResultBoxSuccess: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  relearnResultBoxWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  relearnResultBoxError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  relearnResultText: {
+    fontSize: 12,
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

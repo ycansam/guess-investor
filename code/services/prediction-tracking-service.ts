@@ -14,6 +14,7 @@ export interface TrackedPrediction {
   symbol: string;
   asset: string;
   assetType: string;
+  currency?: string; // Moneda original del activo (EUR, USD, GBP, etc.)
   
   // Datos de la predicción
   createdAt: string;
@@ -91,6 +92,7 @@ class PredictionTrackingService {
     symbol: string;
     asset?: string;
     assetType?: string;
+    currency?: string; // Moneda del activo
     direction: string;
     predictedChange: number;
     predictedPriceMin?: number;
@@ -101,8 +103,11 @@ class PredictionTrackingService {
     timeframeDays?: number;
     factorScores?: Record<string, number>;
     factorWeightsUsed?: Record<string, number>;
+    factorBreakdown?: any; // El objeto completo para aprendizaje de pesos
     volatility?: number;
+    reasoning?: string;
     uncertaintyScore?: number;
+    uncertaintyData?: any;
   }): Promise<{ id: string }> {
     try {
       // Usar el endpoint /track que guarda la predicción sin recalcular
@@ -110,6 +115,7 @@ class PredictionTrackingService {
         symbol: data.symbol,
         asset: data.asset,
         assetType: data.assetType,
+        currency: data.currency,
         direction: data.direction,
         predictedChange: data.predictedChange,
         predictedPriceMin: data.predictedPriceMin,
@@ -119,8 +125,11 @@ class PredictionTrackingService {
         timeframe: data.timeframe,
         timeframeDays: data.timeframeDays || 1,
         volatility: data.volatility,
+        factorBreakdown: data.factorBreakdown, // CRÍTICO: pasar el factorBreakdown completo para aprendizaje
         factorWeights: data.factorWeightsUsed,
+        reasoning: data.reasoning,
         uncertaintyScore: data.uncertaintyScore,
+        uncertaintyData: data.uncertaintyData,
       });
       console.log(`[Tracking] Predicción registrada: ${result.id}`);
       return { id: result.id };
@@ -222,6 +231,7 @@ class PredictionTrackingService {
       symbol: p.symbol,
       asset: p.asset || p.symbol,
       assetType: p.assetType,
+      currency: p.currency, // IMPORTANTE: Mapear la moneda para conversión correcta
       createdAt: p.createdAt,
       expiresAt: p.expiresAt,
       timeframeDays: p.timeframeDays,
