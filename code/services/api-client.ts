@@ -397,9 +397,11 @@ export const apiClient = {
 
   /**
    * Buscar activos por nombre o símbolo
+   * @param query - Término de búsqueda
+   * @param limit - Máximo de resultados (default 30, max 50)
    */
-  searchAssets: (query: string): Promise<SearchResult[]> => {
-    return get(`/assets/search?q=${encodeURIComponent(query)}`);
+  searchAssets: (query: string, limit: number = 30): Promise<SearchResult[]> => {
+    return get(`/assets/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   },
 
   /**

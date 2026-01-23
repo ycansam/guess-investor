@@ -480,12 +480,43 @@ class MarketDataService {
       filteredAssets = filteredAssets.filter(a => a.category === category);
     }
     
+    // Si hay búsqueda, combinar resultados locales con API del backend
     if (searchQuery && searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
-      filteredAssets = filteredAssets.filter(a => 
+      
+      // Buscar en activos locales
+      const localMatches = filteredAssets.filter(a => 
         a.symbol.toLowerCase().includes(query) || 
         a.name.toLowerCase().includes(query)
       );
+      
+      // También buscar en la API del backend para obtener más resultados
+      try {
+        const apiResults = await apiClient.searchAssets(searchQuery, 40);
+        
+        // Convertir resultados de API a MarketAsset y combinar
+        const seenSymbols = new Set(localMatches.map(a => a.symbol.toUpperCase()));
+        
+        for (const result of apiResults) {
+          const symbolUpper = result.symbol.toUpperCase();
+          if (!seenSymbols.has(symbolUpper)) {
+            seenSymbols.add(symbolUpper);
+            localMatches.push({
+              symbol: result.symbol,
+              name: result.name,
+              icon: this.getIconForType(result.type),
+              type: this.mapAssetType(result.type),
+              category: this.detectCategory(result.symbol, result.type),
+            });
+          }
+        }
+        
+        console.log(`[MarketData] Search "${query}": ${localMatches.length} results (local + API)`);
+      } catch (error) {
+        console.warn('[MarketData] API search failed, using local only:', error);
+      }
+      
+      filteredAssets = localMatches;
     }
     
     const total = filteredAssets.length;
@@ -498,6 +529,65 @@ class MarketDataService {
     const assetsWithPrices = await this.fetchAssetsWithPrices(pageAssets);
     
     return { assets: assetsWithPrices, hasMore, total };
+  }
+
+  /**
+   * Obtiene icono según tipo de activo
+   */
+  private getIconForType(type: string): string {
+    const typeUpper = type.toUpperCase();
+    if (typeUpper === 'CRYPTOCURRENCY') return '₿';
+    if (typeUpper === 'ETF') return '📊';
+    if (typeUpper === 'INDEX') return '📈';
+    if (typeUpper === 'FUTURE' || typeUpper === 'FUTURES') return '📅';
+    if (typeUpper === 'CURRENCY' || typeUpper === 'FOREX') return '💱';
+    return '📈'; // Default stock
+  }
+
+  /**
+   * Mapea tipo de Yahoo a tipo interno
+   */
+  private mapAssetType(type: string): 'stock' | 'crypto' | 'etf' | 'index' {
+    const typeUpper = type.toUpperCase();
+    if (typeUpper === 'CRYPTOCURRENCY') return 'crypto';
+    if (typeUpper === 'ETF' || typeUpper === 'ETC') return 'etf';
+    if (typeUpper === 'INDEX' || typeUpper === 'FUTURE' || typeUpper === 'FUTURES') return 'index';
+    return 'stock';
+  }
+
+  /**
+   * Detecta categoría basándose en símbolo y tipo
+   */
+  private detectCategory(symbol: string, type: string): string {
+    const symbolUpper = symbol.toUpperCase();
+    const typeUpper = type.toUpperCase();
+    
+    // Crypto
+    if (typeUpper === 'CRYPTOCURRENCY' || symbolUpper.includes('-USD') || symbolUpper.includes('-EUR')) {
+      return 'crypto';
+    }
+    
+    // ETF
+    if (typeUpper === 'ETF' || typeUpper === 'ETC') {
+      return 'etf';
+    }
+    
+    // Commodities
+    if (symbolUpper.includes('GOLD') || symbolUpper.includes('GLD') || symbolUpper.includes('GC=') ||
+        symbolUpper.includes('SILVER') || symbolUpper.includes('SLV') || symbolUpper.includes('SI=') ||
+        symbolUpper.includes('OIL') || symbolUpper.includes('USO') || symbolUpper.includes('CL=')) {
+      return 'commodities';
+    }
+    
+    // Europa
+    if (symbolUpper.includes('.MC') || symbolUpper.includes('.DE') || symbolUpper.includes('.PA') ||
+        symbolUpper.includes('.MI') || symbolUpper.includes('.AS') || symbolUpper.includes('.L') ||
+        symbolUpper.includes('.SW') || symbolUpper.includes('.BR')) {
+      return 'europe';
+    }
+    
+    // Default a tech para acciones US
+    return 'tech';
   }
 
   /**

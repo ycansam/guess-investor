@@ -76,12 +76,14 @@ export const assetController = {
    * Buscar activos (combina Yahoo Finance + Trade Republic)
    */
   search: asyncHandler(async (req: Request, res: Response) => {
-    const { q } = req.query;
+    const { q, limit } = req.query;
     
     if (!q || typeof q !== 'string') {
       res.json({ success: true, data: [] });
       return;
     }
+
+    const maxResults = Math.min(parseInt(limit as string) || 30, 50); // Max 50 resultados
 
     // Buscar en paralelo: Yahoo Finance + Trade Republic
     const [yahooResults, trAssets] = await Promise.all([
@@ -119,10 +121,20 @@ export const assetController = {
       }
     }
 
-    // Limitar a 20 resultados
+    // Ordenar: primero los que coinciden exactamente con la búsqueda
+    const queryUpper = q.toUpperCase();
+    combined.sort((a, b) => {
+      const aExact = a.symbol.toUpperCase() === queryUpper || a.symbol.toUpperCase().startsWith(queryUpper);
+      const bExact = b.symbol.toUpperCase() === queryUpper || b.symbol.toUpperCase().startsWith(queryUpper);
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      return 0;
+    });
+
     res.json({
       success: true,
-      data: combined.slice(0, 20),
+      data: combined.slice(0, maxResults),
+      total: combined.length,
     });
   }),
 
