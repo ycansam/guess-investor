@@ -444,6 +444,19 @@ export const apiClient = {
     return del('/assets/cache');
   },
 
+  /**
+   * Obtener información detallada para inversores (earnings, dividendos, valoración)
+   */
+  getInvestorInfo: async (symbol: string): Promise<any | null> => {
+    try {
+      const response = await get<any>(`/assets/${encodeURIComponent(symbol)}/investor-info`);
+      return response;
+    } catch (error) {
+      console.log('[API] Investor info not available for', symbol);
+      return null;
+    }
+  },
+
   // -------------------------------------------------------------------------
   // ANALYSIS
   // -------------------------------------------------------------------------

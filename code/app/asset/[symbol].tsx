@@ -17,6 +17,7 @@ import {
     View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
+import { InvestorInfoCard } from '../../components/investor-info-card';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
 import { PredictionHistoryCard } from '../../components/prediction-history';
 import { TrendsModal } from '../../components/trends-modal';
@@ -24,7 +25,7 @@ import { apiClient, CalculatedPrediction, TrendAnalysis } from '../../services/a
 import { currencyService } from '../../services/currency-service';
 import { predictionTrackingService } from '../../services/prediction-tracking-service';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
-import { AssetType, InvestmentPrediction } from '../../types';
+import { AssetType, InvestmentPrediction, InvestorInfo } from '../../types';
 
 // Tipos de timeframe para el gráfico
 type ChartTimeframe = 'intraday' | 'swing' | 'longterm';
@@ -435,6 +436,10 @@ export default function AssetDetailScreen() {
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [trendsError, setTrendsError] = useState<string | null>(null);
   
+  // Estado para información de inversores
+  const [investorInfo, setInvestorInfo] = useState<InvestorInfo | null>(null);
+  const [investorInfoLoading, setInvestorInfoLoading] = useState(false);
+  
   // Estado para la clasificación del activo (ML)
   const [assetClassification, setAssetClassification] = useState<{
     assetGroup: string;
@@ -791,6 +796,31 @@ export default function AssetDetailScreen() {
   useEffect(() => {
     loadAssetData();
   }, [loadAssetData]);
+
+  // Cargar información para inversores (earnings, dividendos, valoración)
+  useEffect(() => {
+    const loadInvestorInfo = async () => {
+      if (!symbol) return;
+      
+      // No cargar para cryptos
+      if (symbol.includes('-USD') || symbol.includes('-EUR')) {
+        setInvestorInfo(null);
+        return;
+      }
+
+      setInvestorInfoLoading(true);
+      try {
+        const info = await apiClient.getInvestorInfo(symbol);
+        setInvestorInfo(info);
+      } catch (error) {
+        console.log('[AssetDetail] Investor info not available:', error);
+        setInvestorInfo(null);
+      }
+      setInvestorInfoLoading(false);
+    };
+
+    loadInvestorInfo();
+  }, [symbol]);
 
   useEffect(() => {
     loadChartData();
@@ -1819,6 +1849,19 @@ export default function AssetDetailScreen() {
           <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
         </TouchableOpacity>
 
+        {/* Información para Inversores (earnings, dividendos, valoración) */}
+        {investorInfoLoading ? (
+          <View style={styles.investorInfoLoading}>
+            <ActivityIndicator size="small" color="#6366f1" />
+            <Text style={styles.investorInfoLoadingText}>Cargando info inversor...</Text>
+          </View>
+        ) : investorInfo ? (
+          <View style={styles.investorInfoContainer}>
+            <Text style={styles.investorInfoTitle}>📊 Información para Inversores</Text>
+            <InvestorInfoCard info={investorInfo} currency="EUR" />
+          </View>
+        ) : null}
+
         {/* Análisis detallado de la predicción */}
         {fullPrediction && fullPrediction.analysisData && (
           <View style={styles.analysisContainer}>
@@ -2057,6 +2100,26 @@ const styles = StyleSheet.create({
   },
   analysisContainer: {
     marginTop: 16,
+  },
+  investorInfoContainer: {
+    marginTop: 16,
+  },
+  investorInfoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  investorInfoLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 8,
+  },
+  investorInfoLoadingText: {
+    color: '#9ca3af',
+    fontSize: 13,
   },
   historyContainer: {
     marginTop: 16,

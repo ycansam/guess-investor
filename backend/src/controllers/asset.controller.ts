@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { searchTradeRepublicAssets, tradeRepublicAssets } from '../data/trade-republic-assets.js';
 import { asyncHandler, NotFoundError } from '../middleware/error-handler.js';
 import { historyCacheService } from '../services/external/history-cache.service.js';
+import { investorInfoService } from '../services/external/investor-info.service.js';
 import { yahooService } from '../services/external/yahoo.service.js';
 
 export const assetController = {
@@ -173,6 +174,43 @@ export const assetController = {
         clearedEntries: statsBefore.entries,
         message: 'All history cache cleared',
       },
+    });
+  }),
+
+  /**
+   * GET /api/assets/:symbol/investor-info
+   * Obtener información detallada para inversores (earnings, dividendos, valoración, etc.)
+   */
+  getInvestorInfo: asyncHandler(async (req: Request, res: Response) => {
+    const { symbol } = req.params;
+    
+    // Primero obtener la cotización actual para tener el precio
+    const quote = await yahooService.getQuote(symbol.toUpperCase());
+    
+    if (!quote) {
+      throw NotFoundError(`Quote for ${symbol}`);
+    }
+
+    // Obtener información del inversor
+    const investorInfo = await investorInfoService.getInvestorInfo(
+      symbol.toUpperCase(),
+      quote.price,
+      quote.name
+    );
+
+    if (!investorInfo) {
+      // Para cryptos u otros activos sin esta información
+      res.json({
+        success: true,
+        data: null,
+        message: 'Investor info not available for this asset type',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: investorInfo,
     });
   }),
 };
