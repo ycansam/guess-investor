@@ -26,9 +26,9 @@ import { TechnicalAnalysis, technicalService } from '../external/technical.servi
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  probabilisticModelService,
-  reinforcementLearningService,
+    factorCorrelationService,
+    probabilisticModelService,
+    reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -616,7 +616,23 @@ export const predictionCalculatorService = {
     const sentimentScore = hasSentimentData ? sentiment.overallScore : 0;
     const newsScore = hasNewsData ? news.sentimentScore : 0;
     const macroScore = hasMacroData ? macro.macroScore : 0;
-    const seasonalityScore = hasSeasonalityData ? seasonality.seasonalScore : 0;
+    
+    // MEJORA: Ajustar estacionalidad según fiabilidad de datos
+    // Si la fiabilidad es 'unreliable', no usar el factor
+    // Si es 'low', reducir el peso efectivo
+    const seasonalityReliability = seasonality.dataReliability || 'medium';
+    const effectiveSeasonalityScore = seasonalityReliability === 'unreliable' 
+      ? 0 
+      : seasonalityReliability === 'low' 
+        ? seasonality.seasonalScore * 0.5 
+        : seasonality.seasonalScore;
+    const effectiveHasSeasonality = hasSeasonalityData && seasonalityReliability !== 'unreliable';
+    const seasonalityScore = effectiveHasSeasonality ? effectiveSeasonalityScore : 0;
+    
+    if (seasonality.structuralBreakDetected) {
+      logger.info(`[PredictionCalc] Seasonality: structural break detected for ${symbol}, reliability=${seasonalityReliability}`);
+    }
+    
     const expectationsScore = hasExpectationsData ? expectations!.expectationsScore : 0;
     const competitorsScore = hasCompetitorsData ? competitors.competitorScore : 0;
     const forexScore = hasForexData ? forex.forexScore : 0;
@@ -659,6 +675,7 @@ export const predictionCalculatorService = {
     logger.debug(`[PredictionCalc] Weights: group=${assetGroup}, volatility=${assetVolatility.toFixed(1)}%`);
 
     // Definir los 11 factores
+    // NOTA: seasonality usa effectiveHasSeasonality que considera la fiabilidad de datos
     const factors = [
       { name: 'trend', score: trendScore, hasData: hasHistoricalData, weight: weights.trend },
       { name: 'technical', score: technicalScore, hasData: hasTechnicalData, weight: weights.technical },
@@ -668,7 +685,7 @@ export const predictionCalculatorService = {
       { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, weight: weights.competitors },
       { name: 'forex', score: forexScore, hasData: hasForexData, weight: weights.forex },
       { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, weight: weights.institutional },
-      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, weight: weights.seasonality },
+      { name: 'seasonality', score: seasonalityScore, hasData: effectiveHasSeasonality, weight: weights.seasonality },
       { name: 'financials', score: financialsScore, hasData: hasFinancialsData, weight: weights.financials },
       { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, weight: weights.expectations },
     ];

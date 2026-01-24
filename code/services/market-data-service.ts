@@ -181,7 +181,7 @@ export const ALL_ASSETS: MarketAsset[] = [
   { symbol: '^GSPC', name: 'S&P 500', icon: '📈', type: 'index', category: 'index' },
   { symbol: '^DJI', name: 'Dow Jones', icon: '🏭', type: 'index', category: 'index' },
   { symbol: '^IXIC', name: 'Nasdaq', icon: '💻', type: 'index', category: 'index' },
-  { symbol: '^IBEX', name: 'IBEX 35', icon: '🇪🇸', type: 'index', category: 'index' },
+  { symbol: '^IBEX35', name: 'IBEX 35', icon: '🇪🇸', type: 'index', category: 'index' },
   { symbol: '^GDAXI', name: 'DAX', icon: '🇩🇪', type: 'index', category: 'index' },
   { symbol: '^FTSE', name: 'FTSE 100', icon: '🇬🇧', type: 'index', category: 'index' },
   { symbol: '^FCHI', name: 'CAC 40', icon: '🇫🇷', type: 'index', category: 'index' },
@@ -202,8 +202,11 @@ let dynamicAssets: MarketAsset[] | null = null;
 let dynamicAssetsTimestamp = 0;
 const ASSETS_CACHE_DURATION = 60 * 60 * 1000; // 1 hora para lista de activos
 
-// Tamaño de batch para paginación
-const BATCH_SIZE = 10;
+// Tamaño de batch para paginación (20 es un buen balance para UX)
+const BATCH_SIZE = 20;
+
+// Control de rate limiting para peticiones paralelas
+const MAX_CONCURRENT_REQUESTS = 15;
 
 class MarketDataService {
   private lastBatchFetch: number = 0;
@@ -567,27 +570,38 @@ class MarketDataService {
       return 'crypto';
     }
     
+    // Índices
+    if (typeUpper === 'INDEX' || symbolUpper.startsWith('^')) {
+      return 'index';
+    }
+    
     // ETF
     if (typeUpper === 'ETF' || typeUpper === 'ETC') {
       return 'etf';
     }
     
-    // Commodities
+    // Commodities (futuros y ETFs de materias primas)
     if (symbolUpper.includes('GOLD') || symbolUpper.includes('GLD') || symbolUpper.includes('GC=') ||
         symbolUpper.includes('SILVER') || symbolUpper.includes('SLV') || symbolUpper.includes('SI=') ||
-        symbolUpper.includes('OIL') || symbolUpper.includes('USO') || symbolUpper.includes('CL=')) {
+        symbolUpper.includes('OIL') || symbolUpper.includes('USO') || symbolUpper.includes('CL=') ||
+        symbolUpper.includes('NG=') || symbolUpper.endsWith('=F')) {
       return 'commodities';
     }
     
-    // Europa
-    if (symbolUpper.includes('.MC') || symbolUpper.includes('.DE') || symbolUpper.includes('.PA') ||
-        symbolUpper.includes('.MI') || symbolUpper.includes('.AS') || symbolUpper.includes('.L') ||
-        symbolUpper.includes('.SW') || symbolUpper.includes('.BR')) {
+    // España (mercado continuo español)
+    if (symbolUpper.endsWith('.MC')) {
+      return 'spain';
+    }
+    
+    // Europa (otros mercados europeos)
+    if (symbolUpper.endsWith('.DE') || symbolUpper.endsWith('.PA') ||
+        symbolUpper.endsWith('.MI') || symbolUpper.endsWith('.AS') || symbolUpper.endsWith('.L') ||
+        symbolUpper.endsWith('.SW') || symbolUpper.endsWith('.BR')) {
       return 'europe';
     }
     
-    // Default a tech para acciones US
-    return 'tech';
+    // Default a tech_us para acciones USA
+    return 'tech_us';
   }
 
   /**
@@ -630,43 +644,81 @@ class MarketDataService {
 
   /**
    * Obtiene precios para una lista de activos
+   * Con control de rate limiting para evitar bloqueos de API
    */
   private async fetchAssetsWithPrices(assets: MarketAsset[]): Promise<MarketAsset[]> {
     const now = Date.now();
+    const results: MarketAsset[] = [];
     
-    const promises = assets.map(async (asset) => {
-      // Verificar cache primero
+    // Separar los que están en cache de los que necesitan fetch
+    const needsFetch: MarketAsset[] = [];
+    
+    for (const asset of assets) {
       const cached = marketCache.get(asset.symbol);
       if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-        return {
+        results.push({
           ...asset,
           price: cached.data.price,
           change: cached.data.change,
           changePercent: cached.data.changePercent,
           currency: cached.data.currency,
-        };
+        });
+      } else {
+        needsFetch.push(asset);
       }
-      
-      // Fetch nuevo
-      try {
-        const data = await this.getQuoteLite(asset.symbol);
-        if (data) {
-          return {
-            ...asset,
-            price: data.price,
-            change: data.change,
-            changePercent: data.changePercent,
-            currency: data.currency,
-          };
-        }
-      } catch (error) {
-        // Silenciar error individual
-      }
-      
-      return { ...asset, error: true };
-    });
+    }
     
-    return Promise.all(promises);
+    // Fetch con control de concurrencia
+    if (needsFetch.length > 0) {
+      const fetchResults = await this.fetchWithRateLimit(needsFetch);
+      results.push(...fetchResults);
+    }
+    
+    // Ordenar según el orden original
+    const symbolOrder = new Map(assets.map((a, i) => [a.symbol, i]));
+    results.sort((a, b) => (symbolOrder.get(a.symbol) ?? 0) - (symbolOrder.get(b.symbol) ?? 0));
+    
+    return results;
+  }
+  
+  /**
+   * Fetch con control de concurrencia para evitar rate limiting
+   */
+  private async fetchWithRateLimit(assets: MarketAsset[]): Promise<MarketAsset[]> {
+    const results: MarketAsset[] = [];
+    
+    // Procesar en chunks de MAX_CONCURRENT_REQUESTS
+    for (let i = 0; i < assets.length; i += MAX_CONCURRENT_REQUESTS) {
+      const chunk = assets.slice(i, i + MAX_CONCURRENT_REQUESTS);
+      
+      const chunkPromises = chunk.map(async (asset) => {
+        try {
+          const data = await this.getQuoteLite(asset.symbol);
+          if (data) {
+            return {
+              ...asset,
+              price: data.price,
+              change: data.change,
+              changePercent: data.changePercent,
+              currency: data.currency,
+            };
+          }
+        } catch (error) {
+          // Silenciar error individual
+        }
+        return { ...asset, error: true };
+      });
+      
+      const chunkResults = await Promise.all(chunkPromises);
+      results.push(...chunkResults);
+      
+      // Pequeña pausa entre chunks si hay más por procesar
+      if (i + MAX_CONCURRENT_REQUESTS < assets.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    return results;
   }
 
   /**
