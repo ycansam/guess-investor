@@ -336,6 +336,7 @@ export interface TrendRanking {
   change24h: number;
   change7d: number;
   change30d: number;
+  change90d: number;
   trendScore: number;
   trendPrediction: 'continue' | 'reverse' | 'uncertain';
 }

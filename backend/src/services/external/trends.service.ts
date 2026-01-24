@@ -43,6 +43,7 @@ export interface TrendRanking {
   change24h: number;
   change7d: number;
   change30d: number;
+  change90d: number;
   trendScore: number; // Score compuesto para ranking
   trendPrediction: 'continue' | 'reverse' | 'uncertain';
 }
@@ -585,8 +586,8 @@ export const trendsService = {
    */
   async analyzeTrendQuick(symbol: string): Promise<TrendRanking | null> {
     try {
-      // Obtener datos históricos (1 mes es suficiente para ranking)
-      const history = await yahooService.getHistory(symbol, '1mo', '1d');
+      // Obtener datos históricos (3 meses para tener datos de 90d)
+      const history = await yahooService.getHistory(symbol, '3mo', '1d');
       
       if (!history || history.length < 5) {
         return null;
@@ -595,16 +596,19 @@ export const trendsService = {
       const prices = history.map(d => d.close);
       const currentPrice = prices[prices.length - 1];
       
-      // Calcular cambios
+      // Calcular cambios (usando índices correctos hacia atrás)
       const change24h = history.length >= 2 
         ? ((prices[prices.length - 1] - prices[prices.length - 2]) / prices[prices.length - 2]) * 100 
         : 0;
       const change7d = history.length >= 7 
         ? ((prices[prices.length - 1] - prices[Math.max(0, prices.length - 7)]) / prices[Math.max(0, prices.length - 7)]) * 100 
         : 0;
-      const change30d = history.length >= 20 
-        ? ((prices[prices.length - 1] - prices[0]) / prices[0]) * 100 
-        : 0;
+      const change30d = history.length >= 30 
+        ? ((prices[prices.length - 1] - prices[Math.max(0, prices.length - 30)]) / prices[Math.max(0, prices.length - 30)]) * 100 
+        : ((prices[prices.length - 1] - prices[0]) / prices[0]) * 100; // Fallback al inicio del array
+      const change90d = history.length >= 90 
+        ? ((prices[prices.length - 1] - prices[Math.max(0, prices.length - 90)]) / prices[Math.max(0, prices.length - 90)]) * 100 
+        : ((prices[prices.length - 1] - prices[0]) / prices[0]) * 100; // Fallback al inicio del array
       
       // Calcular racha
       let streakDays = 0;
@@ -683,6 +687,7 @@ export const trendsService = {
         change24h: Math.round(change24h * 100) / 100,
         change7d: Math.round(change7d * 100) / 100,
         change30d: Math.round(change30d * 100) / 100,
+        change90d: Math.round(change90d * 100) / 100,
         trendScore: Math.round(trendScore * 10) / 10,
         trendPrediction,
       };
