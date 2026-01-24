@@ -224,6 +224,28 @@ export interface CalculatedPrediction {
   shouldPredict?: boolean;
   uncertaintyWarning?: string;
   uncertaintyReasons?: string[];
+  // Eventos del calendario (earnings, dividendos, splits)
+  events?: {
+    hasData: boolean;
+    warnings: string[];
+    eventRiskScore?: number;
+    nextEarnings?: {
+      date: string;
+      daysUntil: number;
+      estimate?: number;
+    };
+    dividend?: {
+      yield: number;
+      exDate?: string;
+      daysUntilEx?: number;
+      frequency?: string;
+    };
+    nextSplit?: {
+      date: string;
+      daysUntil: number;
+      ratio: string;
+    };
+  };
 }
 
 export interface FullAnalysis {

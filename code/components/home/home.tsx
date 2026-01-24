@@ -3,6 +3,7 @@ import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
+import { AlertsModal } from '../alerts-modal';
 import { MLDiagnosticsModal } from '../ml-diagnostics-modal';
 import { TopTrendsTab } from '../top-trends';
 import { TrackingStatsCard } from '../TrackingStatsCard';
@@ -15,6 +16,7 @@ export function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('predictions');
   const [showTracking, setShowTracking] = useState(false);
   const [showMLDiagnostics, setShowMLDiagnostics] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -78,10 +80,17 @@ export function Home() {
       <Header 
         title="Guess Investor" 
         actions={[
+          { icon: '🔔', onPress: () => setShowAlerts(true) },
           { icon: '🧠', onPress: () => setShowMLDiagnostics(true) },
         ]}
         actionIcon="📊"
         onActionPress={() => setShowTracking(true)}
+      />
+
+      {/* Modal de Alertas */}
+      <AlertsModal
+        visible={showAlerts}
+        onClose={() => setShowAlerts(false)}
       />
 
       {/* Modal de Diagnóstico ML */}

@@ -14,6 +14,7 @@ import { logger } from '../../middleware/logger.js';
 import { predictionRepository } from '../../repositories/prediction.repository.js';
 import { weightsRepository } from '../../repositories/weights.repository.js';
 import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
+import { AssetEvents, eventsService } from '../external/events.service.js';
 import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
 import { ForexImpact, forexService } from '../external/forex.service.js';
@@ -106,6 +107,30 @@ export interface CalculatedPrediction {
   technical?: TechnicalAnalysis;
   news?: NewsSummary;
   macro?: MacroIndicators;
+  
+  // Eventos importantes (earnings, dividendos, splits)
+  events?: {
+    hasData: boolean;
+    warnings: string[];
+    eventRiskScore: number;
+    nextEarnings?: {
+      date: Date;
+      daysUntil: number;
+      isEstimate: boolean;
+      epsEstimate?: number;
+    };
+    dividend?: {
+      yield?: number;
+      exDate?: Date;
+      daysUntilEx?: number;
+      amount?: number;
+    };
+    nextSplit?: {
+      date: Date;
+      ratio: string;
+      daysUntil: number;
+    };
+  };
   
   timeframe: string;
   calculatedAt: Date;
@@ -450,6 +475,7 @@ export const predictionCalculatorService = {
         institutional,
         forex,
         financials,
+        events,
       ] = await Promise.all([
         technicalService.analyze(symbol),
         sentimentService.getSentiment(symbol, type),
@@ -460,6 +486,7 @@ export const predictionCalculatorService = {
         institutionalService.getInstitutionalActivity(symbol, type),
         forexService.analyzeForexImpact(symbol, quote.name),
         financialsService.getFinancials(symbol, quote.price),
+        eventsService.getEvents(symbol),
       ]);
 
       // 4. Obtener análisis de competidores (necesita datos históricos)
@@ -487,6 +514,7 @@ export const predictionCalculatorService = {
         forex,
         institutional,
         financials,
+        events,
         timeframeDays,
         quote.name || symbol // Pasar el nombre del activo para clasificación inteligente
       );
@@ -577,6 +605,7 @@ export const predictionCalculatorService = {
     forex: ForexImpact,
     institutional: InstitutionalData,
     financials: FinancialsData | null,
+    events: AssetEvents,
     timeframeDays: number,
     assetName: string = '' // Nombre del activo para clasificación inteligente
   ): Promise<CalculatedPrediction> {
@@ -984,6 +1013,24 @@ export const predictionCalculatorService = {
       technical: hasTechnicalData ? technical : undefined,
       news: hasNewsData ? news : undefined,
       macro: hasMacroData ? macro : undefined,
+      events: events.hasData ? {
+        hasData: true,
+        warnings: events.warnings,
+        eventRiskScore: events.eventRiskScore,
+        nextEarnings: events.nextEarnings ? {
+          date: events.nextEarnings.date,
+          daysUntil: events.nextEarnings.daysUntil,
+          isEstimate: events.nextEarnings.isEstimate,
+          epsEstimate: events.nextEarnings.epsEstimate,
+        } : undefined,
+        dividend: events.dividend ? {
+          yield: events.dividend.yield,
+          exDate: events.dividend.exDate,
+          daysUntilEx: events.dividend.daysUntilEx,
+          amount: events.dividend.amount,
+        } : undefined,
+        nextSplit: events.nextSplit,
+      } : undefined,
       timeframe: timeframeStr,
       calculatedAt: new Date(),
       audit: {

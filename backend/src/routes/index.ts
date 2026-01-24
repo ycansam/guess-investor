@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import alertsRoutes from './alerts.routes.js';
 import { analysisRoutes } from './analysis.routes.js';
 import { assetRoutes } from './asset.routes.js';
 import { favoriteRoutes } from './favorite.routes.js';
@@ -20,5 +21,6 @@ router.use('/predictions', predictionRoutes);
 router.use('/analysis', analysisRoutes);
 router.use('/training', trainingRoutes);
 router.use('/ml', mlRoutes);
+router.use('/alerts', alertsRoutes);
 
 export const apiRoutes = router;

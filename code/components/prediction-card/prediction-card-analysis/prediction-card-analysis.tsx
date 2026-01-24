@@ -175,6 +175,121 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
         </View>
       )}
 
+      {/* Eventos Importantes (Earnings, Dividendos, Splits) */}
+      {prediction.analysisData?.events?.hasData && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📅 Próximos Eventos:</Text>
+          <View style={{ backgroundColor: '#1a1a2e', borderRadius: 10, padding: 12 }}>
+            {/* Warnings */}
+            {prediction.analysisData.events.warnings.length > 0 && (
+              <View style={{ marginBottom: 10 }}>
+                {prediction.analysisData.events.warnings.map((warning, idx) => (
+                  <Text key={idx} style={{ 
+                    fontSize: 13, 
+                    color: warning.includes('⚠️') ? '#FF9800' : '#e5e5e5',
+                    marginBottom: 4,
+                    fontWeight: warning.includes('⚠️') ? '600' : '400'
+                  }}>
+                    {warning}
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {/* Próximos Earnings */}
+            {prediction.analysisData.events.nextEarnings && (
+              <View style={{ backgroundColor: '#252547', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 14, color: '#e5e5e5', fontWeight: '600' }}>
+                    📊 Earnings
+                  </Text>
+                  {prediction.analysisData.events.nextEarnings.daysUntil <= 7 && (
+                    <View style={{ 
+                      backgroundColor: prediction.analysisData.events.nextEarnings.daysUntil <= 3 ? '#F44336' : '#FF9800',
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 10,
+                      marginLeft: 8
+                    }}>
+                      <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>
+                        {prediction.analysisData.events.nextEarnings.daysUntil <= 3 ? '¡PRONTO!' : 'ESTA SEMANA'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                  📆 {new Date(prediction.analysisData.events.nextEarnings.date).toLocaleDateString('es-ES', { 
+                    weekday: 'short', day: 'numeric', month: 'short' 
+                  })} ({prediction.analysisData.events.nextEarnings.daysUntil} días)
+                  {prediction.analysisData.events.nextEarnings.isEstimate ? ' (estimado)' : ''}
+                </Text>
+                {prediction.analysisData.events.nextEarnings.epsEstimate && (
+                  <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                    EPS esperado: ${prediction.analysisData.events.nextEarnings.epsEstimate.toFixed(2)}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Dividendo */}
+            {prediction.analysisData.events.dividend && prediction.analysisData.events.dividend.yield && (
+              <View style={{ backgroundColor: '#254725', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                <Text style={{ fontSize: 14, color: '#e5e5e5', fontWeight: '600', marginBottom: 4 }}>
+                  💰 Dividendo
+                </Text>
+                <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                  Yield: {(prediction.analysisData.events.dividend.yield * 100).toFixed(2)}%
+                  {prediction.analysisData.events.dividend.amount && 
+                    ` ($${prediction.analysisData.events.dividend.amount.toFixed(2)}/acción)`}
+                </Text>
+                {prediction.analysisData.events.dividend.daysUntilEx && (
+                  <Text style={{ fontSize: 12, color: '#4CAF50', marginTop: 4 }}>
+                    Ex-dividendo en {prediction.analysisData.events.dividend.daysUntilEx} días
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Split */}
+            {prediction.analysisData.events.nextSplit && (
+              <View style={{ backgroundColor: '#472547', borderRadius: 8, padding: 10 }}>
+                <Text style={{ fontSize: 14, color: '#e5e5e5', fontWeight: '600', marginBottom: 4 }}>
+                  ✂️ Split
+                </Text>
+                <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                  Ratio {prediction.analysisData.events.nextSplit.ratio} en {prediction.analysisData.events.nextSplit.daysUntil} días
+                </Text>
+              </View>
+            )}
+
+            {/* Risk Score */}
+            {prediction.analysisData.events.eventRiskScore !== 0 && (
+              <View style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                marginTop: 8,
+                paddingTop: 8,
+                borderTopWidth: 1,
+                borderTopColor: '#333'
+              }}>
+                <Text style={{ fontSize: 11, color: '#6b7280' }}>
+                  Riesgo por eventos: 
+                </Text>
+                <Text style={{ 
+                  fontSize: 11, 
+                  color: prediction.analysisData.events.eventRiskScore < -15 ? '#F44336' : 
+                         prediction.analysisData.events.eventRiskScore < 0 ? '#FF9800' : '#4CAF50',
+                  fontWeight: '600',
+                  marginLeft: 4
+                }}>
+                  {prediction.analysisData.events.eventRiskScore > 0 ? '+' : ''}{prediction.analysisData.events.eventRiskScore}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Desglose de Factores */}
       {prediction.analysisData?.factorBreakdown && (
         <View style={styles.section}>

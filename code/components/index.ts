@@ -2,6 +2,7 @@
 export { Header } from './_shared';
 
 // Feature components
+export { AlertsModal } from './alerts-modal';
 export { Home } from './home';
 export { PredictionCard } from './prediction-card';
 export { PredictionHistoryCard } from './prediction-history';

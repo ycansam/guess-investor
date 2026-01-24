@@ -28,6 +28,15 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  alertButton: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  alertButtonText: {
+    fontSize: 12,
+  },
   analysisButton: {
     backgroundColor: '#6366f1',
     paddingHorizontal: 10,

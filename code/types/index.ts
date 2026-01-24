@@ -153,6 +153,29 @@ export interface InvestmentPrediction {
       combinedScoreBreakdown: string;
       expectedChangeBreakdown: string;
     };
+    // Eventos importantes (earnings, dividendos, splits)
+    events?: {
+      hasData: boolean;
+      warnings: string[];
+      eventRiskScore: number;
+      nextEarnings?: {
+        date: Date;
+        daysUntil: number;
+        isEstimate: boolean;
+        epsEstimate?: number;
+      };
+      dividend?: {
+        yield?: number;
+        exDate?: Date;
+        daysUntilEx?: number;
+        amount?: number;
+      };
+      nextSplit?: {
+        date: Date;
+        ratio: string;
+        daysUntil: number;
+      };
+    };
     // Meta-learning: Uncertainty analysis
     uncertainty?: {
       score: number; // 0-100, donde 100 = máxima incertidumbre

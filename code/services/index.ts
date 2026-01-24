@@ -49,6 +49,10 @@ export type { MarketHoursInfo } from './market-hours-service';
 export { predictionTrackingService } from './prediction-tracking-service';
 export type { TrackedPrediction, TrackingStats } from './prediction-tracking-service';
 
+// Alertas de precio
+export { alertsService } from './alerts-service';
+export type { CreateAlertInput, PriceAlert } from './alerts-service';
+
 // =============================================================================
 // ARQUITECTURA:
 // =============================================================================
