@@ -135,6 +135,7 @@ export interface InvestmentPrediction {
       usingLearnedWeights?: boolean; // Si se usaron pesos aprendidos por ML
       confidenceExplanation: string; // Por qué la confianza es X%
       signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
+      streakAdjustment?: { days: number; direction: string; adjustment: number }; // Ajuste por racha
     };
     // AUDITORÍA: Trazabilidad de datos y cálculos para verificación
     audit?: {

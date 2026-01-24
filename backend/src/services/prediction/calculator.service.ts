@@ -23,12 +23,13 @@ import { newsService, NewsSummary } from '../external/news.service.js';
 import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality.service.js';
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
+import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-    factorCorrelationService,
-    probabilisticModelService,
-    reinforcementLearningService,
+  factorCorrelationService,
+  probabilisticModelService,
+  reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -63,6 +64,7 @@ export interface CalculatedPrediction {
     assetAdjustmentApplied?: boolean;
     trackRecordAdjustment?: number;
     correlationAdjustment?: number;
+    streakAdjustment?: { days: number; direction: string; adjustment: number };
     // Información de selección dinámica de modelos
     activeModels?: string[];
     modelSelectionReason?: string;
@@ -813,6 +815,80 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Factor correlation adjustment: ${diff > 0 ? '+' : ''}${diff}% (${correlationAdjustment.reasons.join(', ')})`);
     }
     
+    // --- AJUSTE POR RACHA (MEAN REVERSION) ---
+    // Si hay racha larga (≥5 días), aumentar probabilidad de reversión
+    // Si hay pullback corto (2-3 días) contra tendencia fuerte, ajustar hacia continuación
+    let streakAdjustmentInfo: { days: number; direction: string; adjustment: number } | undefined;
+    try {
+      const trendAnalysis = await trendsService.analyzeTrend(symbol);
+      if (trendAnalysis?.currentStreak) {
+        const streak = trendAnalysis.currentStreak;
+        const momentum = trendAnalysis.momentum;
+        
+        // Mostrar racha si hay ≥2 días consecutivos
+        if (streak.days >= 2 && streak.direction !== 'sideways') {
+          let streakAdj = 0;
+          
+          // Racha larga (≥5 días) → probable reversión
+          if (streak.days >= 5) {
+            // Si predicción sigue la racha, reducir confianza (posible agotamiento)
+            if ((streak.direction === 'up' && expectedChange > 0) ||
+                (streak.direction === 'down' && expectedChange < 0)) {
+              streakAdj = -0.15 * Math.min(streak.days - 4, 3); // -15% a -45% del cambio
+              logger.info(`[PredictionCalc] Streak adjustment: ${streak.days}d ${streak.direction} streak, reducing ${direction} prediction by ${Math.abs(streakAdj * 100).toFixed(0)}%`);
+            }
+            // Si predicción va contra racha larga, aumentar confianza (reversión probable)
+            else if ((streak.direction === 'up' && expectedChange < 0) ||
+                     (streak.direction === 'down' && expectedChange > 0)) {
+              streakAdj = 0.10 * Math.min(streak.days - 4, 2); // +10% a +20% del cambio
+              logger.info(`[PredictionCalc] Streak adjustment: ${streak.days}d ${streak.direction} streak supports reversal prediction`);
+            }
+          }
+          // Racha media (3-4 días) con momentum alineado → probable continuación
+          else if (streak.days >= 3 && streak.days < 5 && momentum) {
+            if ((streak.direction === 'up' && momentum.signal === 'bullish' && expectedChange > 0) ||
+                (streak.direction === 'down' && momentum.signal === 'bearish' && expectedChange < 0)) {
+              streakAdj = 0.08; // +8% del cambio
+              logger.info(`[PredictionCalc] Streak adjustment: ${streak.days}d ${streak.direction} streak with aligned momentum, boosting prediction`);
+            }
+            // Pullback corto contra tendencia fuerte → ajustar hacia continuación
+            else if ((streak.direction === 'down' && momentum.signal === 'bullish') ||
+                     (streak.direction === 'up' && momentum.signal === 'bearish')) {
+              // El pullback va contra el momentum general
+              if (momentum.strength === 'strong' || momentum.strength === 'moderate') {
+                const pullbackAdj = streak.direction === 'down' ? 0.05 : -0.05;
+                streakAdj = pullbackAdj;
+                logger.info(`[PredictionCalc] Pullback detected: ${streak.days}d ${streak.direction} against ${momentum.signal} momentum`);
+              }
+            }
+          }
+          
+          // Aplicar ajuste si hay
+          if (streakAdj !== 0) {
+            const oldChange = expectedChange;
+            expectedChange = expectedChange * (1 + streakAdj);
+            streakAdjustmentInfo = {
+              days: streak.days,
+              direction: streak.direction,
+              adjustment: Math.round((expectedChange - oldChange) / Math.abs(oldChange) * 100),
+            };
+          } else {
+            // Mostrar racha sin ajuste (informativo)
+            streakAdjustmentInfo = {
+              days: streak.days,
+              direction: streak.direction,
+              adjustment: 0,
+            };
+          }
+          
+          logger.info(`[PredictionCalc] Current streak: ${streak.days}d ${streak.direction}, adjustment: ${streakAdjustmentInfo.adjustment}%`);
+        }
+      }
+    } catch (e) {
+      // Si falla el análisis de tendencia, continuar sin ajuste
+      logger.debug(`[PredictionCalc] Could not get streak data: ${(e as Error).message}`);
+    }
+    
     // --- MODELO PROBABILÍSTICO ---
     // Genera distribución de probabilidad e intervalos de confianza
     const probabilisticResult = await probabilisticModelService.generateProbabilisticPrediction(
@@ -872,6 +948,7 @@ export const predictionCalculatorService = {
         assetAdjustmentApplied: assetAdjustment.wasAdjusted,
         trackRecordAdjustment,
         correlationAdjustment: correlationAdjustment.adjustedConfidence - correlationAdjustment.originalConfidence,
+        streakAdjustment: streakAdjustmentInfo,
         // Información de selección dinámica de modelos
         activeModels: ensembleResult.activeModels,
         modelSelectionReason: ensembleResult.modelSelectionReason,

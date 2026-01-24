@@ -288,6 +288,44 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               💡 {prediction.analysisData.factorBreakdown.confidenceExplanation}
             </Text>
             )}
+
+            {/* Ajuste por racha (mean reversion) */}
+            {prediction.analysisData?.factorBreakdown?.streakAdjustment && (
+              <View style={{ 
+                backgroundColor: '#1a1a2e', 
+                padding: 10, 
+                borderRadius: 8, 
+                marginTop: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: prediction.analysisData.factorBreakdown.streakAdjustment.adjustment > 0 ? '#4CAF50' : 
+                                 prediction.analysisData.factorBreakdown.streakAdjustment.adjustment < 0 ? '#FF9800' : '#6366f1'
+              }}>
+                <Text style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
+                  🔄 Racha actual:
+                </Text>
+                <Text style={{ fontSize: 13, color: '#e5e5e5' }}>
+                  {prediction.analysisData.factorBreakdown.streakAdjustment.days} días consecutivos {
+                    prediction.analysisData.factorBreakdown.streakAdjustment.direction === 'up' ? '📈 subiendo' : 
+                    prediction.analysisData.factorBreakdown.streakAdjustment.direction === 'down' ? '📉 bajando' : '➡️ lateral'
+                  }
+                </Text>
+                {prediction.analysisData.factorBreakdown.streakAdjustment.adjustment !== 0 ? (
+                  <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                    {prediction.analysisData.factorBreakdown.streakAdjustment.adjustment > 0 
+                      ? `✅ Ajuste +${prediction.analysisData.factorBreakdown.streakAdjustment.adjustment}% (momentum alineado)`
+                      : `⚠️ Ajuste ${prediction.analysisData.factorBreakdown.streakAdjustment.adjustment}% (posible agotamiento)`}
+                  </Text>
+                ) : (
+                  <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                    {prediction.analysisData.factorBreakdown.streakAdjustment.days >= 5 
+                      ? '⚡ Racha larga - vigilar posible reversión'
+                      : prediction.analysisData.factorBreakdown.streakAdjustment.days >= 3
+                        ? '📊 Racha en desarrollo'
+                        : '📌 Sin ajuste aplicado'}
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         </View>
       )}
