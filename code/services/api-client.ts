@@ -268,6 +268,20 @@ export interface ForexImpact {
   summary: string;
 }
 
+export interface SeasonalityAnalysis {
+  currentMonth: string;
+  monthlyReturns: { month: string; avgReturn: number; yearsAnalyzed: number; weight: number }[];
+  currentMonthAvgReturn: number;
+  annualAvgReturn: number;
+  seasonalScore: number;
+  hasData: boolean;
+  summary: string;
+  dataReliability: 'high' | 'medium' | 'low' | 'unreliable';
+  structuralBreakDetected: boolean;
+  effectiveYearsUsed: number;
+  priceChangeFromStart: number;
+}
+
 export interface TrendStreak {
   direction: 'up' | 'down' | 'sideways';
   days: number;
@@ -530,6 +544,13 @@ export const apiClient = {
   getForexImpact: (symbol: string, assetName?: string): Promise<ForexImpact> => {
     const params = assetName ? `?name=${encodeURIComponent(assetName)}` : '';
     return get(`/analysis/forex/${encodeURIComponent(symbol)}${params}`);
+  },
+
+  /**
+   * Obtener análisis de estacionalidad
+   */
+  getSeasonality: (symbol: string): Promise<SeasonalityAnalysis> => {
+    return get(`/analysis/seasonality/${encodeURIComponent(symbol)}`);
   },
 
   /**

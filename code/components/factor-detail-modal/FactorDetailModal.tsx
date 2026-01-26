@@ -827,6 +827,149 @@ const TrendDetail = ({ data }: { data: any }) => {
   );
 };
 
+// Seasonality Detail (con indicadores de fiabilidad)
+const SeasonalityDetail = ({ data }: { data: any }) => {
+  if (!data || !data.hasData) {
+    return (
+      <View style={styles.detailContent}>
+        <Text style={styles.noData}>Sin datos de estacionalidad disponibles</Text>
+        <Text style={styles.noDataSubtext}>No hay suficiente historial para calcular patrones estacionales</Text>
+      </View>
+    );
+  }
+
+  const reliabilityColors: Record<string, string> = {
+    high: COLORS.green,
+    medium: COLORS.yellow,
+    low: COLORS.orange,
+    unreliable: COLORS.red,
+  };
+
+  const reliabilityLabels: Record<string, string> = {
+    high: '✅ Alta fiabilidad',
+    medium: '⚠️ Fiabilidad media',
+    low: '⚠️ Baja fiabilidad',
+    unreliable: '❌ No fiable',
+  };
+
+  const reliabilityExplanations: Record<string, string> = {
+    high: 'Datos de 3+ años sin cambios estructurales. Patrones consistentes.',
+    medium: 'Datos suficientes pero con alguna variación. Usar con cautela.',
+    low: 'Pocos datos o cambios recientes. Patrones poco consistentes.',
+    unreliable: 'Cambio estructural detectado (caída/subida extrema). Los patrones históricos no aplican.',
+  };
+
+  return (
+    <View style={styles.detailContent}>
+      {/* Advertencia de fiabilidad destacada */}
+      <View style={[styles.reliabilityBanner, { 
+        backgroundColor: reliabilityColors[data.dataReliability] + '20',
+        borderColor: reliabilityColors[data.dataReliability],
+      }]}>
+        <Text style={[styles.reliabilityTitle, { color: reliabilityColors[data.dataReliability] }]}>
+          {reliabilityLabels[data.dataReliability] || '⚠️ Fiabilidad desconocida'}
+        </Text>
+        <Text style={styles.reliabilityText}>
+          {reliabilityExplanations[data.dataReliability]}
+        </Text>
+        {data.structuralBreakDetected && (
+          <Text style={[styles.reliabilityWarning, { color: COLORS.red }]}>
+            🔴 Se detectó un cambio estructural en el precio ({data.priceChangeFromStart > 0 ? '+' : ''}{data.priceChangeFromStart?.toFixed(0)}% desde inicio). 
+            Los patrones antiguos pueden no ser relevantes.
+          </Text>
+        )}
+      </View>
+
+      {/* Score */}
+      <View style={styles.scoreCard}>
+        <Text style={styles.scoreEmoji}>📅</Text>
+        <Text style={[styles.scoreValue, { 
+          color: data.seasonalScore >= 20 ? COLORS.green : data.seasonalScore <= -20 ? COLORS.red : COLORS.yellow 
+        }]}>
+          {data.seasonalScore >= 0 ? '+' : ''}{data.seasonalScore}
+        </Text>
+        <Text style={styles.scoreLabel}>Score Estacional</Text>
+      </View>
+
+      {/* Summary */}
+      {data.summary && (
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryText}>{data.summary}</Text>
+        </View>
+      )}
+
+      {/* Datos del mes actual */}
+      <View style={styles.indicatorSection}>
+        <Text style={styles.indicatorTitle}>📊 Mes Actual: {data.currentMonth}</Text>
+        <View style={styles.dataGrid}>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Este mes (histórico)</Text>
+            <Text style={[styles.dataValue, { 
+              color: data.currentMonthAvgReturn >= 0 ? COLORS.green : COLORS.red 
+            }]}>
+              {data.currentMonthAvgReturn >= 0 ? '+' : ''}{data.currentMonthAvgReturn?.toFixed(2)}%
+            </Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Promedio mensual</Text>
+            <Text style={[styles.dataValue, { 
+              color: (data.annualAvgReturn / 12) >= 0 ? COLORS.green : COLORS.red 
+            }]}>
+              {(data.annualAvgReturn / 12) >= 0 ? '+' : ''}{(data.annualAvgReturn / 12)?.toFixed(2)}%
+            </Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Años analizados</Text>
+            <Text style={styles.dataValue}>{data.effectiveYearsUsed} años</Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Rend. anual (suma)</Text>
+            <Text style={[styles.dataValue, { 
+              color: data.annualAvgReturn >= 0 ? COLORS.green : COLORS.red 
+            }]}>
+              {data.annualAvgReturn >= 0 ? '+' : ''}{data.annualAvgReturn?.toFixed(1)}%
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Rendimientos mensuales */}
+      {data.monthlyReturns && data.monthlyReturns.length > 0 && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>📈 Rendimientos Mensuales Históricos</Text>
+          <View style={styles.monthlyGrid}>
+            {data.monthlyReturns.map((m: any, idx: number) => (
+              <View key={idx} style={[styles.monthItem, { 
+                backgroundColor: m.avgReturn >= 0 ? COLORS.green + '20' : COLORS.red + '20' 
+              }]}>
+                <Text style={styles.monthName}>{m.month?.substring(0, 3)}</Text>
+                <Text style={[styles.monthReturn, { 
+                  color: m.avgReturn >= 0 ? COLORS.green : COLORS.red 
+                }]}>
+                  {m.avgReturn >= 0 ? '+' : ''}{m.avgReturn?.toFixed(1)}%
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Nota explicativa */}
+      <View style={styles.forexExplanation}>
+        <Text style={styles.forexExplanationTitle}>📖 ¿Qué es la estacionalidad?</Text>
+        <Text style={styles.forexExplanationText}>
+          La estacionalidad analiza patrones históricos de rendimiento por mes. Por ejemplo, 
+          algunos activos tienden a subir en diciembre ("rally de Navidad") o caer en septiembre.
+        </Text>
+        <Text style={[styles.forexExplanationNote, { backgroundColor: COLORS.yellow + '15', color: COLORS.yellow }]}>
+          ⚠️ IMPORTANTE: La estacionalidad es uno de los factores MENOS fiables. Patrones pasados 
+          no garantizan resultados futuros, especialmente si el activo ha cambiado fundamentalmente.
+        </Text>
+      </View>
+    </View>
+  );
+};
+
 // Generic Detail (para otros factores)
 const GenericDetail = ({ data, factorType }: { data: any; factorType: FactorType }) => {
   const config = FACTOR_CONFIG[factorType];
@@ -1003,6 +1146,9 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
         case 'forex':
           response = await apiClient.getForexImpact(symbol);
           break;
+        case 'seasonality':
+          response = await apiClient.getSeasonality(symbol);
+          break;
         default:
           // Para otros factores, obtener análisis completo
           const full = await apiClient.getFullAnalysis(symbol, assetType);
@@ -1055,6 +1201,8 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
         return <NewsDetail data={data} />;
       case 'trend':
         return <TrendDetail data={data} />;
+      case 'seasonality':
+        return <SeasonalityDetail data={data} />;
       default:
         return <GenericDetail data={data} factorType={factorType} />;
     }
@@ -1817,6 +1965,51 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.blue + '15',
     padding: 10,
     borderRadius: 8,
+  },
+
+  // Seasonality Styles
+  reliabilityBanner: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 2,
+  },
+  reliabilityTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  reliabilityText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  reliabilityWarning: {
+    fontSize: 11,
+    marginTop: 8,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  monthlyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  monthItem: {
+    width: '23%',
+    borderRadius: 8,
+    padding: 8,
+    alignItems: 'center',
+  },
+  monthName: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  monthReturn: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
   },
 });
 

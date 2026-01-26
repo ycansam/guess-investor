@@ -3,6 +3,7 @@ import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { forexService } from '../services/external/forex.service.js';
 import { macroService } from '../services/external/macro.service.js';
 import { newsService } from '../services/external/news.service.js';
+import { seasonalityService } from '../services/external/seasonality.service.js';
 import { sentimentService } from '../services/external/sentiment.service.js';
 import { technicalService } from '../services/external/technical.service.js';
 import { trendsService } from '../services/external/trends.service.js';
@@ -201,6 +202,25 @@ router.get('/forex/:symbol', asyncHandler(async (req: Request, res: Response) =>
   res.json({
     success: true,
     data: forex,
+  });
+}));
+
+/**
+ * GET /api/analysis/seasonality/:symbol
+ * Análisis de estacionalidad del activo
+ */
+router.get('/seasonality/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const seasonality = await seasonalityService.analyze(symbol.toUpperCase());
+
+  res.json({
+    success: true,
+    data: seasonality,
   });
 }));
 
