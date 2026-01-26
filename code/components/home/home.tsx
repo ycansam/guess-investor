@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
@@ -13,6 +14,7 @@ import { TabBar, TabType } from './tab-bar';
 import { useHome } from './use-home';
 
 export function Home() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('predictions');
   const [showTracking, setShowTracking] = useState(false);
   const [showMLDiagnostics, setShowMLDiagnostics] = useState(false);
@@ -80,7 +82,8 @@ export function Home() {
       <Header 
         title="Guess Investor" 
         actions={[
-          { icon: '🔔', onPress: () => setShowAlerts(true) },
+          { icon: '�', onPress: () => router.push('/portfolio') },
+          { icon: '�🔔', onPress: () => setShowAlerts(true) },
           { icon: '🧠', onPress: () => setShowMLDiagnostics(true) },
         ]}
         actionIcon="📊"

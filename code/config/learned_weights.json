@@ -1,20 +1,20 @@
 {
   "version": "1.0",
-  "updated_at": "2026-01-24T14:33:52.976653",
-  "training_samples": 226,
+  "updated_at": "2026-01-26T21:05:05.695862",
+  "training_samples": 313,
   "weights": {
     "intraday": {
-      "trend": 0.198091,
-      "technical": 0.248162,
-      "sentiment": 0.150216,
-      "news": 0.178061,
-      "macro": 0.040057,
-      "competitors": 0.040057,
-      "forex": 0.040057,
-      "institutional": 0.050072,
-      "seasonality": 0.021747,
-      "financials": 0.021747,
-      "expectations": 0.011733
+      "trend": 0.196737,
+      "technical": 0.246915,
+      "sentiment": 0.150536,
+      "news": 0.176664,
+      "macro": 0.040143,
+      "competitors": 0.040143,
+      "forex": 0.040143,
+      "institutional": 0.050178,
+      "seasonality": 0.022859,
+      "financials": 0.022859,
+      "expectations": 0.012824
     },
     "swing": {
       "trend": 0.12,

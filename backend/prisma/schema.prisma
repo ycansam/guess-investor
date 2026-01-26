@@ -302,3 +302,35 @@ model PriceAlert {
   @@index([isActive])
   @@index([isTriggered])
 }
+
+// ============================================================================
+// INVESTMENT NOTES - Notas y apuntes de inversión
+// ============================================================================
+
+model InvestmentNote {
+  id              String   @id @default(uuid())
+  symbol          String
+  name            String   // Nombre del activo
+  assetType       String   // "stock" | "crypto" | "etf"
+  
+  // Notas del usuario
+  notes           String?  // Apuntes libres
+  thesis          String?  // Tesis de inversión (por qué te interesa)
+  
+  // Precios de referencia (opcionales)
+  targetPrice     Float?   // Precio objetivo
+  entryPrice      Float?   // Precio de entrada deseado
+  stopLoss        Float?   // Stop loss de referencia
+  
+  // Estado
+  status          String   @default("watching") // "watching" | "bought" | "sold" | "archived"
+  rating          Int?     // 1-5 estrellas
+  
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([symbol])
+  @@index([symbol])
+  @@index([status])
+}

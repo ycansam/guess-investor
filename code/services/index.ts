@@ -53,6 +53,16 @@ export type { TrackedPrediction, TrackingStats } from './prediction-tracking-ser
 export { alertsService } from './alerts-service';
 export type { CreateAlertInput, PriceAlert } from './alerts-service';
 
+// Notas de inversión
+export { notesService } from './notes-service';
+export type {
+    CreateNoteInput,
+    InvestmentNote,
+    NotesData,
+    NoteStatus,
+    UpdateNoteInput
+} from './notes-service';
+
 // =============================================================================
 // ARQUITECTURA:
 // =============================================================================
