@@ -12,24 +12,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 
 import {
-  CreateNoteInput,
-  InvestmentNote,
-  NotesData,
-  NoteStatus,
-  notesService,
+    CreateNoteInput,
+    InvestmentNote,
+    NotesData,
+    notesService,
+    NoteStatus,
 } from '../services/notes-service';
 
 // Colores del tema oscuro

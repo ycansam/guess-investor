@@ -82,8 +82,9 @@ export function Home() {
       <Header 
         title="Guess Investor" 
         actions={[
-          { icon: '�', onPress: () => router.push('/portfolio') },
-          { icon: '�🔔', onPress: () => setShowAlerts(true) },
+          { icon: '🎯', onPress: () => router.push('/screener') },
+          { icon: '💼', onPress: () => router.push('/portfolio') },
+          { icon: '🔔', onPress: () => setShowAlerts(true) },
           { icon: '🧠', onPress: () => setShowMLDiagnostics(true) },
         ]}
         actionIcon="📊"

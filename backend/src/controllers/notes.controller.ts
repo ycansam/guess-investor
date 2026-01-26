@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
+import { logger } from '../middleware/logger.js';
 import { notesRepository } from '../repositories/notes.repository.js';
 import { yahooService } from '../services/external/yahoo.service.js';
-import { logger } from '../middleware/logger.js';
 
 export const notesController = {
   /**

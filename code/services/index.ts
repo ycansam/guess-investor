@@ -57,10 +57,7 @@ export type { CreateAlertInput, PriceAlert } from './alerts-service';
 export { notesService } from './notes-service';
 export type {
     CreateNoteInput,
-    InvestmentNote,
-    NotesData,
-    NoteStatus,
-    UpdateNoteInput
+    InvestmentNote, NoteStatus, NotesData, UpdateNoteInput
 } from './notes-service';
 
 // =============================================================================

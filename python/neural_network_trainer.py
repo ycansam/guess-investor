@@ -441,11 +441,23 @@ def predict_direction(
     # Predecir
     prob_up = float(model.predict(X, verbose=0)[0][0])
     
+    # CORREGIDO: Añadir zona neutral para probabilidades cercanas a 50%
+    # Datos históricos: laterales tienen 46.6% de error, mejor ser conservador
+    NEUTRAL_ZONE = 0.15  # Si prob está entre 0.35-0.65, es incierto
+    
+    if prob_up > (0.5 + NEUTRAL_ZONE):
+        direction = 'up'
+    elif prob_up < (0.5 - NEUTRAL_ZONE):
+        direction = 'down'
+    else:
+        direction = 'neutral'  # Zona de incertidumbre
+    
     return {
         'probability_up': prob_up,
         'probability_down': 1 - prob_up,
-        'direction': 'up' if prob_up > 0.5 else 'down',
+        'direction': direction,
         'model_confidence': abs(prob_up - 0.5) * 2,  # 0 = muy inseguro, 1 = muy seguro
+        'is_uncertain': 0.35 <= prob_up <= 0.65,  # Flag de incertidumbre
         'prediction_strength': 'strong' if abs(prob_up - 0.5) > 0.3 else 
                                'moderate' if abs(prob_up - 0.5) > 0.15 else 'weak'
     }

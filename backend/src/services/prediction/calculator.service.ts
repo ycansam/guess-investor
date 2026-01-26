@@ -28,9 +28,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  probabilisticModelService,
-  reinforcementLearningService,
+    factorCorrelationService,
+    probabilisticModelService,
+    reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -927,19 +927,29 @@ export const predictionCalculatorService = {
       historical.volatility || 20
     );
     
-    // Recalcular dirección DESPUÉS de todos los ajustes para que coincida con predictedChange
-    // UMBRAL AJUSTADO: 0.2% para evitar mostrar como neutral predicciones con dirección clara
-    const DIRECTION_THRESHOLD = 0.2;
-    if (expectedChange > DIRECTION_THRESHOLD) direction = 'up';
-    else if (expectedChange < -DIRECTION_THRESHOLD) direction = 'down';
-    else direction = 'neutral';
+    // Recalcular dirección DESPUÉS de todos los ajustes
+    // UMBRAL AUMENTADO: 0.5% es más realista para evitar falsos positivos
+    // Datos históricos: laterales tienen 46.6% de error, hay que ser más estricto
+    const DIRECTION_THRESHOLD = 0.5;
     
-    // NUEVO: Si hay señal clara de dirección pero cambio pequeño, amplificar
-    // Esto evita predicciones en la "zona gris" que casi siempre fallan
-    if (direction !== 'neutral' && Math.abs(expectedChange) < 0.3) {
-      const sign = expectedChange >= 0 ? 1 : -1;
-      expectedChange = sign * 0.3; // Mínimo 0.3% para direcciones claras
-      logger.info(`[PredictionCalc] Amplified small prediction to avoid neutral zone: ${expectedChange.toFixed(2)}%`);
+    // NUEVO: Zona de incertidumbre ampliada (0.3% a 0.7%)
+    // Si está en zona gris, preferir NEUTRAL para reducir errores
+    if (expectedChange > DIRECTION_THRESHOLD) {
+      direction = 'up';
+    } else if (expectedChange < -DIRECTION_THRESHOLD) {
+      direction = 'down';
+    } else {
+      // Zona lateral: ser más conservador
+      direction = 'neutral';
+      // Reducir confianza para laterales (histórico: solo 46.6% acierto)
+      finalConfidence = Math.min(finalConfidence, 55);
+      logger.info(`[PredictionCalc] Lateral prediction (${expectedChange.toFixed(2)}%), capping confidence at 55%`);
+    }
+    
+    // CORRECCIÓN: Si bajista, ser más conservador (histórico: 41.8% vs 74% alcista)
+    if (direction === 'down' && finalConfidence > 60) {
+      finalConfidence = Math.round(finalConfidence * 0.85); // -15% para bajistas
+      logger.info(`[PredictionCalc] Bearish prediction confidence adjusted: ${finalConfidence}% (historical accuracy 41.8%)`);
     }
     
     logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%, Direction: ${direction}`);
@@ -1055,12 +1065,26 @@ export const predictionCalculatorService = {
 
   /**
    * Calcula score de tendencia histórica
+   * CORREGIDO: Reducir amplificación para evitar sesgo alcista por momentum
+   * También considera mean reversion para tendencias extremas
    */
   calculateTrendScore(change30d: number, change90d: number): number {
-    // Combinar tendencias de corto y largo plazo
-    const shortTermScore = Math.max(-100, Math.min(100, change30d * 3));
-    const longTermScore = Math.max(-100, Math.min(100, change90d));
-    return (shortTermScore * 0.7 + longTermScore * 0.3);
+    // Amplificación reducida: de 3x a 2x para evitar sesgo momentum
+    // Aplicar mean reversion si tendencia muy extrema (>20% en 30d)
+    let shortTermScore: number;
+    if (Math.abs(change30d) > 20) {
+      // Tendencia extrema: aplicar mean reversion parcial
+      shortTermScore = Math.max(-100, Math.min(100, change30d * 1.0));
+      logger.debug(`[PredictionCalc] Extreme trend detected (${change30d.toFixed(1)}%), applying mean reversion`);
+    } else if (Math.abs(change30d) > 10) {
+      // Tendencia fuerte: amplificación moderada
+      shortTermScore = Math.max(-100, Math.min(100, change30d * 1.5));
+    } else {
+      // Tendencia normal: amplificación estándar (reducida de 3 a 2)
+      shortTermScore = Math.max(-100, Math.min(100, change30d * 2));
+    }
+    const longTermScore = Math.max(-100, Math.min(100, change90d * 0.8)); // Reducido de 1 a 0.8
+    return (shortTermScore * 0.6 + longTermScore * 0.4); // Más peso a largo plazo
   },
 
   /**

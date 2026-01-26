@@ -279,31 +279,41 @@ export const trackRecordService = {
       const stats = await this.getDirectionStats();
       
       if (!stats.hasEnoughData) {
+        // Sin suficientes datos, usar estadísticas típicas del mercado
+        // Los mercados suben más de lo que bajan a largo plazo (~55% días alcistas)
+        // Pero predicciones bajistas son más difíciles de acertar
+        if (direction === 'down') {
+          return { 
+            confidenceMultiplier: 0.85, 
+            recommendation: '⚠️ Predicciones bajistas históricamente menos precisas' 
+          };
+        }
         return { confidenceMultiplier: 1.0, recommendation: '' };
       }
 
       const directionAccuracy = stats[direction];
       
-      // Ajustar confianza según precisión histórica de esa dirección
-      if (directionAccuracy >= 75) {
+      // AJUSTES MÁS AGRESIVOS basados en datos reales:
+      // UP=74%, DOWN=41.8%, NEUTRAL=46.6%
+      if (directionAccuracy >= 70) {
         return { 
-          confidenceMultiplier: 1.15, // +15% confianza
-          recommendation: `Históricamente ${direction === 'up' ? 'alcistas' : direction === 'down' ? 'bajistas' : 'neutrales'} tienen ${directionAccuracy.toFixed(0)}% de acierto`
+          confidenceMultiplier: 1.10, // +10% confianza (reducido de 15%)
+          recommendation: `✅ ${direction === 'up' ? 'Alcistas' : direction === 'down' ? 'Bajistas' : 'Neutrales'} tienen ${directionAccuracy.toFixed(0)}% de acierto histórico`
         };
-      } else if (directionAccuracy >= 60) {
+      } else if (directionAccuracy >= 55) {
         return { 
-          confidenceMultiplier: 1.05, 
+          confidenceMultiplier: 1.0, // Sin ajuste
           recommendation: '' 
         };
-      } else if (directionAccuracy >= 50) {
+      } else if (directionAccuracy >= 45) {
         return { 
-          confidenceMultiplier: 0.95, // -5% confianza
-          recommendation: `⚠️ Predicciones ${direction === 'up' ? 'alcistas' : direction === 'down' ? 'bajistas' : 'neutrales'} tienen solo ${directionAccuracy.toFixed(0)}% de acierto histórico`
+          confidenceMultiplier: 0.80, // -20% confianza (más agresivo)
+          recommendation: `⚠️ ${direction === 'up' ? 'Alcistas' : direction === 'down' ? 'Bajistas' : 'Neutrales'} tienen ${directionAccuracy.toFixed(0)}% de acierto (peor que azar)`
         };
       } else {
         return { 
-          confidenceMultiplier: 0.85, // -15% confianza
-          recommendation: `⚠️ PRECAUCIÓN: Predicciones ${direction === 'up' ? 'alcistas' : direction === 'down' ? 'bajistas' : 'neutrales'} tienen bajo acierto (${directionAccuracy.toFixed(0)}%)`
+          confidenceMultiplier: 0.70, // -30% confianza (muy agresivo)
+          recommendation: `🚨 PRECAUCIÓN: ${direction === 'up' ? 'Alcistas' : direction === 'down' ? 'Bajistas' : 'Neutrales'} solo ${directionAccuracy.toFixed(0)}% de acierto histórico`
         };
       }
     } catch (error) {
