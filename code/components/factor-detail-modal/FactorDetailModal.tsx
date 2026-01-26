@@ -831,7 +831,12 @@ const TrendDetail = ({ data }: { data: any }) => {
 const GenericDetail = ({ data, factorType }: { data: any; factorType: FactorType }) => {
   const config = FACTOR_CONFIG[factorType];
   
-  if (!data || !data.hasData) {
+  // Buscar score en diferentes formatos
+  const scoreKey = data ? Object.keys(data).find(k => k.toLowerCase().includes('score')) : null;
+  const score = scoreKey ? data[scoreKey] : null;
+  
+  // Si no hay datos Y no hay score, mostrar mensaje vacío
+  if (!data || (data.hasData === false && score === null)) {
     return (
       <View style={styles.detailContent}>
         <Text style={styles.noData}>Sin datos de {config.title.toLowerCase()} disponibles</Text>
@@ -839,10 +844,6 @@ const GenericDetail = ({ data, factorType }: { data: any; factorType: FactorType
       </View>
     );
   }
-
-  // Score genérico
-  const scoreKey = Object.keys(data).find(k => k.toLowerCase().includes('score'));
-  const score = scoreKey ? data[scoreKey] : null;
 
   return (
     <View style={styles.detailContent}>
@@ -852,7 +853,7 @@ const GenericDetail = ({ data, factorType }: { data: any; factorType: FactorType
           <Text style={[styles.scoreValue, { 
             color: score >= 20 ? COLORS.green : score <= -20 ? COLORS.red : COLORS.yellow 
           }]}>
-            {score}
+            {score >= 0 ? '+' : ''}{score}
           </Text>
           <Text style={styles.scoreLabel}>Score {config.title}</Text>
         </View>
@@ -864,22 +865,103 @@ const GenericDetail = ({ data, factorType }: { data: any; factorType: FactorType
         </View>
       )}
 
-      {/* Mostrar otros datos disponibles */}
-      <View style={styles.dataGrid}>
-        {Object.entries(data).map(([key, value]) => {
-          if (['hasData', 'summary'].includes(key) || key.includes('score') || typeof value === 'object') {
-            return null;
-          }
-          return (
-            <View key={key} style={styles.dataItem}>
-              <Text style={styles.dataLabel}>{key}</Text>
-              <Text style={styles.dataValue}>
-                {typeof value === 'number' ? value.toFixed(2) : String(value)}
-              </Text>
+      {/* Mostrar datos específicos según el tipo de factor */}
+      {factorType === 'forex' && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>💱 Impacto Divisa</Text>
+          <View style={styles.dataGrid}>
+            {data.baseCurrency && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Moneda base</Text>
+                <Text style={styles.dataValue}>{data.baseCurrency}</Text>
+              </View>
+            )}
+            {data.pair && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Par</Text>
+                <Text style={styles.dataValue}>{data.pair}</Text>
+              </View>
+            )}
+            {data.trend && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Tendencia</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.trend === 'strengthening' ? COLORS.green : 
+                         data.trend === 'weakening' ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.trend === 'strengthening' ? '💪 Fortaleciendo' : 
+                   data.trend === 'weakening' ? '📉 Debilitando' : '➡️ Estable'}
+                </Text>
+              </View>
+            )}
+            {typeof data.changePercent === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Cambio %</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.changePercent >= 0 ? COLORS.green : COLORS.red 
+                }]}>
+                  {data.changePercent >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Explicación del score de forex */}
+          <View style={styles.forexExplanation}>
+            <Text style={styles.forexExplanationTitle}>📖 ¿Qué significa el score?</Text>
+            <Text style={styles.forexExplanationText}>
+              El score de divisas mide cómo el tipo de cambio afecta al activo:
+            </Text>
+            <View style={styles.forexScaleContainer}>
+              <View style={styles.forexScaleItem}>
+                <Text style={[styles.forexScaleScore, { color: COLORS.green }]}>+30 a +100</Text>
+                <Text style={styles.forexScaleDesc}>Divisa muy favorable</Text>
+              </View>
+              <View style={styles.forexScaleItem}>
+                <Text style={[styles.forexScaleScore, { color: COLORS.green }]}>+10 a +30</Text>
+                <Text style={styles.forexScaleDesc}>Ligeramente favorable</Text>
+              </View>
+              <View style={styles.forexScaleItem}>
+                <Text style={[styles.forexScaleScore, { color: COLORS.yellow }]}>-10 a +10</Text>
+                <Text style={styles.forexScaleDesc}>Impacto neutro</Text>
+              </View>
+              <View style={styles.forexScaleItem}>
+                <Text style={[styles.forexScaleScore, { color: COLORS.orange }]}>-30 a -10</Text>
+                <Text style={styles.forexScaleDesc}>Ligeramente desfavorable</Text>
+              </View>
+              <View style={styles.forexScaleItem}>
+                <Text style={[styles.forexScaleScore, { color: COLORS.red }]}>-100 a -30</Text>
+                <Text style={styles.forexScaleDesc}>Divisa muy desfavorable</Text>
+              </View>
             </View>
-          );
-        }).filter(Boolean)}
-      </View>
+            {data.baseCurrency && data.baseCurrency !== 'USD' && (
+              <Text style={styles.forexExplanationNote}>
+                💡 Este activo cotiza en {data.baseCurrency}. Si {data.baseCurrency} se fortalece frente al USD, 
+                activos que trackean commodities/índices en USD pueden verse afectados negativamente.
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Mostrar otros datos disponibles (genérico) */}
+      {factorType !== 'forex' && (
+        <View style={styles.dataGrid}>
+          {Object.entries(data).map(([key, value]) => {
+            if (['hasData', 'summary'].includes(key) || key.includes('score') || key.includes('Score') || typeof value === 'object') {
+              return null;
+            }
+            return (
+              <View key={key} style={styles.dataItem}>
+                <Text style={styles.dataLabel}>{key}</Text>
+                <Text style={styles.dataValue}>
+                  {typeof value === 'number' ? value.toFixed(2) : String(value)}
+                </Text>
+              </View>
+            );
+          }).filter(Boolean)}
+        </View>
+      )}
     </View>
   );
 };
@@ -917,6 +999,9 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
           break;
         case 'trend':
           response = await apiClient.getTrends(symbol);
+          break;
+        case 'forex':
+          response = await apiClient.getForexImpact(symbol);
           break;
         default:
           // Para otros factores, obtener análisis completo
@@ -1679,6 +1764,59 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.text,
+  },
+
+  // Forex Explanation
+  forexExplanation: {
+    marginTop: 16,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  forexExplanationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  forexExplanationText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  forexScaleContainer: {
+    gap: 6,
+  },
+  forexScaleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 6,
+  },
+  forexScaleScore: {
+    fontSize: 12,
+    fontWeight: '700',
+    width: 85,
+  },
+  forexScaleDesc: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  forexExplanationNote: {
+    marginTop: 12,
+    fontSize: 11,
+    color: COLORS.blue,
+    fontStyle: 'italic',
+    lineHeight: 16,
+    backgroundColor: COLORS.blue + '15',
+    padding: 10,
+    borderRadius: 8,
   },
 });
 

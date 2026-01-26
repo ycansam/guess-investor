@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
+import { forexService } from '../services/external/forex.service.js';
 import { macroService } from '../services/external/macro.service.js';
 import { newsService } from '../services/external/news.service.js';
 import { sentimentService } from '../services/external/sentiment.service.js';
@@ -180,6 +181,26 @@ router.get('/top-trends', asyncHandler(async (req: Request, res: Response) => {
       trends,
       analyzedAt: new Date().toISOString(),
     },
+  });
+}));
+
+/**
+ * GET /api/analysis/forex/:symbol
+ * Análisis de impacto de divisas para un activo
+ */
+router.get('/forex/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const assetName = (req.query.name as string) || '';
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const forex = await forexService.analyzeForexImpact(symbol.toUpperCase(), assetName);
+
+  res.json({
+    success: true,
+    data: forex,
   });
 }));
 

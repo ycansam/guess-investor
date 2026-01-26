@@ -258,6 +258,16 @@ export interface FullAnalysis {
   analyzedAt: string;
 }
 
+export interface ForexImpact {
+  baseCurrency: string;
+  pair: string;
+  trend: 'strengthening' | 'weakening' | 'stable';
+  changePercent: number;
+  forexScore: number;
+  hasData: boolean;
+  summary: string;
+}
+
 export interface TrendStreak {
   direction: 'up' | 'down' | 'sideways';
   days: number;
@@ -512,6 +522,14 @@ export const apiClient = {
    */
   getMacroIndicators: (symbol: string, type: 'stock' | 'crypto' = 'stock'): Promise<MacroIndicators> => {
     return get(`/analysis/macro/${encodeURIComponent(symbol)}?type=${type}`);
+  },
+
+  /**
+   * Obtener análisis de impacto de divisas
+   */
+  getForexImpact: (symbol: string, assetName?: string): Promise<ForexImpact> => {
+    const params = assetName ? `?name=${encodeURIComponent(assetName)}` : '';
+    return get(`/analysis/forex/${encodeURIComponent(symbol)}${params}`);
   },
 
   /**
