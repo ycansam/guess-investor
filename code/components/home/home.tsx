@@ -1,6 +1,6 @@
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';

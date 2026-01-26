@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { currencyService } from '../../../services/currency-service';
 import { canTradeNow, getMarketHours, MarketHoursInfo } from '../../../services/market-hours-service';
 import { InvestmentPrediction } from '../../../types';
+import { FactorDetailModal, FactorType } from '../../factor-detail-modal';
 import { styles } from './prediction-card-analysis.styles';
 
 // Tooltips explicativos para usuarios no expertos
@@ -62,6 +64,11 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
   const [tradeStatus, setTradeStatus] = useState<{ canTrade: boolean; reason: string; suggestion: string } | null>(null);
   const [eurRate, setEurRate] = useState<number>(1);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  // Estado para el modal de detalle de factor
+  const [factorModal, setFactorModal] = useState<{ visible: boolean; type: FactorType; score?: number }>({
+    visible: false,
+    type: 'technical',
+  });
 
   // Componente de tooltip con hover para web y tap para móvil
   const TooltipWrapper: React.FC<{ tooltipKey: string; children: React.ReactNode }> = ({ tooltipKey, children }) => {
@@ -347,23 +354,47 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                   const essentialFactors = getEssentialFactors(prediction.symbol || '');
                   const isEssential = essentialFactors.includes(factor.name);
                   
+                  // Factores que tienen modal con más detalles
+                  const hasDetailModal = ['technical', 'macro', 'sentiment', 'news', 'trend', 'competitors', 
+                                          'forex', 'institutional', 'seasonality', 'financials', 'expectations']
+                                          .includes(factor.name);
+                  
                   return (
                     <View key={index} style={styles.factorItem}>
                       <View style={styles.factorHeader}>
-                        <Text style={styles.factorName}>
-                          {factor.name === 'trend' ? '📈 Tendencia' :
-                           factor.name === 'sentiment' ? '💬 Sentimiento' :
-                           factor.name === 'news' ? '📰 Noticias' :
-                           factor.name === 'macro' ? '🌍 Macro' :
-                           factor.name === 'competitors' ? '🏭 Competidores' :
-                           factor.name === 'forex' ? '💱 Forex' :
-                           factor.name === 'institutional' ? '🏛️ Institucionales' :
-                           factor.name === 'seasonality' ? '📅 Estacionalidad' :
-                           factor.name === 'financials' ? '💰 Financieros' :
-                           factor.name === 'expectations' ? '🎯 Expectativas' :
-                           factor.name === 'technical' ? '📈 Técnico' : factor.name}
-                          {isEssential && !factor.hasData && ' ⚠️'}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          <Text style={styles.factorName}>
+                            {factor.name === 'trend' ? '📈 Tendencia' :
+                             factor.name === 'sentiment' ? '💬 Sentimiento' :
+                             factor.name === 'news' ? '📰 Noticias' :
+                             factor.name === 'macro' ? '🌍 Macro' :
+                             factor.name === 'competitors' ? '🏭 Competidores' :
+                             factor.name === 'forex' ? '💱 Forex' :
+                             factor.name === 'institutional' ? '🏛️ Institucionales' :
+                             factor.name === 'seasonality' ? '📅 Estacionalidad' :
+                             factor.name === 'financials' ? '💰 Financieros' :
+                             factor.name === 'expectations' ? '🎯 Expectativas' :
+                             factor.name === 'technical' ? '📊 Técnico' : factor.name}
+                            {isEssential && !factor.hasData && ' ⚠️'}
+                          </Text>
+                          {/* Botón para abrir modal con detalles del factor */}
+                          {hasDetailModal && (
+                            <Pressable
+                              onPress={() => setFactorModal({ 
+                                visible: true, 
+                                type: factor.name as FactorType,
+                                score: factor.hasData ? factor.score : undefined
+                              })}
+                              style={({ pressed }) => ({
+                                marginLeft: 6,
+                                opacity: pressed ? 0.7 : 1,
+                                padding: 2,
+                              })}
+                            >
+                              <Ionicons name="eye-outline" size={14} color="#6366f1" />
+                            </Pressable>
+                          )}
+                        </View>
                         <Text style={[
                           styles.factorScore,
                           { color: !factor.hasData ? '#999' :
@@ -1125,6 +1156,15 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
           )}
         </View>
       )}
+
+      {/* Modal de detalle de factor */}
+      <FactorDetailModal
+        visible={factorModal.visible}
+        onClose={() => setFactorModal({ ...factorModal, visible: false })}
+        factorType={factorModal.type}
+        symbol={prediction.symbol}
+        score={factorModal.score}
+      />
     </View>
   );
 };
