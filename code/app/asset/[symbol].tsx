@@ -22,6 +22,7 @@ import { PredictionCardAnalysis } from '../../components/prediction-card/predict
 import { PredictionHistoryCard } from '../../components/prediction-history';
 import { apiClient, CalculatedPrediction } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
+import { getMarketHours } from '../../services/market-hours-service';
 import { predictionTrackingService } from '../../services/prediction-tracking-service';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
 import { AssetType, InvestmentPrediction, InvestorInfo } from '../../types';
@@ -733,25 +734,86 @@ export default function AssetDetailScreen() {
         }
 
         // Crear puntos de predicción como línea superpuesta
-        // La predicción comienza desde el último dato histórico hasta las 17:30 del día de vencimiento
+        // La predicción comienza desde el último dato histórico hasta el cierre del mercado del día de vencimiento
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
-        const msPerDay = 24 * 60 * 60 * 1000;
         
         // IMPORTANTE: Usar el último timestamp del histórico, NO Date.now()
         // Esto es crucial cuando hay gaps (fines de semana, festivos)
         const startTime = lastTimestamp || Date.now();
         
-        // Calcular el endTime como las 17:30 del día de vencimiento
-        // Si estamos en fin de semana, ajustar al próximo día hábil
-        let endDate = new Date(startTime + predictionDays * msPerDay);
+        // Obtener el horario de cierre correcto para este activo
+        // ETCs de commodities (EGLN.L, PHAG.MI, etc.) cierran ~22:00-23:00
+        // Acciones europeas cierran ~17:30, US ~21:00 UTC, etc.
+        const marketHours = getMarketHours(symbol, assetData?.name);
         
-        // Ajustar si cae en fin de semana (para stocks)
-        const dayOfWeek = endDate.getDay();
-        if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1); // Domingo → Lunes
-        if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2); // Sábado → Lunes
+        // Para mercados con horario extendido (commodities, forex), no ajustar fines de semana igual
+        const isExtendedHours = marketHours.hasExtendedHours && 
+          (marketHours.regularHours.includes('24') || marketHours.regularHours.includes('Casi'));
         
-        endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
+        // Parsear el horario de cierre del mercado (hora local España)
+        // regularHours puede ser "9:00 - 17:30" o "Casi 24h · Cierra Vie ~23:00 🇪🇸"
+        let closeHour = 17;
+        let closeMinute = 30;
+        
+        if (isExtendedHours) {
+          // Para commodities/forex, usar 23:00 hora España (que es lo que muestra el UI)
+          closeHour = 23;
+          closeMinute = 0;
+        } else if (marketHours.regularHours.includes(' - ')) {
+          // Formato "HH:MM - HH:MM" → extraer la hora de cierre
+          const closeMatch = marketHours.regularHours.match(/- (\d+):(\d+)/);
+          if (closeMatch) {
+            closeHour = parseInt(closeMatch[1], 10);
+            closeMinute = parseInt(closeMatch[2], 10);
+          }
+        }
+        
+        // Calcular el endTime usando el horario de cierre específico del mercado
+        // Para intradía: si no ha pasado el cierre de HOY, usar HOY; si ya pasó, usar MAÑANA
+        const now = new Date();
+        let endDate: Date;
+        
+        if (predictionDays === 1) {
+          // Intradía: calcular si expira hoy o mañana basándose en la hora actual
+          endDate = new Date(now);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+          
+          // Si ya pasó el cierre de hoy, expira mañana
+          if (now.getTime() >= endDate.getTime()) {
+            endDate.setDate(endDate.getDate() + 1);
+          }
+          
+          // Ajustar fines de semana para stocks regulares
+          if (!isExtendedHours) {
+            const dayOfWeek = endDate.getDay();
+            if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1); // Domingo → Lunes
+            if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2); // Sábado → Lunes
+          }
+        } else {
+          // Multi-día: sumar días desde el inicio
+          const msPerDay = 24 * 60 * 60 * 1000;
+          endDate = new Date(startTime + predictionDays * msPerDay);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+          
+          // Ajustar fines de semana para stocks regulares
+          if (!isExtendedHours) {
+            const dayOfWeek = endDate.getDay();
+            if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1);
+            if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2);
+          }
+        }
+        
+        // DEBUG: Log para verificar el cálculo
+        console.log('[Prediction] Market hours calculation:', {
+          symbol,
+          marketHours: marketHours.regularHours,
+          isExtendedHours,
+          closeHour,
+          closeMinute,
+          predictionDays,
+          endDate: endDate.toLocaleString(),
+        });
         const endTime = endDate.getTime();
         const totalMs = endTime - startTime;
 
@@ -900,9 +962,64 @@ export default function AssetDetailScreen() {
         const graphStartTime = lastTimestamp || createdAtTime; // Usar timestamp del último dato histórico
         const msPerDay = 24 * 60 * 60 * 1000;
         
-        // Calcular el endTime como las 17:30 del día de vencimiento (desde la creación original)
-        const endDate = new Date(createdAtTime + predictionDays * msPerDay);
-        endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
+        // Obtener el horario de cierre correcto para este activo
+        const marketHours = getMarketHours(symbol, assetData?.name);
+        const isExtendedHours = marketHours.hasExtendedHours && 
+          (marketHours.regularHours.includes('24') || marketHours.regularHours.includes('Casi'));
+        
+        // Parsear el horario de cierre del mercado (hora local España)
+        let closeHour = 17;
+        let closeMinute = 30;
+        
+        if (isExtendedHours) {
+          // Para commodities/forex, usar 23:00 hora España
+          closeHour = 23;
+          closeMinute = 0;
+        } else if (marketHours.regularHours.includes(' - ')) {
+          const closeMatch = marketHours.regularHours.match(/- (\d+):(\d+)/);
+          if (closeMatch) {
+            closeHour = parseInt(closeMatch[1], 10);
+            closeMinute = parseInt(closeMatch[2], 10);
+          }
+        }
+        
+        // Calcular el endTime usando el horario de cierre específico del mercado
+        // Para intradía: si no ha pasado el cierre de HOY, usar HOY; si ya pasó, usar MAÑANA
+        const now = new Date();
+        let endDate: Date;
+        
+        if (predictionDays === 1) {
+          // Intradía: calcular si expira hoy o mañana basándose en la hora actual
+          endDate = new Date(now);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+          
+          // Si ya pasó el cierre de hoy, expira mañana
+          if (now.getTime() >= endDate.getTime()) {
+            endDate.setDate(endDate.getDate() + 1);
+          }
+          
+          // Ajustar fines de semana para stocks regulares
+          if (!isExtendedHours) {
+            const dayOfWeek = endDate.getDay();
+            if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1); // Domingo → Lunes
+            if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2); // Sábado → Lunes
+          }
+        } else {
+          // Multi-día: sumar días desde la creación
+          endDate = new Date(createdAtTime + predictionDays * msPerDay);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+        }
+        
+        // DEBUG: Log para verificar el cálculo
+        console.log('[Prediction Cached] Market hours calculation:', {
+          symbol,
+          marketHours: marketHours.regularHours,
+          isExtendedHours,
+          closeHour,
+          closeMinute,
+          endDate: endDate.toLocaleString(),
+        });
+        
         const predictionEndTime = endDate.getTime();
         
         // Guardar metadata de la predicción - SOLO timestamps, los precios se calculan dinámicamente
@@ -1037,6 +1154,7 @@ export default function AssetDetailScreen() {
   }, [chartData.length, chartAreaWidth]);
 
   // Solo datos históricos para la línea principal (filtrados)
+  // Extender hasta la hora actual si el mercado está abierto y no tenemos datos recientes
   const mainChartData = useMemo(() => {
     const filtered = chartData.filter(d => 
       d.value !== undefined && 
@@ -1045,19 +1163,87 @@ export default function AssetDetailScreen() {
       isFinite(d.value)
     );
     
+    if (filtered.length === 0 || selectedTimeframe !== 'intraday') {
+      return filtered;
+    }
+    
+    // Obtener hora de cierre según el tipo de activo
+    const marketHours = getMarketHours(symbol);
+    const now = new Date();
+    const lastDataPoint = filtered[filtered.length - 1];
+    const lastDataTime = new Date(lastDataPoint.timestamp);
+    
+    // Calcular la hora de cierre de hoy
+    const closeHour = marketHours.extendedHours ? 23 : 17;
+    const closeMinute = marketHours.extendedHours ? 0 : 30;
+    const marketCloseToday = new Date(now);
+    marketCloseToday.setHours(closeHour, closeMinute, 0, 0);
+    
+    // Si el último dato es de hoy y hay un gap hasta la hora actual (o cierre),
+    // extender la línea histórica con el último precio conocido
+    const isToday = lastDataTime.toDateString() === now.toDateString();
+    const timeSinceLastData = now.getTime() - lastDataTime.getTime();
+    const minGapMs = 30 * 60 * 1000; // 30 minutos mínimo de gap
+    
+    // Determinar hasta dónde extender: la hora actual o el cierre del mercado (lo que sea menor)
+    const extendUntil = now < marketCloseToday ? now : marketCloseToday;
+    
+    if (isToday && timeSinceLastData > minGapMs && extendUntil > lastDataTime) {
+      // Calcular intervalo promedio entre puntos
+      const prevPoint = filtered.length > 1 ? filtered[filtered.length - 2] : null;
+      const intervalMs = prevPoint ? (lastDataTime.getTime() - prevPoint.timestamp) : (5 * 60 * 1000);
+      
+      // Calcular cuántos puntos de extensión necesitamos
+      const gapMs = extendUntil.getTime() - lastDataTime.getTime();
+      const extensionPoints = Math.ceil(gapMs / intervalMs);
+      
+      // Crear puntos de extensión con el último precio conocido
+      const extended = [...filtered];
+      const lastValue = lastDataPoint.value;
+      
+      for (let i = 1; i <= Math.min(extensionPoints, 50); i++) {
+        const pointTime = new Date(lastDataTime.getTime() + (intervalMs * i));
+        
+        // No extender más allá del cierre del mercado
+        if (pointTime > marketCloseToday) break;
+        
+        // Añadir label solo en el último punto de extensión
+        let label = '';
+        if (i === Math.min(extensionPoints, 50) || pointTime >= extendUntil) {
+          label = `${pointTime.getHours()}:${pointTime.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
+        extended.push({
+          value: lastValue,
+          label,
+          timestamp: pointTime.getTime(),
+          isPrediction: false,
+        });
+      }
+      
+      console.log('[Chart DEBUG] Extended mainChartData:', {
+        originalPoints: filtered.length,
+        extendedPoints: extended.length,
+        lastOriginal: lastDataTime.toLocaleString(),
+        lastExtended: new Date(extended[extended.length - 1]?.timestamp).toLocaleString(),
+        marketClose: `${closeHour}:${closeMinute.toString().padStart(2, '0')}`,
+      });
+      
+      return extended;
+    }
+    
     // DEBUG: Log de mainChartData
-    if (filtered.length > 0 && selectedTimeframe === 'intraday') {
+    if (filtered.length > 0) {
       console.log('[Chart DEBUG] mainChartData:', {
         points: filtered.length,
         firstDate: new Date(filtered[0]?.timestamp).toLocaleString(),
         lastDate: new Date(filtered[filtered.length - 1]?.timestamp).toLocaleString(),
         uniqueDays: [...new Set(filtered.map(p => new Date(p.timestamp).toDateString()))],
-        labels: filtered.filter(p => p.label).map(p => ({ label: p.label, date: new Date(p.timestamp).toLocaleString() })),
       });
     }
     
     return filtered;
-  }, [chartData, selectedTimeframe]);
+  }, [chartData, selectedTimeframe, symbol]);
 
   // Calcular posición X y datos para la línea de predicción superpuesta
   const predictionOverlay = useMemo(() => {
@@ -1119,31 +1305,27 @@ export default function AssetDetailScreen() {
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
     
-    // Calcular predictionEndTime basado en el ÚLTIMO punto del histórico, no en predictionMeta
-    // Esto es crucial para que la línea de predicción conecte correctamente
-    if (predictionMeta && mainChartData.length > 0) {
-      const lastHistoricTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || Date.now();
-      
-      // Calcular la duración de la predicción en ms
-      const predictionDurationMs = predictionMeta.endTimestamp - predictionMeta.startTimestamp;
-      
-      // El nuevo endTime es el último histórico + la duración de la predicción
-      const adjustedPredEnd = lastHistoricTimestamp + predictionDurationMs;
-      
+    // Usar directamente predictionMeta.endTimestamp que ya tiene la hora de cierre correcta
+    // (23:00 para commodities, 17:30 para stocks regulares, etc.)
+    if (predictionMeta) {
+      console.log('[Chart] predictionEndTime from predictionMeta:', {
+        endTimestamp: predictionMeta.endTimestamp,
+        endTimestampDate: new Date(predictionMeta.endTimestamp).toLocaleString(),
+        startTimestamp: predictionMeta.startTimestamp,
+        startTimestampDate: new Date(predictionMeta.startTimestamp).toLocaleString(),
+      });
       return {
         endOfToday: endOfDay.getTime(),
-        predictionEndTime: adjustedPredEnd,
+        predictionEndTime: predictionMeta.endTimestamp,
       };
     }
     
     // Fallback si no hay datos
-    const predEnd = predictionMeta?.endTimestamp || endOfDay.getTime();
-    
     return {
       endOfToday: endOfDay.getTime(),
-      predictionEndTime: predEnd,
+      predictionEndTime: endOfDay.getTime(),
     };
-  }, [predictionMeta, mainChartData]);
+  }, [predictionMeta]);
 
   // Calcular puntos extra para predicción y extensión del gráfico
   const { predictionPoints, extensionPoints } = useMemo(() => {
@@ -1156,7 +1338,7 @@ export default function AssetDetailScreen() {
     
     if (intervalMs <= 0) return { predictionPoints: 0, extensionPoints: 0 };
     
-    // Puntos para la predicción (desde ahora hasta las 17:30 del vencimiento)
+    // Puntos para la predicción (desde último histórico hasta el cierre del mercado)
     const msToPredEnd = predictionEndTime - lastTimestamp;
     
     // Si la predicción ya expiró (hora pasada), no mostrar puntos de predicción
@@ -1196,14 +1378,29 @@ export default function AssetDetailScreen() {
     // Añadir puntos para la predicción (con valores interpolados para el tooltip)
     if (predictionMeta && predictionPoints > 0) {
       const predDuration = predictionEndTime - lastTimestamp;
+      
+      // Calcular cada cuántos puntos mostrar un label (aprox cada 2-3 horas)
+      const hoursOfPrediction = predDuration / (1000 * 60 * 60);
+      const labelsToShow = Math.max(2, Math.ceil(hoursOfPrediction / 2)); // Un label cada ~2 horas
+      const labelInterval = Math.ceil(predictionPoints / labelsToShow);
+      
       // Empezamos desde i=0 para que conecte con el histórico (primer punto = startPrice)
       for (let i = 0; i <= predictionPoints; i++) {
         const progress = i / predictionPoints;
         const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
+        const pointTimestamp = lastTimestamp + (predDuration * progress);
+        
+        // Añadir label en puntos intermedios y en el último punto
+        let label = '';
+        if (i === predictionPoints || (i > 0 && i % labelInterval === 0)) {
+          const pointDate = new Date(pointTimestamp);
+          label = `${pointDate.getHours()}:${pointDate.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
         result.push({
           value: interpolatedValue, // Valor real para tooltip
-          label: '',
-          timestamp: lastTimestamp + (predDuration * progress),
+          label,
+          timestamp: pointTimestamp,
           isPrediction: true,
         });
       }

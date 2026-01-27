@@ -10,6 +10,7 @@ export * from './finviz.service.js';
 export * from './forex.service.js';
 export * from './institutional.service.js';
 export * from './macro.service.js';
+export * from './market-hours.service.js';
 export * from './market-regime.service.js';
 export * from './news.service.js';
 export * from './options.service.js';
