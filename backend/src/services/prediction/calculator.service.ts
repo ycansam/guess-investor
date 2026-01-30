@@ -22,6 +22,7 @@ import { FinancialsData, financialsService } from '../external/financials.servic
 import { ForexImpact, forexService } from '../external/forex.service.js';
 import { InstitutionalData, institutionalService } from '../external/institutional.service.js';
 import { MacroIndicators, macroService } from '../external/macro.service.js';
+import { marketPsychologyService, MarketPsychologyAnalysis } from '../external/market-psychology.service.js';
 import { newsService, NewsSummary } from '../external/news.service.js';
 import { PreciousMetalsAnalysis, preciousMetalsUSDService } from '../external/precious-metals-usd.service.js';
 import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality.service.js';
@@ -176,6 +177,21 @@ export interface CalculatedPrediction {
     dangerousCombination: boolean;
     signals: string[];
     reasoning: string;
+  };
+  
+  // Psicología del mercado
+  marketPsychology?: {
+    state: string;
+    stateIntensity: number;
+    emoji: string;
+    title: string;
+    description: string;
+    advice: string;
+    fearGreedIndex: number | null;
+    vix: number | null;
+    biasesDetected: string[];
+    contrarianSignal: boolean;
+    signals: string[];
   };
   
   audit: {
@@ -1121,6 +1137,30 @@ export const predictionCalculatorService = {
       logger.warn(`[PredictionCalc] Could not analyze calendar effects: ${(e as Error).message}`);
     }
     
+    // --- PSICOLOGÍA DEL MERCADO ---
+    // Detecta estados emocionales: euforia, miedo, pánico, complacencia, etc.
+    let marketPsychologyInfo: MarketPsychologyAnalysis | undefined;
+    try {
+      const psychologyAdjustment = await marketPsychologyService.applyToPrediction(
+        { change: expectedChange, confidence: finalConfidence },
+        this.inferAssetType(symbol, type)
+      );
+      
+      if (psychologyAdjustment.applied && psychologyAdjustment.psychologyInfo) {
+        const oldChange = expectedChange;
+        const oldConfidence = finalConfidence;
+        
+        expectedChange = psychologyAdjustment.adjustedChange;
+        finalConfidence = psychologyAdjustment.adjustedConfidence;
+        
+        marketPsychologyInfo = psychologyAdjustment.psychologyInfo;
+        
+        logger.info(`[PredictionCalc] Market psychology (${marketPsychologyInfo.currentState}, ${marketPsychologyInfo.stateIntensity}/100): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
+      }
+    } catch (e) {
+      logger.warn(`[PredictionCalc] Could not analyze market psychology: ${(e as Error).message}`);
+    }
+    
     // --- MODELO PROBABILÍSTICO ---
     // Genera distribución de probabilidad e intervalos de confianza
     const probabilisticResult = await probabilisticModelService.generateProbabilisticPrediction(
@@ -1279,6 +1319,21 @@ export const predictionCalculatorService = {
         dangerousCombination: calendarEffectsInfo.dangerousCombination || calendarEffectsInfo.extremeDanger,
         signals: calendarEffectsInfo.signals,
         reasoning: calendarEffectsInfo.reasoning,
+      } : undefined,
+      marketPsychology: marketPsychologyInfo ? {
+        state: marketPsychologyInfo.currentState,
+        stateIntensity: marketPsychologyInfo.stateIntensity,
+        emoji: marketPsychologyInfo.humanReadable.emoji,
+        title: marketPsychologyInfo.humanReadable.title,
+        description: marketPsychologyInfo.humanReadable.description,
+        advice: marketPsychologyInfo.humanReadable.advice,
+        fearGreedIndex: marketPsychologyInfo.indicators.fearGreedIndex,
+        vix: marketPsychologyInfo.indicators.vix,
+        biasesDetected: Object.entries(marketPsychologyInfo.biasesDetected)
+          .filter(([_, detected]) => detected)
+          .map(([bias, _]) => bias),
+        contrarianSignal: marketPsychologyInfo.predictionImpact.contrarianSignal,
+        signals: marketPsychologyInfo.signals,
       } : undefined,
       audit: {
         dataSources: [
