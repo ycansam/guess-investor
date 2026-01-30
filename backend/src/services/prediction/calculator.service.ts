@@ -14,8 +14,8 @@ import { logger } from '../../middleware/logger.js';
 import { predictionRepository, PredictionType } from '../../repositories/prediction.repository.js';
 import { weightsRepository } from '../../repositories/weights.repository.js';
 import { broadMarketContextService } from '../external/broad-market-context.service.js';
+import { CalendarEffectsAnalysis, calendarEffectsService } from '../external/calendar-effects.service.js';
 import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
-import { preciousMetalsUSDService, PreciousMetalsAnalysis } from '../external/precious-metals-usd.service.js';
 import { AssetEvents, eventsService } from '../external/events.service.js';
 import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
@@ -23,6 +23,7 @@ import { ForexImpact, forexService } from '../external/forex.service.js';
 import { InstitutionalData, institutionalService } from '../external/institutional.service.js';
 import { MacroIndicators, macroService } from '../external/macro.service.js';
 import { newsService, NewsSummary } from '../external/news.service.js';
+import { PreciousMetalsAnalysis, preciousMetalsUSDService } from '../external/precious-metals-usd.service.js';
 import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality.service.js';
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
@@ -30,9 +31,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-    factorCorrelationService,
-    probabilisticModelService,
-    reinforcementLearningService,
+  factorCorrelationService,
+  probabilisticModelService,
+  reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -158,6 +159,21 @@ export interface CalculatedPrediction {
     dxyChange5d: number;
     impactScore: number;
     predictionBias: number;
+    signals: string[];
+    reasoning: string;
+  };
+  
+  // Efectos de calendario (fin de mes, viernes, etc.)
+  calendarEffects?: {
+    dayOfWeek: string;
+    dayOfMonth: number;
+    month: string;
+    riskLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'none';
+    riskScore: number;
+    isEndOfMonth: boolean;
+    isFriday: boolean;
+    isEndOfJanuary: boolean;
+    dangerousCombination: boolean;
     signals: string[];
     reasoning: string;
   };
@@ -1073,6 +1089,38 @@ export const predictionCalculatorService = {
       logger.warn(`[PredictionCalc] Could not analyze precious metals correlation: ${(e as Error).message}`);
     }
     
+    // --- EFECTOS DE CALENDARIO ---
+    // Fin de mes, viernes, fin de enero, etc. = mayor probabilidad de correcciones
+    let calendarEffectsInfo: CalendarEffectsAnalysis | undefined;
+    try {
+      const isPreciousMetal = preciousMetalsInfo?.isPreciousMetal || false;
+      const recentPerformance30d = historical.change30d || 0;
+      
+      const calendarAdjustment = calendarEffectsService.applyToPrediction(
+        { change: expectedChange, confidence: finalConfidence },
+        this.inferAssetType(symbol, type),
+        {
+          isPreciousMetal,
+          recentPerformance30d,
+          // TODO: detectar isSmallCap, isHighBeta
+        }
+      );
+      
+      if (calendarAdjustment.applied) {
+        const oldChange = expectedChange;
+        const oldConfidence = finalConfidence;
+        
+        expectedChange = calendarAdjustment.adjustedChange;
+        finalConfidence = calendarAdjustment.adjustedConfidence;
+        
+        calendarEffectsInfo = calendarAdjustment.calendarInfo;
+        
+        logger.info(`[PredictionCalc] Calendar effects (${calendarEffectsInfo?.calendarRisk.level}): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
+      }
+    } catch (e) {
+      logger.warn(`[PredictionCalc] Could not analyze calendar effects: ${(e as Error).message}`);
+    }
+    
     // --- MODELO PROBABILÍSTICO ---
     // Genera distribución de probabilidad e intervalos de confianza
     const probabilisticResult = await probabilisticModelService.generateProbabilisticPrediction(
@@ -1218,6 +1266,19 @@ export const predictionCalculatorService = {
         predictionBias: preciousMetalsInfo.usdImpact.predictionBias,
         signals: preciousMetalsInfo.signals,
         reasoning: preciousMetalsInfo.reasoning,
+      } : undefined,
+      calendarEffects: calendarEffectsInfo ? {
+        dayOfWeek: calendarEffectsInfo.dayOfWeek,
+        dayOfMonth: calendarEffectsInfo.dayOfMonth,
+        month: calendarEffectsInfo.month,
+        riskLevel: calendarEffectsInfo.calendarRisk.level,
+        riskScore: calendarEffectsInfo.calendarRisk.score,
+        isEndOfMonth: calendarEffectsInfo.isEndOfMonth,
+        isFriday: calendarEffectsInfo.isFriday,
+        isEndOfJanuary: calendarEffectsInfo.isEndOfJanuary,
+        dangerousCombination: calendarEffectsInfo.dangerousCombination || calendarEffectsInfo.extremeDanger,
+        signals: calendarEffectsInfo.signals,
+        reasoning: calendarEffectsInfo.reasoning,
       } : undefined,
       audit: {
         dataSources: [

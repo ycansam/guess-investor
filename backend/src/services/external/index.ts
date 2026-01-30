@@ -1,4 +1,5 @@
 export * from './broad-market-context.service.js';
+export * from './calendar-effects.service.js';
 export * from './competitors.service.js';
 export * from './corporate-events.service.js';
 export * from './cot-report.service.js';
