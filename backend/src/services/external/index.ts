@@ -15,6 +15,7 @@ export * from './market-hours.service.js';
 export * from './market-regime.service.js';
 export * from './news.service.js';
 export * from './options.service.js';
+export * from './precious-metals-usd.service.js';
 export * from './python-training.service.js';
 export * from './seasonality.service.js';
 export * from './sentiment.service.js';

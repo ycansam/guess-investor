@@ -15,6 +15,7 @@ import { predictionRepository, PredictionType } from '../../repositories/predict
 import { weightsRepository } from '../../repositories/weights.repository.js';
 import { broadMarketContextService } from '../external/broad-market-context.service.js';
 import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
+import { preciousMetalsUSDService, PreciousMetalsAnalysis } from '../external/precious-metals-usd.service.js';
 import { AssetEvents, eventsService } from '../external/events.service.js';
 import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
@@ -147,6 +148,18 @@ export interface CalculatedPrediction {
     reasoning: string;
     recommendation: string;
     applied: boolean;
+  };
+  
+  // Análisis de correlación USD para metales preciosos
+  preciousMetalsAnalysis?: {
+    metalType: 'gold' | 'silver' | 'platinum' | 'palladium' | 'other' | null;
+    usdTrend: 'strengthening' | 'weakening' | 'stable';
+    usdSeverity: 'extreme' | 'strong' | 'moderate' | 'mild';
+    dxyChange5d: number;
+    impactScore: number;
+    predictionBias: number;
+    signals: string[];
+    reasoning: string;
   };
   
   audit: {
@@ -1032,6 +1045,34 @@ export const predictionCalculatorService = {
       };
     }
     
+    // --- CORRELACIÓN USD ↔ METALES PRECIOSOS ---
+    // Si es oro, plata, platino, paladio: aplicar correlación inversa con USD
+    let preciousMetalsInfo: PreciousMetalsAnalysis | undefined;
+    try {
+      const pmAnalysis = await preciousMetalsUSDService.analyze(symbol, quote?.name);
+      
+      if (pmAnalysis.isPreciousMetal && pmAnalysis.hasData) {
+        const pmAdjustment = preciousMetalsUSDService.applyToPrediction(
+          { change: expectedChange, confidence: finalConfidence },
+          pmAnalysis
+        );
+        
+        if (pmAdjustment.applied) {
+          const oldChange = expectedChange;
+          const oldConfidence = finalConfidence;
+          
+          expectedChange = pmAdjustment.adjustedChange;
+          finalConfidence = pmAdjustment.adjustedConfidence;
+          
+          logger.info(`[PredictionCalc] Precious metals USD correlation (${pmAnalysis.metalType}, USD ${pmAnalysis.usdStrength.trend}): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
+        }
+        
+        preciousMetalsInfo = pmAnalysis;
+      }
+    } catch (e) {
+      logger.warn(`[PredictionCalc] Could not analyze precious metals correlation: ${(e as Error).message}`);
+    }
+    
     // --- MODELO PROBABILÍSTICO ---
     // Genera distribución de probabilidad e intervalos de confianza
     const probabilisticResult = await probabilisticModelService.generateProbabilisticPrediction(
@@ -1168,6 +1209,16 @@ export const predictionCalculatorService = {
       timeframe: timeframeStr,
       calculatedAt: new Date(),
       marketContext: marketContextInfo,
+      preciousMetalsAnalysis: preciousMetalsInfo ? {
+        metalType: preciousMetalsInfo.metalType,
+        usdTrend: preciousMetalsInfo.usdStrength.trend,
+        usdSeverity: preciousMetalsInfo.usdStrength.severity,
+        dxyChange5d: preciousMetalsInfo.usdStrength.dxyChange5d,
+        impactScore: preciousMetalsInfo.usdImpact.score,
+        predictionBias: preciousMetalsInfo.usdImpact.predictionBias,
+        signals: preciousMetalsInfo.signals,
+        reasoning: preciousMetalsInfo.reasoning,
+      } : undefined,
       audit: {
         dataSources: [
           ...(hasHistoricalData ? [{ name: 'Yahoo Finance (Historical)', url: `https://finance.yahoo.com/quote/${symbol}/history`, fetchedAt: new Date() }] : []),
