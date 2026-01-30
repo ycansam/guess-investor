@@ -56,6 +56,13 @@ interface MarketCloseTime {
   isNearlyAlwaysOpen: boolean;
 }
 
+interface MarketOpenTime {
+  hourUTC: number;
+  minuteUTC: number;
+  opensOnWeekend: boolean;
+  isNearlyAlwaysOpen: boolean;
+}
+
 /**
  * Detecta si un símbolo es un ETC de commodities
  */
@@ -194,6 +201,62 @@ export function getMarketCloseTime(marketType: MarketType): MarketCloseTime {
 }
 
 /**
+ * Obtiene la hora de apertura del mercado en UTC
+ */
+export function getMarketOpenTime(marketType: MarketType): MarketOpenTime {
+  switch (marketType) {
+    case 'crypto':
+      // Crypto nunca cierra - consideramos "apertura" a las 00:00
+      return { 
+        hourUTC: 0, 
+        minuteUTC: 0, 
+        opensOnWeekend: true,
+        isNearlyAlwaysOpen: true 
+      };
+      
+    case 'commodity':
+    case 'forex':
+      // Trade Republic: ETCs/Commodities abren a las 7:30 hora España = 6:30 UTC (invierno)
+      // Cierre a las 23:00 hora España = 22:00 UTC
+      return { 
+        hourUTC: 6, 
+        minuteUTC: 30, 
+        opensOnWeekend: false,  // No abre sábado/domingo
+        isNearlyAlwaysOpen: true 
+      };
+      
+    case 'us_stock':
+      // NYSE/NASDAQ: 9:30 ET = 14:30 UTC (invierno) / 13:30 UTC (verano)
+      // Usamos 14:30 UTC para ser conservadores
+      return { 
+        hourUTC: 14, 
+        minuteUTC: 30, 
+        opensOnWeekend: false,
+        isNearlyAlwaysOpen: false 
+      };
+      
+    case 'spain_stock':
+      // Trade Republic: Acciones abren a las 7:30 hora España = 6:30 UTC (invierno)
+      return { 
+        hourUTC: 6, 
+        minuteUTC: 30, 
+        opensOnWeekend: false,
+        isNearlyAlwaysOpen: false 
+      };
+      
+    case 'eu_stock':
+    default:
+      // Trade Republic: Acciones europeas abren a las 7:30 hora España = 6:30 UTC (invierno)
+      return { 
+        hourUTC: 6, 
+        minuteUTC: 30, 
+        opensOnWeekend: false,
+        isNearlyAlwaysOpen: false 
+      };
+  }
+}
+
+/**
  * Calcula la fecha de expiración correcta para una predicción intradía
  * Considera el tipo de mercado y horarios específicos
  */
@@ -257,6 +320,61 @@ export function calculateIntradayExpiry(
   }
   
   return expiry;
+}
+
+/**
+ * Calcula la fecha de apertura del próximo día de trading
+ * Para predicciones tipo "open_next_day"
+ */
+export function calculateNextDayOpen(
+  symbol: string, 
+  assetType: string,
+  assetName?: string
+): Date {
+  const now = new Date();
+  const marketType = detectMarketType(symbol, assetName);
+  const openTime = getMarketOpenTime(marketType);
+  const closeTime = getMarketCloseTime(marketType);
+  
+  logger.debug(`[MarketHours] ${symbol}: marketType=${marketType}, openTime=${openTime.hourUTC}:${openTime.minuteUTC} UTC`);
+  
+  // Para crypto (24/7), usar las 00:00 UTC del día siguiente
+  if (marketType === 'crypto') {
+    const nextOpen = new Date(now);
+    nextOpen.setDate(nextOpen.getDate() + 1);
+    nextOpen.setUTCHours(0, 0, 0, 0);
+    return nextOpen;
+  }
+  
+  // Para commodities/forex (casi 24h)
+  if (openTime.isNearlyAlwaysOpen) {
+    const nextOpen = new Date(now);
+    nextOpen.setDate(nextOpen.getDate() + 1);
+    nextOpen.setUTCHours(openTime.hourUTC, openTime.minuteUTC, 0, 0);
+    
+    // Si cae en sábado, saltar a domingo (forex/commodities abren domingo noche)
+    const day = nextOpen.getDay();
+    if (day === 6) { // Sábado → Domingo
+      nextOpen.setDate(nextOpen.getDate() + 1);
+      nextOpen.setUTCHours(22, 0, 0, 0); // Apertura típica domingo 22:00 UTC
+    }
+    
+    return nextOpen;
+  }
+  
+  // Para stocks regulares: calcular la apertura del próximo día hábil
+  const nextOpen = new Date(now);
+  nextOpen.setDate(nextOpen.getDate() + 1);
+  nextOpen.setUTCHours(openTime.hourUTC, openTime.minuteUTC, 0, 0);
+  
+  // Ajustar fines de semana para stocks
+  if (!openTime.opensOnWeekend && assetType === 'stock') {
+    const day = nextOpen.getDay();
+    if (day === 0) nextOpen.setDate(nextOpen.getDate() + 1); // Domingo → Lunes
+    if (day === 6) nextOpen.setDate(nextOpen.getDate() + 2); // Sábado → Lunes
+  }
+  
+  return nextOpen;
 }
 
 /**
@@ -324,7 +442,9 @@ export function isMarketClosedForVerification(
 export const marketHoursService = {
   detectMarketType,
   getMarketCloseTime,
+  getMarketOpenTime,
   calculateIntradayExpiry,
+  calculateNextDayOpen,
   isMarketClosedForVerification,
 };
 

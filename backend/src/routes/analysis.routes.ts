@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
+import { broadMarketContextService } from '../services/external/broad-market-context.service.js';
 import { forexService } from '../services/external/forex.service.js';
 import { macroService } from '../services/external/macro.service.js';
 import { newsService } from '../services/external/news.service.js';
@@ -221,6 +222,21 @@ router.get('/seasonality/:symbol', asyncHandler(async (req: Request, res: Respon
   res.json({
     success: true,
     data: seasonality,
+  });
+}));
+
+/**
+ * GET /api/analysis/market-context
+ * Contexto actual del mercado global (correcciones, crashes, burbujas, etc.)
+ */
+router.get('/market-context', asyncHandler(async (req: Request, res: Response) => {
+  const forceRefresh = req.query.refresh === 'true';
+  
+  const context = await broadMarketContextService.getCurrentContext(forceRefresh);
+
+  res.json({
+    success: true,
+    data: context,
   });
 }));
 

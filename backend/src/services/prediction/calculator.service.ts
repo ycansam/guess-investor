@@ -11,8 +11,9 @@
  */
 
 import { logger } from '../../middleware/logger.js';
-import { predictionRepository } from '../../repositories/prediction.repository.js';
+import { predictionRepository, PredictionType } from '../../repositories/prediction.repository.js';
 import { weightsRepository } from '../../repositories/weights.repository.js';
+import { broadMarketContextService } from '../external/broad-market-context.service.js';
 import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
 import { AssetEvents, eventsService } from '../external/events.service.js';
 import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
@@ -46,6 +47,7 @@ export interface CalculatedPrediction {
   assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'other';
   currentPrice: number;
   currency: string;
+  predictionType?: PredictionType; // 'close' o 'open_next_day'
   
   predictedPriceMin: number;
   predictedPriceMax: number;
@@ -134,6 +136,18 @@ export interface CalculatedPrediction {
   
   timeframe: string;
   calculatedAt: Date;
+  
+  // Contexto de mercado global
+  marketContext?: {
+    condition: string;
+    severity: string;
+    predictionBias: number;
+    confidenceMultiplier: number;
+    signals: string[];
+    reasoning: string;
+    recommendation: string;
+    applied: boolean;
+  };
   
   audit: {
     dataSources: { name: string; url: string; fetchedAt: Date }[];
@@ -516,7 +530,8 @@ export const predictionCalculatorService = {
         financials,
         events,
         timeframeDays,
-        quote.name || symbol // Pasar el nombre del activo para clasificación inteligente
+        quote.name || symbol, // Pasar el nombre del activo para clasificación inteligente
+        quote.changePercent || 0 // Cambio % del día actual (para detectar caídas intradía)
       );
 
       // --- REINFORCEMENT LEARNING: Obtener recomendación de política ---
@@ -607,7 +622,8 @@ export const predictionCalculatorService = {
     financials: FinancialsData | null,
     events: AssetEvents,
     timeframeDays: number,
-    assetName: string = '' // Nombre del activo para clasificación inteligente
+    assetName: string = '', // Nombre del activo para clasificación inteligente
+    intradayChange: number = 0 // Cambio % intradía para detectar caídas extremas
   ): Promise<CalculatedPrediction> {
     // FLAGS de datos disponibles
     const hasHistoricalData = historical.hasData && (historical.change30d !== 0 || historical.change90d !== 0);
@@ -833,6 +849,42 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Direction adjustment (${direction}): ${oldConfidence}% → ${finalConfidence}%`);
     }
     
+    // --- AJUSTE POR VOLATILIDAD EXTREMA (NUEVO) ---
+    // Activos con volatilidad >40% son mucho menos predecibles
+    // (assetVolatility ya definida arriba en línea ~719)
+    if (assetVolatility > 60) {
+      const oldConf = finalConfidence;
+      finalConfidence = Math.round(finalConfidence * 0.6); // -40% confianza
+      logger.info(`[PredictionCalc] Extreme volatility penalty (${assetVolatility.toFixed(0)}%): ${oldConf}% → ${finalConfidence}%`);
+    } else if (assetVolatility > 40) {
+      const oldConf = finalConfidence;
+      finalConfidence = Math.round(finalConfidence * 0.75); // -25% confianza
+      logger.info(`[PredictionCalc] High volatility penalty (${assetVolatility.toFixed(0)}%): ${oldConf}% → ${finalConfidence}%`);
+    }
+    
+    // --- AJUSTE POR CAÍDA INTRADÍA EXTREMA (NUEVO) ---
+    // Si el activo ha caído >5% hoy, reducir confianza drásticamente
+    if (intradayChange < -10) {
+      const oldConf = finalConfidence;
+      finalConfidence = Math.round(finalConfidence * 0.5); // -50% confianza
+      // También ajustar la predicción hacia negativo si predice subida
+      if (expectedChange > 0) {
+        expectedChange = expectedChange * 0.3; // Reducir predicción alcista
+      }
+      logger.info(`[PredictionCalc] CRASH INTRADAY (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%, change adjusted`);
+    } else if (intradayChange < -5) {
+      const oldConf = finalConfidence;
+      finalConfidence = Math.round(finalConfidence * 0.65); // -35% confianza
+      if (expectedChange > 0) {
+        expectedChange = expectedChange * 0.5; // Reducir predicción alcista
+      }
+      logger.info(`[PredictionCalc] Severe intraday drop (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+    } else if (intradayChange < -3) {
+      const oldConf = finalConfidence;
+      finalConfidence = Math.round(finalConfidence * 0.85); // -15% confianza
+      logger.info(`[PredictionCalc] Significant intraday drop (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+    }
+    
     // --- AJUSTE POR CORRELACIÓN DE FACTORES (ML) ---
     // Detecta double-counting y ajusta confianza según coherencia de señales
     const factorScores: Record<string, number> = {};
@@ -918,6 +970,68 @@ export const predictionCalculatorService = {
       logger.debug(`[PredictionCalc] Could not get streak data: ${(e as Error).message}`);
     }
     
+    // --- AJUSTE POR CONTEXTO DE MERCADO GLOBAL (NUEVO) ---
+    // Detecta correcciones, crashes, burbujas y ajusta predicciones en consecuencia
+    let marketContextInfo: CalculatedPrediction['marketContext'];
+    try {
+      const marketContext = await broadMarketContextService.getCurrentContext();
+      
+      if (marketContext.condition !== 'neutral') {
+        const contextAdjustment = broadMarketContextService.applyToPredicti(
+          expectedChange,
+          finalConfidence,
+          this.inferAssetType(symbol, type)
+        );
+        
+        if (contextAdjustment.contextApplied) {
+          const oldChange = expectedChange;
+          const oldConfidence = finalConfidence;
+          
+          expectedChange = contextAdjustment.adjustedChange;
+          finalConfidence = contextAdjustment.adjustedConfidence;
+          
+          logger.info(`[PredictionCalc] Market context (${marketContext.condition}): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
+          
+          marketContextInfo = {
+            condition: marketContext.condition,
+            severity: marketContext.severity,
+            predictionBias: marketContext.predictionBias,
+            confidenceMultiplier: marketContext.confidenceMultiplier,
+            signals: marketContext.signals,
+            reasoning: marketContext.reasoning,
+            recommendation: marketContext.recommendation,
+            applied: true,
+          };
+        }
+      }
+      
+      // Si no se aplicó ajuste, guardar info de contexto de todas formas
+      if (!marketContextInfo) {
+        marketContextInfo = {
+          condition: marketContext.condition,
+          severity: marketContext.severity,
+          predictionBias: 0,
+          confidenceMultiplier: 1.0,
+          signals: marketContext.signals,
+          reasoning: marketContext.reasoning,
+          recommendation: marketContext.recommendation,
+          applied: false,
+        };
+      }
+    } catch (e) {
+      logger.warn(`[PredictionCalc] Could not get market context: ${(e as Error).message}`);
+      marketContextInfo = {
+        condition: 'unknown',
+        severity: 'mild',
+        predictionBias: 0,
+        confidenceMultiplier: 1.0,
+        signals: ['Error obteniendo contexto de mercado'],
+        reasoning: 'No disponible',
+        recommendation: 'Predicción basada solo en factores individuales',
+        applied: false,
+      };
+    }
+    
     // --- MODELO PROBABILÍSTICO ---
     // Genera distribución de probabilidad e intervalos de confianza
     const probabilisticResult = await probabilisticModelService.generateProbabilisticPrediction(
@@ -950,6 +1064,16 @@ export const predictionCalculatorService = {
     if (direction === 'down' && finalConfidence > 60) {
       finalConfidence = Math.round(finalConfidence * 0.85); // -15% para bajistas
       logger.info(`[PredictionCalc] Bearish prediction confidence adjusted: ${finalConfidence}% (historical accuracy 41.8%)`);
+    }
+    
+    // --- LÓGICA DE CONFIANZA BAJA = NEUTRAL ---
+    // Si la confianza es < 50%, no tiene sentido predecir dirección
+    // Una confianza de 30% en "up" no significa 70% "down", significa "no sé"
+    // Por tanto, si no estamos seguros, mejor ser honestos y decir "neutral"
+    const LOW_CONFIDENCE_THRESHOLD = 50;
+    if (finalConfidence < LOW_CONFIDENCE_THRESHOLD && direction !== 'neutral') {
+      logger.info(`[PredictionCalc] Low confidence (${finalConfidence}%) - changing direction from '${direction}' to 'neutral'`);
+      direction = 'neutral';
     }
     
     logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%, Direction: ${direction}`);
@@ -1043,6 +1167,7 @@ export const predictionCalculatorService = {
       } : undefined,
       timeframe: timeframeStr,
       calculatedAt: new Date(),
+      marketContext: marketContextInfo,
       audit: {
         dataSources: [
           ...(hasHistoricalData ? [{ name: 'Yahoo Finance (Historical)', url: `https://finance.yahoo.com/quote/${symbol}/history`, fetchedAt: new Date() }] : []),
@@ -1291,8 +1416,10 @@ export const predictionCalculatorService = {
 
   /**
    * Guarda una predicción en la base de datos
+   * @param prediction - La predicción calculada
+   * @param predictionType - 'close' para cierre del día, 'open_next_day' para apertura del día siguiente
    */
-  async savePrediction(prediction: CalculatedPrediction): Promise<{ id: string }> {
+  async savePrediction(prediction: CalculatedPrediction, predictionType?: PredictionType): Promise<{ id: string }> {
     const result = await predictionRepository.create({
       symbol: prediction.symbol,
       asset: prediction.asset,
@@ -1300,6 +1427,7 @@ export const predictionCalculatorService = {
       direction: prediction.direction,
       confidence: prediction.confidence,
       timeframe: prediction.timeframe,
+      predictionType: predictionType || prediction.predictionType || 'close',
       predictedChange: prediction.predictedChange,
       currentPrice: prediction.currentPrice,
       predictedPriceMin: prediction.predictedPriceMin,
@@ -1314,6 +1442,25 @@ export const predictionCalculatorService = {
     });
 
     return { id: result.id };
+  },
+
+  /**
+   * Guarda ambas predicciones: cierre del día y apertura del día siguiente
+   * @returns IDs de ambas predicciones
+   */
+  async saveBothPredictions(prediction: CalculatedPrediction): Promise<{ closeId: string; openNextDayId: string }> {
+    // Guardar predicción de cierre del día
+    const closePrediction = await this.savePrediction(prediction, 'close');
+    
+    // Guardar predicción de apertura del día siguiente
+    const openPrediction = await this.savePrediction(prediction, 'open_next_day');
+    
+    logger.info(`[PredictionCalc] Saved both predictions for ${prediction.symbol}: close=${closePrediction.id}, open_next_day=${openPrediction.id}`);
+    
+    return {
+      closeId: closePrediction.id,
+      openNextDayId: openPrediction.id,
+    };
   },
 };
 

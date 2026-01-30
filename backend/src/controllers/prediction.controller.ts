@@ -257,6 +257,7 @@ export const predictionController = {
   /**
    * POST /api/predictions
    * Crear nueva predicción usando el calculador completo y guardarla
+   * Crea DOS predicciones: una para cierre del día y otra para apertura del día siguiente
    */
   create: asyncHandler(async (req: Request, res: Response) => {
     const parsed = CreatePredictionRequestSchema.safeParse(req.body);
@@ -279,13 +280,14 @@ export const predictionController = {
       throw NotFoundError(`Could not calculate prediction for ${symbol}`);
     }
 
-    // Guardar en base de datos
-    const saved = await predictionCalculatorService.savePrediction(prediction);
+    // Guardar AMBAS predicciones: cierre del día y apertura del día siguiente
+    const saved = await predictionCalculatorService.saveBothPredictions(prediction);
 
     res.status(201).json({
       success: true,
       data: {
-        id: saved.id,
+        closeId: saved.closeId,
+        openNextDayId: saved.openNextDayId,
         ...prediction,
       },
     });

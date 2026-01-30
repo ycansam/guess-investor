@@ -1,7 +1,10 @@
 import { Prediction } from '@prisma/client';
 import { prisma } from '../config/database.js';
-import { calculateIntradayExpiry, detectMarketType, getMarketCloseTime } from '../services/external/market-hours.service.js';
+
+import { calculateIntradayExpiry, calculateNextDayOpen, detectMarketType, getMarketCloseTime } from '../services/external/market-hours.service.js';
 import { isMarketClosedForPrediction } from '../services/external/yahoo.service.js';
+
+export type PredictionType = 'close' | 'open_next_day';
 
 // ============================================================================
 // TIPOS
@@ -13,6 +16,7 @@ export interface CreatePredictionData {
   assetType: string;
   timeframe: string;
   timeframeDays?: number;
+  predictionType?: PredictionType; // 'close' (cierre del día) o 'open_next_day' (apertura día siguiente)
   direction: string;
   predictedChange: number;
   confidence: number;
@@ -87,14 +91,20 @@ export interface PredictionStats {
 export const predictionRepository = {
   /**
    * Crear una nueva predicción
+   * @param data - Datos de la predicción
+   * @param data.predictionType - 'close' para cierre del día, 'open_next_day' para apertura del día siguiente
    */
   async create(data: CreatePredictionData): Promise<Prediction> {
     const timeframeDays = data.timeframeDays || 1;
+    const predictionType = data.predictionType || 'close';
     const now = new Date();
     let expiresAt: Date;
     
-    if (timeframeDays === 1) {
-      // Para predicciones intradía usar el nuevo servicio que detecta
+    if (predictionType === 'open_next_day') {
+      // Predicción para la apertura del día siguiente
+      expiresAt = calculateNextDayOpen(data.symbol, data.assetType, data.asset);
+    } else if (timeframeDays === 1) {
+      // Para predicciones intradía (cierre de hoy) usar el nuevo servicio que detecta
       // el tipo de mercado (commodities, forex, stocks) y aplica el horario correcto
       expiresAt = calculateIntradayExpiry(data.symbol, data.assetType, data.asset);
     } else {
@@ -124,6 +134,7 @@ export const predictionRepository = {
         assetType: data.assetType,
         timeframe: data.timeframe,
         timeframeDays,
+        predictionType,
         direction: data.direction,
         predictedChange: data.predictedChange,
         confidence: data.confidence,

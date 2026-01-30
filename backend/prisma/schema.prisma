@@ -21,6 +21,7 @@ model Prediction {
   assetType         String    // "stock" | "crypto" | "etf" | "commodity"
   timeframe         String    // "intraday" | "swing" | "longterm"
   timeframeDays     Int       @default(1) // Días hasta fecha objetivo
+  predictionType    String    @default("close") // "close" (cierre del día) | "open_next_day" (apertura del día siguiente)
   
   // Predicción
   direction         String    // "up" | "down" | "neutral"
@@ -84,6 +85,7 @@ model Prediction {
   @@index([verified])
   @@index([createdAt])
   @@index([symbol, timeframe])
+  @@index([symbol, predictionType])
   @@index([quality])
   @@index([usedForTraining])
 }
@@ -308,29 +310,11 @@ model PriceAlert {
 // ============================================================================
 
 model InvestmentNote {
-  id              String   @id @default(uuid())
-  symbol          String
-  name            String   // Nombre del activo
-  assetType       String   // "stock" | "crypto" | "etf"
+  id        String   @id @default(uuid())
+  symbol    String   @unique
+  note      String   // Nota de texto libre
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   
-  // Notas del usuario
-  notes           String?  // Apuntes libres
-  thesis          String?  // Tesis de inversión (por qué te interesa)
-  
-  // Precios de referencia (opcionales)
-  targetPrice     Float?   // Precio objetivo
-  entryPrice      Float?   // Precio de entrada deseado
-  stopLoss        Float?   // Stop loss de referencia
-  
-  // Estado
-  status          String   @default("watching") // "watching" | "bought" | "sold" | "archived"
-  rating          Int?     // 1-5 estrellas
-  
-  // Metadata
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@unique([symbol])
   @@index([symbol])
-  @@index([status])
 }

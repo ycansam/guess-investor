@@ -37,6 +37,7 @@ interface ChartDataPoint {
   dataPointText?: string;
   timestamp?: number; // Unix timestamp para el tooltip
   isPrediction?: boolean; // Para diferenciar datos históricos de predicción
+  isOpenNextDay?: boolean; // Para diferenciar predicción de cierre vs apertura
 }
 
 interface AssetData {
@@ -414,9 +415,11 @@ export default function AssetDetailScreen() {
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [predictionData, setPredictionData] = useState<ChartDataPoint[]>([]);
   // predictionMeta ahora solo guarda timestamps - los precios se calculan dinámicamente
+  // Incluye tanto el cierre del día como la apertura del día siguiente
   const [predictionMeta, setPredictionMeta] = useState<{
     startTimestamp: number;
-    endTimestamp: number;
+    endTimestamp: number;         // Cierre del día actual
+    openNextDayTimestamp: number; // Apertura del día siguiente
   } | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<ChartTimeframe>('intraday');
   const [longtermHistoryRange, setLongtermHistoryRange] = useState<'1m' | '3m'>('1m');
@@ -817,11 +820,51 @@ export default function AssetDetailScreen() {
         const endTime = endDate.getTime();
         const totalMs = endTime - startTime;
 
-        // Guardar metadata de la predicción - SOLO timestamps
+        // Calcular la hora de apertura del día siguiente
+        // Para stocks: 9:00 (España) / 15:30 (US)
+        // Para commodities/forex: ~00:00 del día siguiente (casi 24h)
+        let openNextDayDate = new Date(endDate);
+        openNextDayDate.setDate(openNextDayDate.getDate() + 1); // Día siguiente
+        
+        // Parsear hora de apertura
+        let openHour = 7;
+        let openMinute = 30;
+        
+        if (isExtendedHours) {
+          // Trade Republic: ETCs/Commodities abren a las 7:30 hora España
+          openHour = 7;
+          openMinute = 30;
+        } else if (marketHours.regularHours.includes(' - ')) {
+          // Formato "HH:MM - HH:MM" → extraer la hora de apertura
+          // Pero para Trade Republic, siempre es 7:30
+          openHour = 7;
+          openMinute = 30;
+        }
+        
+        openNextDayDate.setHours(openHour, openMinute, 0, 0);
+        
+        // Ajustar fines de semana para la apertura
+        if (!isExtendedHours) {
+          const dayOfWeek = openNextDayDate.getDay();
+          if (dayOfWeek === 0) openNextDayDate.setDate(openNextDayDate.getDate() + 1); // Domingo → Lunes
+          if (dayOfWeek === 6) openNextDayDate.setDate(openNextDayDate.getDate() + 2); // Sábado → Lunes
+        }
+        
+        const openNextDayTime = openNextDayDate.getTime();
+        
+        console.log('[Prediction] Open next day calculation:', {
+          endDate: endDate.toLocaleString(),
+          openNextDayDate: openNextDayDate.toLocaleString(),
+          openHour,
+          openMinute,
+        });
+
+        // Guardar metadata de la predicción - timestamps para cierre y apertura
         // Los precios se calculan dinámicamente en los useMemo
         setPredictionMeta({
           startTimestamp: startTime,
           endTimestamp: endTime,
+          openNextDayTimestamp: openNextDayTime,
         });
 
         for (let i = 0; i <= steps; i++) {
@@ -1197,9 +1240,15 @@ export default function AssetDetailScreen() {
       const gapMs = extendUntil.getTime() - lastDataTime.getTime();
       const extensionPoints = Math.ceil(gapMs / intervalMs);
       
-      // Crear puntos de extensión con el último precio conocido
+      // Crear puntos de extensión
       const extended = [...filtered];
-      const lastValue = lastDataPoint.value;
+      const lastHistoricValue = lastDataPoint.value;
+      
+      // Usar el precio actual en tiempo real para el último punto (si está disponible)
+      // currentPrice ya está en EUR (convertido por eurExchangeRate)
+      const currentPrice = assetData?.price 
+        ? assetData.price * (eurExchangeRate || 1) 
+        : lastHistoricValue;
       
       for (let i = 1; i <= Math.min(extensionPoints, 50); i++) {
         const pointTime = new Date(lastDataTime.getTime() + (intervalMs * i));
@@ -1207,23 +1256,31 @@ export default function AssetDetailScreen() {
         // No extender más allá del cierre del mercado
         if (pointTime > marketCloseToday) break;
         
+        const isLastExtensionPoint = i === Math.min(extensionPoints, 50) || pointTime >= extendUntil;
+        
+        // Interpolar entre el último valor histórico y el precio actual
+        const progress = i / Math.min(extensionPoints, 50);
+        const interpolatedValue = lastHistoricValue + (currentPrice - lastHistoricValue) * progress;
+        
         // Añadir label solo en el último punto de extensión
         let label = '';
-        if (i === Math.min(extensionPoints, 50) || pointTime >= extendUntil) {
+        if (isLastExtensionPoint) {
           label = `${pointTime.getHours()}:${pointTime.getMinutes().toString().padStart(2, '0')}`;
         }
         
         extended.push({
-          value: lastValue,
+          value: isLastExtensionPoint ? currentPrice : interpolatedValue,
           label,
           timestamp: pointTime.getTime(),
           isPrediction: false,
         });
       }
       
-      console.log('[Chart DEBUG] Extended mainChartData:', {
+      console.log('[Chart DEBUG] Extended mainChartData with real-time price:', {
         originalPoints: filtered.length,
         extendedPoints: extended.length,
+        lastHistoricValue,
+        currentPrice,
         lastOriginal: lastDataTime.toLocaleString(),
         lastExtended: new Date(extended[extended.length - 1]?.timestamp).toLocaleString(),
         marketClose: `${closeHour}:${closeMinute.toString().padStart(2, '0')}`,
@@ -1243,7 +1300,7 @@ export default function AssetDetailScreen() {
     }
     
     return filtered;
-  }, [chartData, selectedTimeframe, symbol]);
+  }, [chartData, selectedTimeframe, symbol, assetData?.price, eurExchangeRate]);
 
   // Calcular posición X y datos para la línea de predicción superpuesta
   const predictionOverlay = useMemo(() => {
@@ -1327,33 +1384,32 @@ export default function AssetDetailScreen() {
     };
   }, [predictionMeta]);
 
-  // Calcular puntos extra para predicción y extensión del gráfico
-  const { predictionPoints, extensionPoints } = useMemo(() => {
-    if (mainChartData.length < 2) return { predictionPoints: 0, extensionPoints: 0 };
+  // Calcular puntos extra para predicción hasta la APERTURA del día siguiente
+  const predictionPoints = useMemo(() => {
+    if (mainChartData.length < 2) return 0;
     
     // Calcular el intervalo de tiempo entre puntos del histórico
     const lastTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || 0;
     const prevTimestamp = mainChartData[mainChartData.length - 2]?.timestamp || 0;
     const intervalMs = lastTimestamp - prevTimestamp;
     
-    if (intervalMs <= 0) return { predictionPoints: 0, extensionPoints: 0 };
+    if (intervalMs <= 0) return 0;
     
-    // Puntos para la predicción (desde último histórico hasta el cierre del mercado)
-    const msToPredEnd = predictionEndTime - lastTimestamp;
-    
-    // Si la predicción ya expiró (hora pasada), no mostrar puntos de predicción
-    if (msToPredEnd <= 0 || !predictionMeta) {
-      return { predictionPoints: 0, extensionPoints: 0 };
+    // SOLO predicción hasta la APERTURA del día siguiente (no cierre)
+    if (!predictionMeta) {
+      return 0;
     }
     
-    const predPts = Math.max(2, Math.ceil(msToPredEnd / intervalMs));
+    // Calcular puntos desde ahora hasta la apertura del día siguiente
+    const msToOpenNextDay = predictionMeta.openNextDayTimestamp - lastTimestamp;
     
-    // Ya no extendemos el gráfico hasta las 23:59, termina en la predicción
-    return {
-      predictionPoints: Math.min(predPts, 30),
-      extensionPoints: 0, // Sin puntos de extensión
-    };
-  }, [predictionMeta, mainChartData, endOfToday, predictionEndTime]);
+    if (msToOpenNextDay <= 0) {
+      return 0;
+    }
+    
+    // 10 puntos para la línea hasta apertura del día siguiente
+    return 10;
+  }, [predictionMeta, mainChartData]);
 
   // Datos del gráfico: histórico + predicción (null) + extensión (null)
   const chartDataWithExtra = useMemo(() => {
@@ -1369,20 +1425,12 @@ export default function AssetDetailScreen() {
     const predictedChange = prediction?.change || 0;
     const targetPrice = startPrice * (1 + predictedChange / 100);
     
-    // Calcular intervalo entre puntos
-    const prevTimestamp = mainChartData.length > 1 ? mainChartData[mainChartData.length - 2]?.timestamp : lastTimestamp;
-    const intervalMs = lastTimestamp - (prevTimestamp || lastTimestamp) || 3600000;
-    
     let result = [...mainChartData];
     
-    // Añadir puntos para la predicción (con valores interpolados para el tooltip)
+    // Añadir puntos para la predicción hasta la APERTURA del día siguiente
     if (predictionMeta && predictionPoints > 0) {
-      const predDuration = predictionEndTime - lastTimestamp;
-      
-      // Calcular cada cuántos puntos mostrar un label (aprox cada 2-3 horas)
-      const hoursOfPrediction = predDuration / (1000 * 60 * 60);
-      const labelsToShow = Math.max(2, Math.ceil(hoursOfPrediction / 2)); // Un label cada ~2 horas
-      const labelInterval = Math.ceil(predictionPoints / labelsToShow);
+      // Duración desde ahora hasta la apertura del día siguiente
+      const predDuration = predictionMeta.openNextDayTimestamp - lastTimestamp;
       
       // Empezamos desde i=0 para que conecte con el histórico (primer punto = startPrice)
       for (let i = 0; i <= predictionPoints; i++) {
@@ -1390,23 +1438,21 @@ export default function AssetDetailScreen() {
         const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
         const pointTimestamp = lastTimestamp + (predDuration * progress);
         
-        // Añadir label en puntos intermedios y en el último punto
+        // Solo label en el último punto (apertura del día siguiente)
         let label = '';
-        if (i === predictionPoints || (i > 0 && i % labelInterval === 0)) {
+        if (i === predictionPoints) {
           const pointDate = new Date(pointTimestamp);
-          label = `${pointDate.getHours()}:${pointDate.getMinutes().toString().padStart(2, '0')}`;
+          label = `${pointDate.getDate()}/${pointDate.getMonth() + 1} ${pointDate.getHours()}:${pointDate.getMinutes().toString().padStart(2, '0')}`;
         }
         
         result.push({
-          value: interpolatedValue, // Valor real para tooltip
+          value: interpolatedValue,
           label,
           timestamp: pointTimestamp,
           isPrediction: true,
         });
       }
     }
-    
-    // Ya no añadimos puntos de extensión
     
     // DEBUG: Log de chartDataWithExtra
     if (selectedTimeframe === 'intraday' && result.length > 0) {
@@ -1415,16 +1461,16 @@ export default function AssetDetailScreen() {
       console.log('[Chart DEBUG] chartDataWithExtra:', {
         totalPoints: result.length,
         historicPoints: historicPoints.length,
-        predictionPoints: predictionPts.length,
+        predictionPointsCount: predictionPts.length,
         lastHistoric: historicPoints.length > 0 ? new Date(historicPoints[historicPoints.length - 1]?.timestamp).toLocaleString() : null,
         firstPrediction: predictionPts.length > 0 ? new Date(predictionPts[0]?.timestamp).toLocaleString() : null,
         lastPrediction: predictionPts.length > 0 ? new Date(predictionPts[predictionPts.length - 1]?.timestamp).toLocaleString() : null,
-        predictionEndTime: new Date(predictionEndTime).toLocaleString(),
+        openNextDayTime: predictionMeta ? new Date(predictionMeta.openNextDayTimestamp).toLocaleString() : null,
       });
     }
     
     return result;
-  }, [mainChartData, predictionMeta, predictionPoints, extensionPoints, predictionEndTime, endOfToday, prediction, lastPriceForPrediction]);
+  }, [mainChartData, predictionMeta, predictionPoints, prediction, lastPriceForPrediction]);
 
   // Calcular spacing basado en el total de puntos para que quepa en pantalla
   const chartSpacing = useMemo(() => {
@@ -1434,7 +1480,7 @@ export default function AssetDetailScreen() {
     return isNaN(spacing) || !isFinite(spacing) ? 3 : spacing;
   }, [chartDataWithExtra.length, chartAreaWidth]);
 
-  // Datos para data2: histórico copiado + predicción interpolada + extensión null
+  // Datos para data2: histórico copiado + predicción hasta apertura del día siguiente
   const predictionLineData = useMemo(() => {
     if (!predictionMeta || mainChartData.length === 0 || !prediction) return null;
     
@@ -1450,47 +1496,35 @@ export default function AssetDetailScreen() {
       value: point.value,
     }));
     
-    // Añadir puntos interpolados para la predicción (hasta las 17:30)
-    // Empezamos desde i=0 para que el primer punto tenga el mismo valor que el histórico
-    // y la línea conecte visualmente sin gap
+    // Añadir puntos interpolados para la predicción hasta APERTURA del día siguiente
     for (let i = 0; i <= predictionPoints; i++) {
       const progress = i / predictionPoints;
       const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
       data2.push({ value: interpolatedValue });
     }
     
-    // Añadir puntos null para la extensión hasta las 23:59 (invisibles)
-    for (let i = 0; i < extensionPoints; i++) {
-      data2.push({ value: null });
-    }
-    
     return data2;
-  }, [predictionMeta, mainChartData, predictionPoints, extensionPoints, prediction, lastPriceForPrediction]);
+  }, [predictionMeta, mainChartData, predictionPoints, prediction, lastPriceForPrediction]);
 
-  // Segmentos de color para data2: transparente histórico, morado predicción, transparente extensión
+  // Segmentos de color para data2: transparente histórico, naranja predicción apertura
   const predictionLineSegments = useMemo(() => {
     if (!mainChartData.length || !predictionMeta) return undefined;
     
     const lastHistoricIndex = mainChartData.length - 1;
-    // Ahora tenemos predictionPoints + 1 puntos (de i=0 a i=predictionPoints inclusive)
     const lastPredictionIndex = lastHistoricIndex + predictionPoints + 1;
-    const lastExtensionIndex = lastPredictionIndex + extensionPoints;
     
     return [
       // Histórico: transparente (se superpone con la línea verde)
       { startIndex: 0, endIndex: lastHistoricIndex, color: 'transparent' },
-      // Predicción: morado (desde hora actual hasta 17:30)
-      { startIndex: lastHistoricIndex, endIndex: lastPredictionIndex, color: '#818cf8' },
-      // Extensión: transparente (desde 17:30 hasta 23:59)
-      { startIndex: lastPredictionIndex, endIndex: lastExtensionIndex, color: 'transparent' },
+      // Predicción apertura: naranja (desde ahora hasta apertura del día siguiente)
+      { startIndex: lastHistoricIndex, endIndex: lastPredictionIndex, color: '#f97316' },
     ];
-  }, [mainChartData.length, predictionPoints, extensionPoints, predictionMeta]);
+  }, [mainChartData.length, predictionPoints, predictionMeta]);
 
   // Segmentos para la línea principal: verde solo hasta el histórico, luego transparente
   const mainLineSegments = useMemo(() => {
     const lastHistoricIndex = mainChartData.length - 1;
-    // Ahora tenemos predictionPoints + 1 puntos de predicción
-    const totalPoints = mainChartData.length + predictionPoints + 1 + extensionPoints;
+    const totalPoints = mainChartData.length + predictionPoints + 1;
     
     if (lastHistoricIndex < 0) return undefined;
     
@@ -1500,7 +1534,7 @@ export default function AssetDetailScreen() {
       // Resto: transparente
       { startIndex: lastHistoricIndex, endIndex: totalPoints - 1, color: 'transparent' },
     ];
-  }, [mainChartData.length, predictionPoints, extensionPoints]);
+  }, [mainChartData.length, predictionPoints]);
 
   // Formatear precio para tooltip
   const formatPrice = (value: number | undefined): string => {
@@ -1906,6 +1940,9 @@ export default function AssetDetailScreen() {
                         timeStr = `${hours}:${minutes}`;
                       }
                       
+                      // Determinar el label según el tipo de punto
+                      const predLabel = isPred ? ' (Apertura)' : '';
+                      
                       return (
                         <View style={{
                           backgroundColor: '#1e1e2e',
@@ -1913,13 +1950,13 @@ export default function AssetDetailScreen() {
                           paddingVertical: 8,
                           borderRadius: 8,
                           borderWidth: 1,
-                          borderColor: isPred ? '#818cf8' : '#6366f1',
+                          borderColor: isPred ? '#f97316' : '#6366f1',
                           minWidth: 100,
                           alignItems: 'center',
                         }}>
                           {dateStr ? (
                             <Text style={{ color: '#9ca3af', fontSize: 11, marginBottom: 2 }}>
-                              {dateStr} {timeStr}{isPred ? ' (Pred)' : ''}
+                              {dateStr} {timeStr}{predLabel}
                             </Text>
                           ) : null}
                           <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
@@ -1940,16 +1977,11 @@ export default function AssetDetailScreen() {
                 </View>
                 {predictionMeta && mainChartData.length > 0 && (
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendColor, { backgroundColor: '#818cf8' }]} />
+                    <View style={[styles.legendColor, { backgroundColor: '#f97316' }]} />
                     <Text style={styles.legendText}>
-                      Predicción ({(() => {
-                        // Usar el último timestamp del histórico como inicio visual
-                        const lastHistoric = mainChartData[mainChartData.length - 1]?.timestamp || predictionMeta.startTimestamp;
-                        const duration = predictionMeta.endTimestamp - predictionMeta.startTimestamp;
-                        const visualEndTime = lastHistoric + duration;
-                        const startDate = new Date(lastHistoric).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' });
-                        const endDate = new Date(visualEndTime).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' });
-                        return `${startDate} → ${endDate}`;
+                      Apertura ({(() => {
+                        const openDate = new Date(predictionMeta.openNextDayTimestamp);
+                        return `${openDate.getDate()}/${openDate.getMonth() + 1} ${openDate.getHours()}:${openDate.getMinutes().toString().padStart(2, '0')}`;
                       })()})
                     </Text>
                   </View>

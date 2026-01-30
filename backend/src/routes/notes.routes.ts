@@ -15,9 +15,6 @@ router.post('/', notesController.upsert);
 // PUT /api/notes/:symbol - Actualizar nota
 router.put('/:symbol', notesController.update);
 
-// PATCH /api/notes/:symbol/status - Cambiar estado
-router.patch('/:symbol/status', notesController.updateStatus);
-
 // DELETE /api/notes/:symbol - Eliminar nota
 router.delete('/:symbol', notesController.delete);
 

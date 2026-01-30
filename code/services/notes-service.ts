@@ -1,10 +1,7 @@
 /**
  * Notes Service
  * 
- * Servicio para gestionar notas de inversión:
- * - Apuntes sobre activos
- * - Tesis de inversión
- * - Precios de referencia (target, entry, stop loss)
+ * Servicio simple para gestionar notas de texto por activo
  */
 
 // URL base del backend
@@ -16,58 +13,17 @@ const API_BASE_URL = __DEV__
 // TYPES
 // ============================================================================
 
-export type NoteStatus = 'watching' | 'bought' | 'sold' | 'archived';
-
 export interface InvestmentNote {
   id: string;
   symbol: string;
-  name: string;
-  assetType: string;
-  notes?: string;
-  thesis?: string;
-  targetPrice?: number;
-  entryPrice?: number;
-  stopLoss?: number;
-  status: NoteStatus;
-  rating?: number;
+  note: string;
   createdAt: string;
   updatedAt: string;
-  // Datos de mercado (calculados)
-  currentPrice: number;
-  dayChange: number;
-  atTarget: boolean;
-  atEntry: boolean;
-  atStopLoss: boolean;
-  distanceToTarget: number | null;
-  distanceToEntry: number | null;
 }
 
 export interface NotesData {
   notes: InvestmentNote[];
-  counts: Record<string, number>;
-}
-
-export interface CreateNoteInput {
-  symbol: string;
-  name: string;
-  assetType: string;
-  notes?: string;
-  thesis?: string;
-  targetPrice?: number;
-  entryPrice?: number;
-  stopLoss?: number;
-  status?: NoteStatus;
-  rating?: number;
-}
-
-export interface UpdateNoteInput {
-  notes?: string;
-  thesis?: string;
-  targetPrice?: number | null;
-  entryPrice?: number | null;
-  stopLoss?: number | null;
-  status?: NoteStatus;
-  rating?: number | null;
+  count: number;
 }
 
 // ============================================================================
@@ -78,10 +34,9 @@ export const notesService = {
   /**
    * Obtener todas las notas
    */
-  async getAll(status?: NoteStatus): Promise<NotesData | null> {
+  async getAll(): Promise<NotesData | null> {
     try {
-      const params = status ? `?status=${status}` : '';
-      const response = await fetch(`${API_BASE_URL}/notes${params}`);
+      const response = await fetch(`${API_BASE_URL}/notes`);
       const result = await response.json();
       
       if (result.success) {
@@ -116,12 +71,12 @@ export const notesService = {
   /**
    * Crear o actualizar nota
    */
-  async upsert(input: CreateNoteInput): Promise<boolean> {
+  async upsert(symbol: string, note: string): Promise<boolean> {
     try {
       const response = await fetch(`${API_BASE_URL}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ symbol, note }),
       });
       const result = await response.json();
       return result.success;
@@ -134,35 +89,17 @@ export const notesService = {
   /**
    * Actualizar nota
    */
-  async update(symbol: string, input: UpdateNoteInput): Promise<boolean> {
+  async update(symbol: string, note: string): Promise<boolean> {
     try {
       const response = await fetch(`${API_BASE_URL}/notes/${symbol}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ note }),
       });
       const result = await response.json();
       return result.success;
     } catch (error) {
       console.error('[Notes] Error updating note:', error);
-      return false;
-    }
-  },
-
-  /**
-   * Cambiar estado
-   */
-  async updateStatus(symbol: string, status: NoteStatus): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/notes/${symbol}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      const result = await response.json();
-      return result.success;
-    } catch (error) {
-      console.error('[Notes] Error updating status:', error);
       return false;
     }
   },
