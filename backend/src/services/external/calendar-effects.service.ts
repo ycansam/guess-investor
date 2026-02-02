@@ -1,27 +1,17 @@
 /**
  * Calendar Effects Service
  * 
- * Detecta patrones de calendario que afectan a los mercados:
+ * NOTA: Los efectos de calendario son estadísticamente muy débiles.
+ * La bolsa no "sabe" que es viernes o fin de mes.
+ * Este servicio solo proporciona contexto informativo, NO ajusta predicciones.
  * 
- * 1. EFECTO FIN DE MES
- *    - Últimos 2-3 días del mes = rebalanceos de fondos/ETFs
- *    - Mayor volatilidad, especialmente en activos que más subieron
+ * Los movimientos reales vienen de:
+ * - Psicología de mercado (miedo/avaricia)
+ * - Momentum y tendencias
+ * - Noticias y eventos
+ * - Flujos institucionales
  * 
- * 2. EFECTO VIERNES
- *    - Los viernes tienden a tener más toma de beneficios
- *    - "No me llevo riesgo al fin de semana"
- * 
- * 3. JANUARY EFFECT
- *    - Enero suele ser alcista (dinero nuevo, optimismo)
- *    - Final de enero = agotamiento del efecto
- * 
- * 4. COMBINACIONES PELIGROSAS
- *    - Viernes + Fin de mes = máxima presión vendedora
- *    - Viernes + Fin de enero = especialmente para activos volátiles
- * 
- * 5. EFECTOS POR TIPO DE ACTIVO
- *    - Metales preciosos: más vulnerables a correcciones de calendario
- *    - Small caps: más afectados por rebalanceos
+ * NO de que sea "viernes 30 de enero".
  */
 
 import { logger } from '../../middleware/logger.js';
@@ -29,40 +19,40 @@ import { logger } from '../../middleware/logger.js';
 // ===== TIPOS =====
 
 export interface CalendarEffectsAnalysis {
-  // Fecha actual
+  // Fecha actual (solo informativo)
   date: Date;
   dayOfWeek: string;
   dayOfMonth: number;
   month: string;
   monthNumber: number;
   
-  // Efectos detectados
-  isEndOfMonth: boolean;          // Últimos 3 días del mes
+  // Información contextual (NO afecta predicciones)
+  isEndOfMonth: boolean;
   isFriday: boolean;
   isMonday: boolean;
   isJanuary: boolean;
-  isEndOfJanuary: boolean;        // Últimos 5 días de enero
-  isEndOfQuarter: boolean;        // Final de trimestre (mar, jun, sep, dic)
-  isEndOfYear: boolean;           // Últimos 5 días de diciembre
+  isEndOfJanuary: boolean;
+  isEndOfQuarter: boolean;
+  isEndOfYear: boolean;
   
-  // Efectos combinados
-  dangerousCombination: boolean;  // Viernes + fin de mes
-  extremeDanger: boolean;         // Viernes + fin de enero/trimestre
+  // Siempre false - no hay "combinaciones peligrosas"
+  dangerousCombination: boolean;
+  extremeDanger: boolean;
   
-  // Impacto calculado
+  // Siempre valores neutros - el calendario NO ajusta predicciones
   calendarRisk: {
-    level: 'extreme' | 'high' | 'moderate' | 'low' | 'none';
-    score: number;                // 0-100 (mayor = más riesgo)
-    volatilityMultiplier: number; // Multiplicador de volatilidad esperada
-    confidenceAdjustment: number; // Multiplicador de confianza (< 1 = reducir)
+    level: string;
+    score: number;
+    volatilityMultiplier: number;
+    confidenceAdjustment: number;
   };
   
-  // Ajuste específico por tipo de activo
+  // Sin ajustes por tipo de activo
   assetTypeAdjustments: {
-    preciousMetals: number;       // Bias para metales preciosos
-    smallCaps: number;            // Bias para small caps
-    highBeta: number;             // Bias para activos high-beta
-    etfs: number;                 // Bias para ETFs (sujetos a rebalanceos)
+    preciousMetals: number;
+    smallCaps: number;
+    highBeta: number;
+    etfs: number;
   };
   
   signals: string[];
@@ -85,7 +75,7 @@ function isLastNDaysOfMonth(date: Date, n: number): boolean {
 }
 
 function isQuarterEnd(month: number): boolean {
-  return [2, 5, 8, 11].includes(month); // Marzo, Junio, Septiembre, Diciembre (0-indexed)
+  return [2, 5, 8, 11].includes(month);
 }
 
 // ===== ANÁLISIS PRINCIPAL =====
@@ -94,10 +84,8 @@ function analyzeCalendarEffects(date: Date = new Date()): CalendarEffectsAnalysi
   const dayOfWeek = date.getDay();
   const dayOfMonth = date.getDate();
   const month = date.getMonth();
-  const year = date.getFullYear();
-  const daysInMonth = getDaysInMonth(year, month);
   
-  // Detectar efectos básicos
+  // Solo información contextual
   const isFriday = dayOfWeek === 5;
   const isMonday = dayOfWeek === 1;
   const isEndOfMonth = isLastNDaysOfMonth(date, 3);
@@ -106,104 +94,27 @@ function analyzeCalendarEffects(date: Date = new Date()): CalendarEffectsAnalysi
   const isEndOfQuarter = isQuarterEnd(month) && isLastNDaysOfMonth(date, 5);
   const isEndOfYear = month === 11 && dayOfMonth >= 26;
   
-  // Detectar combinaciones peligrosas
-  const dangerousCombination = isFriday && isEndOfMonth;
-  const extremeDanger = isFriday && (isEndOfJanuary || isEndOfQuarter || isEndOfYear);
-  
-  // Calcular riesgo de calendario
-  let riskScore = 0;
+  // Construir señales informativas (sin peso en predicción)
   const signals: string[] = [];
   
-  // Viernes base: +15 puntos
   if (isFriday) {
-    riskScore += 15;
-    signals.push('📅 Viernes: Mayor toma de beneficios antes del fin de semana');
+    signals.push('📅 Viernes');
   }
-  
-  // Fin de mes: +25 puntos
   if (isEndOfMonth) {
-    riskScore += 25;
-    signals.push(`📊 Fin de mes (día ${dayOfMonth}/${daysInMonth}): Rebalanceos de fondos y ETFs`);
+    signals.push(`📊 Fin de mes (día ${dayOfMonth})`);
   }
-  
-  // Enero: efectos especiales
-  if (isJanuary) {
-    if (isEndOfJanuary) {
-      riskScore += 20;
-      signals.push('🎯 Final de enero: Agotamiento del "January Effect", posible corrección');
-    } else if (dayOfMonth <= 10) {
-      riskScore -= 10; // Principio de enero suele ser alcista
-      signals.push('🚀 Inicio de enero: "January Effect" en curso, tendencia alcista típica');
-    }
+  if (isEndOfJanuary) {
+    signals.push('🗓️ Final de enero');
   }
-  
-  // Fin de trimestre: +20 puntos
   if (isEndOfQuarter) {
-    riskScore += 20;
-    signals.push('📈 Fin de trimestre: Window dressing y rebalanceos institucionales');
+    signals.push('📈 Fin de trimestre');
   }
-  
-  // Fin de año: +15 puntos (tax-loss harvesting ya pasó, pero hay ajustes)
   if (isEndOfYear) {
-    riskScore += 15;
-    signals.push('🎄 Fin de año: Ajustes finales de carteras');
+    signals.push('🎄 Fin de año');
   }
   
-  // Combinaciones peligrosas
-  if (dangerousCombination && !extremeDanger) {
-    riskScore += 15; // Bonus por combinación
-    signals.push('⚠️ COMBINACIÓN: Viernes + Fin de mes = presión vendedora aumentada');
-  }
-  
-  if (extremeDanger) {
-    riskScore += 25; // Bonus extra
-    signals.push('🚨 COMBINACIÓN EXTREMA: Viernes + Fin de mes/trimestre = máxima presión vendedora');
-  }
-  
-  // Lunes: efecto contrario (a veces rebote tras ventas de viernes)
-  if (isMonday && !isEndOfMonth) {
-    riskScore -= 5;
-    signals.push('📈 Lunes: Posible rebote si hubo ventas el viernes');
-  }
-  
-  // Limitar score
-  riskScore = Math.max(0, Math.min(100, riskScore));
-  
-  // Determinar nivel de riesgo
-  let riskLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'none' = 'none';
-  if (riskScore >= 60) riskLevel = 'extreme';
-  else if (riskScore >= 40) riskLevel = 'high';
-  else if (riskScore >= 20) riskLevel = 'moderate';
-  else if (riskScore >= 10) riskLevel = 'low';
-  
-  // Calcular multiplicadores
-  // Mayor riesgo = mayor volatilidad esperada, menor confianza
-  const volatilityMultiplier = 1 + (riskScore / 100) * 0.5; // 1.0 a 1.5
-  const confidenceAdjustment = 1 - (riskScore / 100) * 0.3; // 1.0 a 0.7
-  
-  // Ajustes por tipo de activo
-  // Los activos más volátiles/especulativos sufren más en estas fechas
-  const baseAdjustment = -(riskScore / 100) * 3; // Hasta -3% de bias
-  
-  const assetTypeAdjustments = {
-    preciousMetals: baseAdjustment * 1.5,  // Metales preciosos: -4.5% máximo
-    smallCaps: baseAdjustment * 1.3,       // Small caps: -3.9% máximo
-    highBeta: baseAdjustment * 1.4,        // High beta: -4.2% máximo
-    etfs: baseAdjustment * 1.2,            // ETFs: -3.6% máximo
-  };
-  
-  // Construir razonamiento
-  let reasoning = '';
-  if (riskScore === 0) {
-    reasoning = 'Sin efectos de calendario significativos hoy.';
-  } else if (riskScore < 20) {
-    reasoning = 'Efectos de calendario menores. Impacto limitado esperado.';
-  } else if (riskScore < 40) {
-    reasoning = 'Efectos de calendario moderados. Posible aumento de volatilidad.';
-  } else if (riskScore < 60) {
-    reasoning = 'Efectos de calendario significativos. Mayor probabilidad de toma de beneficios y volatilidad aumentada.';
-  } else {
-    reasoning = 'Combinación de efectos de calendario de alto riesgo. Históricamente, fechas como esta son propensas a correcciones bruscas, especialmente en activos que más han subido.';
+  if (signals.length === 0) {
+    signals.push('📅 Sin fechas especiales');
   }
   
   return {
@@ -221,19 +132,28 @@ function analyzeCalendarEffects(date: Date = new Date()): CalendarEffectsAnalysi
     isEndOfQuarter,
     isEndOfYear,
     
-    dangerousCombination,
-    extremeDanger,
+    // Nunca hay "peligro" por calendario
+    dangerousCombination: false,
+    extremeDanger: false,
     
+    // Valores neutros - NO afecta predicciones
     calendarRisk: {
-      level: riskLevel,
-      score: riskScore,
-      volatilityMultiplier,
-      confidenceAdjustment,
+      level: 'none',
+      score: 0,
+      volatilityMultiplier: 1,
+      confidenceAdjustment: 1,
     },
     
-    assetTypeAdjustments,
+    // Sin ajustes
+    assetTypeAdjustments: {
+      preciousMetals: 0,
+      smallCaps: 0,
+      highBeta: 0,
+      etfs: 0,
+    },
+    
     signals,
-    reasoning,
+    reasoning: 'El calendario no afecta las predicciones. Los movimientos vienen de psicología de mercado, momentum, noticias y flujos institucionales.',
   };
 }
 
@@ -251,7 +171,7 @@ function getCachedOrAnalyze(): CalendarEffectsAnalysis {
   const analysis = analyzeCalendarEffects();
   cachedAnalysis = { data: analysis, date: today };
   
-  logger.info(`[CalendarEffects] ${analysis.dayOfWeek} ${analysis.dayOfMonth} de ${analysis.month}: Risk level=${analysis.calendarRisk.level} (${analysis.calendarRisk.score}/100)`);
+  logger.info(`[CalendarEffects] ${analysis.dayOfWeek} ${analysis.dayOfMonth} de ${analysis.month} (solo info, sin ajustes)`);
   
   return analysis;
 }
@@ -260,30 +180,31 @@ function getCachedOrAnalyze(): CalendarEffectsAnalysis {
 
 export const calendarEffectsService = {
   /**
-   * Obtiene el análisis de efectos de calendario para hoy
+   * Obtiene el análisis de efectos de calendario para hoy (solo informativo)
    */
   getCurrentAnalysis(): CalendarEffectsAnalysis {
     return getCachedOrAnalyze();
   },
   
   /**
-   * Analiza una fecha específica (para backtesting)
+   * Analiza una fecha específica (solo informativo)
    */
   analyzeDate(date: Date): CalendarEffectsAnalysis {
     return analyzeCalendarEffects(date);
   },
   
   /**
-   * Aplica ajustes de calendario a una predicción
+   * NO aplica ajustes - el calendario no afecta predicciones
+   * Solo devuelve los valores originales con info contextual
    */
   applyToPrediction(
     prediction: { change: number; confidence: number },
-    assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'etf' | 'other',
-    additionalInfo?: { 
+    _assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'etf' | 'other',
+    _additionalInfo?: { 
       isPreciousMetal?: boolean;
       isSmallCap?: boolean;
       isHighBeta?: boolean;
-      recentPerformance30d?: number; // % ganado en 30 días
+      recentPerformance30d?: number;
     }
   ): { 
     adjustedChange: number; 
@@ -293,73 +214,17 @@ export const calendarEffectsService = {
   } {
     const analysis = getCachedOrAnalyze();
     
-    // Si no hay riesgo significativo, no ajustar
-    if (analysis.calendarRisk.score < 15) {
-      return {
-        adjustedChange: prediction.change,
-        adjustedConfidence: prediction.confidence,
-        applied: false,
-      };
-    }
-    
-    let adjustedChange = prediction.change;
-    let adjustedConfidence = Math.round(prediction.confidence * analysis.calendarRisk.confidenceAdjustment);
-    
-    // Aplicar bias según tipo de activo
-    let bias = 0;
-    
-    if (additionalInfo?.isPreciousMetal || assetType === 'commodity') {
-      bias = analysis.assetTypeAdjustments.preciousMetals;
-    } else if (additionalInfo?.isSmallCap) {
-      bias = analysis.assetTypeAdjustments.smallCaps;
-    } else if (additionalInfo?.isHighBeta) {
-      bias = analysis.assetTypeAdjustments.highBeta;
-    } else if (assetType === 'index') {
-      bias = analysis.assetTypeAdjustments.etfs;
-    } else if (assetType === 'crypto') {
-      bias = analysis.assetTypeAdjustments.highBeta * 1.2; // Crypto aún más volátil
-    }
-    
-    // FACTOR CLAVE: Si el activo ha subido mucho recientemente, es más vulnerable
-    // "Se vende lo que más ha subido"
-    if (additionalInfo?.recentPerformance30d !== undefined) {
-      const perf = additionalInfo.recentPerformance30d;
-      
-      if (perf > 20) {
-        // Ha subido >20% en 30 días = muy vulnerable
-        bias *= 2.0;
-        logger.info(`[CalendarEffects] Asset up ${perf.toFixed(1)}% in 30d - doubling calendar bias`);
-      } else if (perf > 10) {
-        // Ha subido >10% en 30 días = vulnerable
-        bias *= 1.5;
-        logger.info(`[CalendarEffects] Asset up ${perf.toFixed(1)}% in 30d - increasing calendar bias`);
-      } else if (perf < -10) {
-        // Ya ha caído mucho = menos vulnerable a más ventas
-        bias *= 0.5;
-        logger.info(`[CalendarEffects] Asset down ${perf.toFixed(1)}% in 30d - reducing calendar bias`);
-      }
-    }
-    
-    // Aplicar bias
-    adjustedChange += bias;
-    
-    // Si la predicción es muy alcista en un día peligroso, moderar
-    if (analysis.calendarRisk.level === 'extreme' && prediction.change > 2) {
-      adjustedChange = Math.min(adjustedChange, prediction.change * 0.5);
-      adjustedConfidence = Math.round(adjustedConfidence * 0.8);
-      logger.info(`[CalendarEffects] Extreme risk day - capping bullish prediction`);
-    }
-    
+    // NUNCA ajustar - el calendario no afecta predicciones
     return {
-      adjustedChange,
-      adjustedConfidence,
-      applied: true,
+      adjustedChange: prediction.change,
+      adjustedConfidence: prediction.confidence,
+      applied: false,
       calendarInfo: analysis,
     };
   },
   
   /**
-   * Obtiene un resumen rápido para mostrar al usuario
+   * Obtiene un resumen rápido (solo informativo)
    */
   getQuickSummary(): { 
     riskLevel: string; 
@@ -368,18 +233,16 @@ export const calendarEffectsService = {
   } {
     const analysis = getCachedOrAnalyze();
     
-    const emojis: Record<string, string> = {
-      extreme: '🚨',
-      high: '⚠️',
-      moderate: '📊',
-      low: '📅',
-      none: '✅',
-    };
-    
     return {
-      riskLevel: analysis.calendarRisk.level,
-      mainWarning: analysis.signals.length > 0 ? analysis.signals[0] : null,
-      emoji: emojis[analysis.calendarRisk.level],
+      riskLevel: 'none',
+      mainWarning: null,
+      emoji: '📅',
     };
   },
-};
+
+  /**
+   * Limpia el cache (para testing)
+   */
+  clearCache(): void {
+    cachedAnalysis = null;
+  },};

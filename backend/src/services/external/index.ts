@@ -10,6 +10,7 @@ export * from './fear-greed.service.js';
 export * from './financials.service.js';
 export * from './finviz.service.js';
 export * from './forex.service.js';
+export * from './geopolitical-events.service.js';
 export * from './institutional.service.js';
 export * from './macro.service.js';
 export * from './market-hours.service.js';

@@ -20,9 +20,10 @@ import { AssetEvents, eventsService } from '../external/events.service.js';
 import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
 import { ForexImpact, forexService } from '../external/forex.service.js';
+import { GeopoliticalAnalysis, geopoliticalEventsService } from '../external/geopolitical-events.service.js';
 import { InstitutionalData, institutionalService } from '../external/institutional.service.js';
 import { MacroIndicators, macroService } from '../external/macro.service.js';
-import { marketPsychologyService, MarketPsychologyAnalysis } from '../external/market-psychology.service.js';
+import { MarketPsychologyAnalysis, marketPsychologyService } from '../external/market-psychology.service.js';
 import { newsService, NewsSummary } from '../external/news.service.js';
 import { PreciousMetalsAnalysis, preciousMetalsUSDService } from '../external/precious-metals-usd.service.js';
 import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality.service.js';
@@ -32,9 +33,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  probabilisticModelService,
-  reinforcementLearningService,
+    factorCorrelationService,
+    probabilisticModelService,
+    reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -57,6 +58,19 @@ export interface CalculatedPrediction {
   predictedChange: number;
   direction: 'up' | 'down' | 'neutral';
   confidence: number;
+  
+  // RECOMENDACIÓN INTELIGENTE
+  // Considera predicción + contexto psicológico + calendario + largo plazo
+  recommendation?: {
+    action: 'strong_buy' | 'buy' | 'hold' | 'reduce' | 'sell' | 'strong_sell' | 'wait';
+    emoji: string;
+    title: string;
+    reasoning: string;
+    timeHorizon: 'short' | 'medium' | 'long';  // Horizonte recomendado
+    riskLevel: 'low' | 'medium' | 'high' | 'extreme';
+    isContrarian: boolean;  // ¿Es una recomendación contrarian?
+    keyFactors: string[];   // Factores principales que influyen
+  };
   
   factorBreakdown: {
     assetGroup: string;
@@ -192,6 +206,19 @@ export interface CalculatedPrediction {
     biasesDetected: string[];
     contrarianSignal: boolean;
     signals: string[];
+  };
+  
+  // Eventos geopolíticos (aranceles, Fed, tensiones internacionales)
+  geopoliticalEvents?: {
+    hasActiveEvents: boolean;
+    overallRisk: string;
+    marketDirection: string;
+    marketMagnitude: number;
+    volatilityMultiplier: number;
+    events: { type: string; title: string; severity: string }[];
+    signals: string[];
+    reasoning: string;
+    applied: boolean;
   };
   
   audit: {
@@ -1106,7 +1133,7 @@ export const predictionCalculatorService = {
     }
     
     // --- EFECTOS DE CALENDARIO ---
-    // Fin de mes, viernes, fin de enero, etc. = mayor probabilidad de correcciones
+    // Solo informativo - el calendario NO ajusta predicciones
     let calendarEffectsInfo: CalendarEffectsAnalysis | undefined;
     try {
       const isPreciousMetal = preciousMetalsInfo?.isPreciousMetal || false;
@@ -1118,21 +1145,12 @@ export const predictionCalculatorService = {
         {
           isPreciousMetal,
           recentPerformance30d,
-          // TODO: detectar isSmallCap, isHighBeta
         }
       );
       
-      if (calendarAdjustment.applied) {
-        const oldChange = expectedChange;
-        const oldConfidence = finalConfidence;
-        
-        expectedChange = calendarAdjustment.adjustedChange;
-        finalConfidence = calendarAdjustment.adjustedConfidence;
-        
-        calendarEffectsInfo = calendarAdjustment.calendarInfo;
-        
-        logger.info(`[PredictionCalc] Calendar effects (${calendarEffectsInfo?.calendarRisk.level}): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
-      }
+      // Siempre obtener la info del calendario (aunque no ajusta nada)
+      calendarEffectsInfo = calendarAdjustment.calendarInfo;
+      
     } catch (e) {
       logger.warn(`[PredictionCalc] Could not analyze calendar effects: ${(e as Error).message}`);
     }
@@ -1159,6 +1177,40 @@ export const predictionCalculatorService = {
       }
     } catch (e) {
       logger.warn(`[PredictionCalc] Could not analyze market psychology: ${(e as Error).message}`);
+    }
+    
+    // --- EVENTOS GEOPOLÍTICOS ---
+    // Detecta aranceles, cambios de la Fed, tensiones comerciales, etc.
+    let geopoliticalInfo: GeopoliticalAnalysis | undefined;
+    let geopoliticalApplied = false;
+    try {
+      const geoAdjustment = await geopoliticalEventsService.applyToPrediction(
+        { change: expectedChange, confidence: finalConfidence },
+        symbol,
+        quote?.name,
+        this.inferAssetType(symbol, type)
+      );
+      
+      if (geoAdjustment.applied && geoAdjustment.geopoliticalInfo) {
+        const oldChange = expectedChange;
+        const oldConfidence = finalConfidence;
+        
+        expectedChange = geoAdjustment.adjustedChange;
+        finalConfidence = geoAdjustment.adjustedConfidence;
+        geopoliticalInfo = geoAdjustment.geopoliticalInfo;
+        geopoliticalApplied = true;
+        
+        logger.info(`[PredictionCalc] Geopolitical events (${geopoliticalInfo.overallRisk}, ${geopoliticalInfo.events.length} events): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
+        
+        if (geoAdjustment.appliedEvents?.length) {
+          logger.info(`[PredictionCalc] Applied geopolitical events: ${geoAdjustment.appliedEvents.join(', ')}`);
+        }
+      } else if (geoAdjustment.geopoliticalInfo?.hasActiveEvents) {
+        // Hay eventos pero no afectan directamente a este activo
+        geopoliticalInfo = geoAdjustment.geopoliticalInfo;
+      }
+    } catch (e) {
+      logger.warn(`[PredictionCalc] Could not analyze geopolitical events: ${(e as Error).message}`);
     }
     
     // --- MODELO PROBABILÍSTICO ---
@@ -1217,6 +1269,27 @@ export const predictionCalculatorService = {
                         timeframeDays <= 7 ? `${timeframeDays} días` : 
                         `${Math.round(timeframeDays / 7)} semanas`;
 
+    // --- GENERAR RECOMENDACIÓN INTELIGENTE ---
+    // Considera: predicción + psicología + calendario + tendencia largo plazo + fundamental
+    const recommendation = this.generateSmartRecommendation({
+      direction,
+      predictedChange: expectedChange,
+      confidence: finalConfidence,
+      change30d: historical.change30d || 0,
+      change90d: historical.change90d || 0,
+      volatility: historical.volatility || 20,
+      intradayChange: intradayChange || 0,
+      calendarRiskScore: calendarEffectsInfo?.calendarRisk.score || 0,
+      calendarDangerousCombination: calendarEffectsInfo?.dangerousCombination || calendarEffectsInfo?.extremeDanger || false,
+      psychologyState: marketPsychologyInfo?.currentState || 'neutral',
+      psychologyIntensity: marketPsychologyInfo?.stateIntensity || 50,
+      contrarianSignal: marketPsychologyInfo?.predictionImpact.contrarianSignal || false,
+      isPreciousMetal: preciousMetalsInfo?.isPreciousMetal || false,
+      technicalScore: technical?.technicalScore || 0,
+      fundamentalScore: financials?.fundamentalScore || 0,
+      targetVsCurrent: financials?.targetVsCurrent || 0,
+    });
+
     return {
       asset: quote?.name || symbol,
       symbol,
@@ -1228,6 +1301,7 @@ export const predictionCalculatorService = {
       predictedChange: expectedChange,
       direction,
       confidence: finalConfidence,
+      recommendation,
       factorBreakdown: {
         assetGroup,
         assetGroupDescription: groupConfig.description,
@@ -1334,6 +1408,21 @@ export const predictionCalculatorService = {
           .map(([bias, _]) => bias),
         contrarianSignal: marketPsychologyInfo.predictionImpact.contrarianSignal,
         signals: marketPsychologyInfo.signals,
+      } : undefined,
+      geopoliticalEvents: geopoliticalInfo ? {
+        hasActiveEvents: geopoliticalInfo.hasActiveEvents,
+        overallRisk: geopoliticalInfo.overallRisk,
+        marketDirection: geopoliticalInfo.marketImpact.direction,
+        marketMagnitude: geopoliticalInfo.marketImpact.magnitude,
+        volatilityMultiplier: geopoliticalInfo.marketImpact.volatilityMultiplier,
+        events: geopoliticalInfo.events.map(e => ({
+          type: e.type,
+          title: e.title,
+          severity: e.severity,
+        })),
+        signals: geopoliticalInfo.signals,
+        reasoning: geopoliticalInfo.reasoning,
+        applied: geopoliticalApplied,
       } : undefined,
       audit: {
         dataSources: [
@@ -1627,6 +1716,241 @@ export const predictionCalculatorService = {
     return {
       closeId: closePrediction.id,
       openNextDayId: openPrediction.id,
+    };
+  },
+
+  /**
+   * Genera una recomendación inteligente basada en múltiples factores
+   * NO solo mira la predicción a corto plazo, sino el contexto completo
+   */
+  generateSmartRecommendation(params: {
+    direction: 'up' | 'down' | 'neutral';
+    predictedChange: number;
+    confidence: number;
+    change30d: number;
+    change90d: number;
+    volatility: number;
+    intradayChange: number;
+    calendarRiskScore: number;
+    calendarDangerousCombination: boolean;
+    psychologyState: string;
+    psychologyIntensity: number;
+    contrarianSignal: boolean;
+    isPreciousMetal: boolean;
+    technicalScore: number;
+    fundamentalScore: number;
+    targetVsCurrent: number;
+  }): CalculatedPrediction['recommendation'] {
+    const {
+      direction, predictedChange, confidence, change30d, change90d,
+      volatility, intradayChange, calendarRiskScore, calendarDangerousCombination,
+      psychologyState, psychologyIntensity, contrarianSignal, isPreciousMetal,
+      technicalScore, fundamentalScore, targetVsCurrent,
+    } = params;
+
+    let action: 'strong_buy' | 'buy' | 'hold' | 'reduce' | 'sell' | 'strong_sell' | 'wait' = 'hold';
+    let reasoning = '';
+    let timeHorizon: 'short' | 'medium' | 'long' = 'medium';
+    let riskLevel: 'low' | 'medium' | 'high' | 'extreme' = 'medium';
+    let isContrarian = false;
+    const keyFactors: string[] = [];
+
+    // === CASO 1: CAÍDA POR PÁNICO/CAPITULACIÓN ===
+    // Si el mercado está en pánico pero el activo tiene buenos fundamentales → OPORTUNIDAD
+    if (['panic', 'capitulation', 'fear'].includes(psychologyState) && psychologyIntensity > 60) {
+      keyFactors.push(`Mercado en ${psychologyState} (${psychologyIntensity}/100)`);
+      
+      // Si tiene buenos fundamentales o target de analistas positivo
+      if (fundamentalScore > 20 || targetVsCurrent > 10) {
+        action = 'buy';
+        isContrarian = true;
+        reasoning = `El mercado está en ${psychologyState === 'panic' ? 'pánico' : psychologyState === 'capitulation' ? 'capitulación' : 'miedo'}, pero los fundamentales son sólidos. `;
+        reasoning += `Históricamente, comprar en pánico con buenos fundamentales da buenos resultados a medio/largo plazo.`;
+        timeHorizon = 'long';
+        riskLevel = 'high';
+        keyFactors.push('Buenos fundamentales');
+        if (targetVsCurrent > 10) keyFactors.push(`Target analistas +${targetVsCurrent.toFixed(0)}%`);
+      } else if (change90d > 20 && intradayChange < -5) {
+        // Activo que venía subiendo y cae fuerte por pánico general
+        action = 'hold';
+        reasoning = `Caída fuerte (-${Math.abs(intradayChange).toFixed(1)}% hoy) en contexto de pánico general. `;
+        reasoning += `Si la tesis original sigue válida, no vender en pánico. El pánico suele ser mal consejero.`;
+        timeHorizon = 'medium';
+        riskLevel = 'high';
+        keyFactors.push('No vender en pánico');
+      } else {
+        action = 'wait';
+        reasoning = `Mercado en ${psychologyState}, pero sin señales claras de valor. Esperar a que se estabilice.`;
+        timeHorizon = 'short';
+        riskLevel = 'extreme';
+        keyFactors.push('Alta incertidumbre');
+      }
+    }
+    
+    // === CASO 2: CAÍDA POR CALENDARIO (FIN DE MES, VIERNES) ===
+    // Estas caídas suelen ser temporales
+    else if (calendarDangerousCombination && intradayChange < -3) {
+      keyFactors.push('Caída por efectos de calendario');
+      
+      if (change90d > 30 && fundamentalScore >= 0) {
+        // Activo que venía muy bien, cae por rebalanceos de fin de mes
+        action = 'hold';
+        isContrarian = false;
+        reasoning = `Caída probablemente por rebalanceos de fin de mes/viernes, no por problemas del activo. `;
+        reasoning += `Si tu tesis sigue válida, mantener. Estas caídas suelen recuperarse en días siguientes.`;
+        timeHorizon = 'short';
+        riskLevel = 'medium';
+        keyFactors.push('Tendencia previa alcista');
+      } else if (change90d > 30 && change30d < -10) {
+        // Venía bien pero ya corrigió mucho
+        action = 'buy';
+        isContrarian = true;
+        reasoning = `Corrección significativa (-${Math.abs(change30d).toFixed(1)}% en 30d) en activo con buena tendencia de largo plazo. `;
+        reasoning += `Los efectos de calendario pueden estar amplificando la caída. Posible oportunidad de entrada.`;
+        timeHorizon = 'medium';
+        riskLevel = 'high';
+        keyFactors.push('Corrección sobre tendencia alcista');
+      } else {
+        action = 'wait';
+        reasoning = `Día de alto riesgo por calendario. Mejor esperar a que pase la tormenta antes de actuar.`;
+        timeHorizon = 'short';
+        riskLevel = 'high';
+        keyFactors.push('Esperar fin de efectos calendario');
+      }
+    }
+    
+    // === CASO 3: EUFORIA / COMPLACENCIA ===
+    // Precaución aunque la predicción sea alcista
+    else if (['euphoria', 'complacency'].includes(psychologyState) && psychologyIntensity > 60) {
+      keyFactors.push(`Mercado en ${psychologyState === 'euphoria' ? 'euforia' : 'complacencia'}`);
+      
+      if (direction === 'up' && predictedChange > 2) {
+        action = 'reduce';
+        isContrarian = true;
+        reasoning = `El mercado está en ${psychologyState === 'euphoria' ? 'euforia' : 'complacencia'}, históricamente peligroso. `;
+        reasoning += `Aunque la predicción es alcista, considera tomar beneficios parciales. La euforia precede correcciones.`;
+        timeHorizon = 'short';
+        riskLevel = 'high';
+        keyFactors.push('Señal contrarian: reducir');
+      } else {
+        action = 'hold';
+        reasoning = `Mercado complaciente. No es momento de aumentar posiciones significativamente.`;
+        timeHorizon = 'medium';
+        riskLevel = 'medium';
+      }
+    }
+    
+    // === CASO 4: PREDICCIÓN ALCISTA CON ALTA CONFIANZA ===
+    else if (direction === 'up' && confidence >= 65 && predictedChange > 1) {
+      keyFactors.push(`Predicción alcista +${predictedChange.toFixed(1)}%`);
+      keyFactors.push(`Confianza ${confidence}%`);
+      
+      if (technicalScore > 30 && fundamentalScore > 20) {
+        action = 'strong_buy';
+        reasoning = `Señales técnicas y fundamentales alineadas. Alta probabilidad de subida a corto/medio plazo.`;
+        timeHorizon = 'medium';
+        riskLevel = 'low';
+        keyFactors.push('Técnico y fundamental alineados');
+      } else if (technicalScore > 20 || change30d > 0) {
+        action = 'buy';
+        reasoning = `Tendencia favorable con buena confianza. Considerar entrada o aumentar posición.`;
+        timeHorizon = 'medium';
+        riskLevel = 'medium';
+      } else {
+        action = 'hold';
+        reasoning = `Predicción positiva pero señales mixtas. Mantener si ya tienes posición.`;
+        timeHorizon = 'medium';
+        riskLevel = 'medium';
+      }
+    }
+    
+    // === CASO 5: PREDICCIÓN BAJISTA CON ALTA CONFIANZA ===
+    else if (direction === 'down' && confidence >= 60 && predictedChange < -1) {
+      keyFactors.push(`Predicción bajista ${predictedChange.toFixed(1)}%`);
+      
+      if (technicalScore < -30 && fundamentalScore < -20) {
+        action = 'strong_sell';
+        reasoning = `Señales técnicas y fundamentales negativas. Considerar salir o reducir significativamente.`;
+        timeHorizon = 'short';
+        riskLevel = 'high';
+        keyFactors.push('Deterioro técnico y fundamental');
+      } else if (change30d < -10) {
+        action = 'sell';
+        reasoning = `Tendencia bajista establecida. Considerar reducir exposición.`;
+        timeHorizon = 'short';
+        riskLevel = 'high';
+      } else {
+        action = 'reduce';
+        reasoning = `Perspectiva negativa a corto plazo. Considerar reducir posición o ajustar stop-loss.`;
+        timeHorizon = 'short';
+        riskLevel = 'medium';
+      }
+    }
+    
+    // === CASO 6: ALTA VOLATILIDAD ===
+    else if (volatility > 50) {
+      keyFactors.push(`Volatilidad extrema (${volatility.toFixed(0)}%)`);
+      
+      action = 'wait';
+      reasoning = `Volatilidad muy alta (${volatility.toFixed(0)}%). En estas condiciones, las predicciones son menos fiables. `;
+      reasoning += `Considera reducir tamaño de posición o esperar a que se estabilice.`;
+      timeHorizon = 'short';
+      riskLevel = 'extreme';
+    }
+    
+    // === CASO 7: NEUTRAL / SIN SEÑAL CLARA ===
+    else if (direction === 'neutral' || confidence < 50) {
+      action = 'hold';
+      reasoning = `Sin señal clara de dirección. El mercado está indeciso. Mantener posición actual y seguir plan.`;
+      timeHorizon = 'medium';
+      riskLevel = 'medium';
+      keyFactors.push('Señal neutral');
+    }
+    
+    // === CASO DEFAULT ===
+    else {
+      action = 'hold';
+      reasoning = `Condiciones mixtas. Mantener estrategia actual y revisar si cambian las condiciones.`;
+      timeHorizon = 'medium';
+      riskLevel = 'medium';
+    }
+
+    // Ajustes para metales preciosos
+    if (isPreciousMetal && action === 'sell') {
+      reasoning += ` Nota: Los metales preciosos son activos refugio a largo plazo. Considera si la venta se alinea con tu estrategia de diversificación.`;
+      keyFactors.push('Activo refugio');
+    }
+
+    // Determinar emoji
+    const actionEmojis: Record<string, string> = {
+      strong_buy: '🚀',
+      buy: '💚',
+      hold: '🤝',
+      reduce: '⚡',
+      sell: '🔴',
+      strong_sell: '🚨',
+      wait: '⏳',
+    };
+
+    const actionTitles: Record<string, string> = {
+      strong_buy: 'Compra Fuerte',
+      buy: 'Comprar',
+      hold: 'Mantener',
+      reduce: 'Reducir',
+      sell: 'Vender',
+      strong_sell: 'Venta Urgente',
+      wait: 'Esperar',
+    };
+
+    return {
+      action,
+      emoji: actionEmojis[action],
+      title: actionTitles[action],
+      reasoning,
+      timeHorizon,
+      riskLevel,
+      isContrarian,
+      keyFactors,
     };
   },
 };
