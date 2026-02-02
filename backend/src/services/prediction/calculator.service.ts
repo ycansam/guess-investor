@@ -33,9 +33,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-    factorCorrelationService,
-    probabilisticModelService,
-    reinforcementLearningService,
+  factorCorrelationService,
+  probabilisticModelService,
+  reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
@@ -400,10 +400,11 @@ const ASSET_GROUP_WEIGHT_MULTIPLIERS: Record<AssetGroup, Record<string, number>>
     seasonality: 1.3, financials: 0.3, expectations: 0.5
   },
   commodity: {
-    // Materias primas: macro + forex + seasonality dominan
-    trend: 1.0, technical: 1.1, sentiment: 0.7, news: 0.9,
-    macro: 1.6, competitors: 0.2, forex: 1.5, institutional: 0.8,
-    seasonality: 1.4, financials: 0.1, expectations: 0.3
+    // Materias primas: macro + forex dominan, seasonality reducida (solo aplica a ciclos de demanda industrial)
+    // Nota: seasonality histórica es menos relevante que macro/USD para metales preciosos
+    trend: 1.0, technical: 1.1, sentiment: 0.7, news: 1.1,
+    macro: 1.8, competitors: 0.2, forex: 1.6, institutional: 0.8,
+    seasonality: 0.7, financials: 0.1, expectations: 0.3
   },
   reit: {
     // REITs: macro (tasas de interés) + financials
@@ -1245,6 +1246,19 @@ export const predictionCalculatorService = {
     if (direction === 'down' && finalConfidence > 60) {
       finalConfidence = Math.round(finalConfidence * 0.85); // -15% para bajistas
       logger.info(`[PredictionCalc] Bearish prediction confidence adjusted: ${finalConfidence}% (historical accuracy 41.8%)`);
+    }
+    
+    // --- PENALIZACIÓN POR MAGNITUD EXTREMA ---
+    // Predicciones muy grandes (>3% intradía, >6% swing) son estadísticamente improbables
+    // Reducir confianza proporcionalmente para reflejar la incertidumbre
+    const magnitudeThreshold = timeframeDays <= 1 ? 3.0 : 6.0;
+    const absChange = Math.abs(expectedChange);
+    if (absChange > magnitudeThreshold) {
+      const excessRatio = (absChange - magnitudeThreshold) / magnitudeThreshold;
+      const confidencePenalty = Math.min(25, Math.round(excessRatio * 20)); // Max -25%
+      const oldConfidence = finalConfidence;
+      finalConfidence = Math.max(15, finalConfidence - confidencePenalty);
+      logger.info(`[PredictionCalc] Extreme magnitude penalty (${absChange.toFixed(2)}% > ${magnitudeThreshold}%): confidence ${oldConfidence}% → ${finalConfidence}%`);
     }
     
     // --- LÓGICA DE CONFIANZA BAJA = NEUTRAL ---
