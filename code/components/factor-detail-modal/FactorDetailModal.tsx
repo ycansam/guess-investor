@@ -659,10 +659,10 @@ const TrendDetail = ({ data }: { data: any }) => {
               <Text style={[styles.srSubtitle, { color: COLORS.red }]}>🔺 Resistencias (arriba)</Text>
               {data.resistances.slice(0, 2).map((r: any, i: number) => (
                 <View key={i} style={styles.srItem}>
-                  <Text style={styles.srValue}>${safeToFixed(r.price)}</Text>
-                  {typeof r.distance === 'number' && (
+                  <Text style={styles.srValue}>${safeToFixed(r.level ?? r.price)}</Text>
+                  {typeof (r.distancePercent ?? r.distance) === 'number' && (
                     <Text style={[styles.srDistance, { color: COLORS.red }]}>
-                      +{safeToFixed(Math.abs(r.distance))}%
+                      +{safeToFixed(Math.abs(r.distancePercent ?? r.distance))}%
                     </Text>
                   )}
                 </View>
@@ -684,10 +684,10 @@ const TrendDetail = ({ data }: { data: any }) => {
               <Text style={[styles.srSubtitle, { color: COLORS.green }]}>🔻 Soportes (abajo)</Text>
               {data.supports.slice(0, 2).map((s: any, i: number) => (
                 <View key={i} style={styles.srItem}>
-                  <Text style={styles.srValue}>${safeToFixed(s.price)}</Text>
-                  {typeof s.distance === 'number' && (
+                  <Text style={styles.srValue}>${safeToFixed(s.level ?? s.price)}</Text>
+                  {typeof (s.distancePercent ?? s.distance) === 'number' && (
                     <Text style={[styles.srDistance, { color: COLORS.green }]}>
-                      -{safeToFixed(Math.abs(s.distance))}%
+                      -{safeToFixed(Math.abs(s.distancePercent ?? s.distance))}%
                     </Text>
                   )}
                 </View>
@@ -775,7 +775,7 @@ const TrendDetail = ({ data }: { data: any }) => {
             </Text>
             {typeof data.trendPrediction.probability === 'number' && (
               <Text style={styles.predictionProb}>
-                {safeToFixed(data.trendPrediction.probability * 100, 0)}% probabilidad
+                {safeToFixed(data.trendPrediction.probability, 0)}% probabilidad
               </Text>
             )}
             {data.trendPrediction.reasoning && (

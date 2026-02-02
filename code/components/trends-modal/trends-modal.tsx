@@ -226,8 +226,8 @@ export function TrendsModal({ visible, onClose, trends, loading, error }: Trends
           <Text style={styles.sectionTitle}>📍 Niveles Clave</Text>
           <View style={styles.levelsCard}>
             <View style={styles.levelSection}>
-              <Text style={styles.levelTitle}>Resistencias (arriba)</Text>
-              {trends.resistances.slice(0, 2).map((r, i) => (
+              <Text style={styles.levelTitle}>🔺 Resistencias (arriba)</Text>
+              {trends.resistances && trends.resistances.length > 0 ? trends.resistances.slice(0, 2).map((r, i) => (
                 <View key={i} style={styles.levelItem}>
                   <Text style={[styles.levelPrice, { color: theme.colors.danger }]}>
                     ${r.level.toFixed(2)}
@@ -235,7 +235,7 @@ export function TrendsModal({ visible, onClose, trends, loading, error }: Trends
                   <Text style={styles.levelDistance}>+{r.distancePercent.toFixed(1)}%</Text>
                   {renderStrengthIndicator(r.strength, theme.colors.danger)}
                 </View>
-              ))}
+              )) : <Text style={styles.noLevelData}>Sin resistencias cercanas</Text>}
             </View>
             <View style={styles.currentPriceRow}>
               <View style={styles.currentPriceLine} />
@@ -243,8 +243,8 @@ export function TrendsModal({ visible, onClose, trends, loading, error }: Trends
               <View style={styles.currentPriceLine} />
             </View>
             <View style={styles.levelSection}>
-              <Text style={styles.levelTitle}>Soportes (abajo)</Text>
-              {trends.supports.slice(0, 2).map((s, i) => (
+              <Text style={styles.levelTitle}>🔻 Soportes (abajo)</Text>
+              {trends.supports && trends.supports.length > 0 ? trends.supports.slice(0, 2).map((s, i) => (
                 <View key={i} style={styles.levelItem}>
                   <Text style={[styles.levelPrice, { color: theme.colors.success }]}>
                     ${s.level.toFixed(2)}
@@ -252,7 +252,7 @@ export function TrendsModal({ visible, onClose, trends, loading, error }: Trends
                   <Text style={styles.levelDistance}>{s.distancePercent.toFixed(1)}%</Text>
                   {renderStrengthIndicator(s.strength, theme.colors.success)}
                 </View>
-              ))}
+              )) : <Text style={styles.noLevelData}>Sin soportes cercanos</Text>}
             </View>
           </View>
         </View>
@@ -577,6 +577,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.textSecondary,
     marginRight: 12,
+  },
+  noLevelData: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    fontStyle: 'italic',
+    paddingVertical: 8,
   },
   currentPriceRow: {
     flexDirection: 'row',
