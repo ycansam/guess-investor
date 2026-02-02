@@ -1,15 +1,20 @@
 /**
- * Geopolitical & Macro Events Service
+ * Geopolitical & Macro Events Service - VERSIÓN DINÁMICA
  * 
- * Detecta y analiza eventos macro/geopolíticos que impactan el mercado:
+ * Detecta AUTOMÁTICAMENTE eventos macro/geopolíticos analizando noticias en tiempo real:
  * - Aranceles y guerras comerciales
- * - Cambios en política de la Fed (nuevos presidentes, cambios de tasa)
+ * - Cambios en política de la Fed
  * - Tensiones geopolíticas
  * - Sanciones económicas
- * - Crisis de deuda soberana
+ * - Crashes y volatilidad extrema
+ * - Crisis de deuda
  * 
- * Estos eventos tienen impacto inmediato y significativo en los mercados,
- * especialmente en sectores específicos.
+ * El sistema analiza el contenido de las noticias y determina:
+ * 1. Tipo de evento
+ * 2. Severidad del impacto
+ * 3. Sectores afectados
+ * 4. Países/regiones involucrados
+ * 5. Si es positivo o negativo para el mercado
  */
 
 import { logger } from '../../middleware/logger.js';
@@ -17,18 +22,22 @@ import { logger } from '../../middleware/logger.js';
 // ===== TIPOS =====
 
 export type EventType = 
-  | 'tariff_announcement'      // Anuncio de aranceles
-  | 'trade_war_escalation'     // Escalada de guerra comercial
-  | 'trade_deal'               // Acuerdo comercial
-  | 'fed_policy_change'        // Cambio de política Fed
-  | 'fed_chair_nomination'     // Nominación nuevo presidente Fed
-  | 'rate_decision'            // Decisión de tasas
-  | 'geopolitical_tension'     // Tensión geopolítica
-  | 'sanctions'                // Sanciones económicas
-  | 'debt_crisis'              // Crisis de deuda
-  | 'currency_intervention'    // Intervención cambiaria
-  | 'commodity_shock'          // Shock de commodities
-  | 'banking_crisis';          // Crisis bancaria
+  | 'tariff_announcement'
+  | 'trade_war_escalation'
+  | 'trade_deal'
+  | 'fed_policy_change'
+  | 'fed_chair_nomination'
+  | 'rate_decision'
+  | 'geopolitical_tension'
+  | 'sanctions'
+  | 'debt_crisis'
+  | 'currency_intervention'
+  | 'commodity_shock'
+  | 'market_crash'
+  | 'banking_crisis'
+  | 'crypto_volatility'
+  | 'earnings_shock'
+  | 'regulatory_action';
 
 export type ImpactSeverity = 'low' | 'moderate' | 'high' | 'severe' | 'extreme';
 
@@ -39,21 +48,16 @@ export interface GeopoliticalEvent {
   severity: ImpactSeverity;
   detectedAt: Date;
   expiresAt: Date;
+  sourceUrl?: string;
   
-  // Impacto en mercados
   impact: {
-    overall: number;           // -100 a +100 impacto general
-    volatilityIncrease: number; // Multiplicador de volatilidad esperada
-    confidenceReduction: number; // Reducción de confianza en predicciones (%)
+    overall: number;
+    volatilityIncrease: number;
+    confidenceReduction: number;
   };
   
-  // Sectores más afectados (positivo o negativo)
   sectorImpact: Record<string, number>;
-  
-  // Países/regiones afectados
   regionsAffected: string[];
-  
-  // Keywords para detectar activos relacionados
   relatedKeywords: string[];
 }
 
@@ -63,425 +67,590 @@ export interface GeopoliticalAnalysis {
   overallRisk: ImpactSeverity;
   marketImpact: {
     direction: 'bullish' | 'bearish' | 'mixed' | 'neutral';
-    magnitude: number;         // -100 a +100
+    magnitude: number;
     volatilityMultiplier: number;
-    confidenceAdjustment: number; // Porcentaje de reducción
+    confidenceAdjustment: number;
   };
   signals: string[];
   reasoning: string;
 }
 
-// ===== KEYWORDS PARA DETECCIÓN =====
+// ===== PATRONES DE DETECCIÓN INTELIGENTE =====
 
-const TARIFF_KEYWORDS = [
-  'tariff', 'tariffs', 'arancel', 'aranceles', 
-  'import duty', 'import tax', 'trade barrier',
-  'trade war', 'guerra comercial', 'protectionism',
+interface DetectionPattern {
+  type: EventType;
+  requiredKeywords: string[];
+  boostKeywords: string[];
+  negativeKeywords: string[];
+  positiveKeywords: string[];
+  baseSeverity: ImpactSeverity;
+  baseImpact: number;
+  durationDays: number;
+  defaultSectorImpact: Record<string, number>;
+  assetKeywords: string[];
+}
+
+const DETECTION_PATTERNS: DetectionPattern[] = [
+  // === ARANCELES Y GUERRA COMERCIAL ===
+  {
+    type: 'tariff_announcement',
+    requiredKeywords: ['tariff', 'tariffs', 'arancel', 'import duty', 'import tax'],
+    boostKeywords: ['announce', 'impose', 'new', 'increase', 'raise', 'hike', '%'],
+    negativeKeywords: ['impose', 'raise', 'hike', 'increase', 'new tariff', 'retaliat'],
+    positiveKeywords: ['remove', 'cut', 'reduce', 'lift', 'exempt', 'pause', 'delay'],
+    baseSeverity: 'high',
+    baseImpact: -25,
+    durationDays: 7,
+    defaultSectorImpact: {
+      'technology': -25, 'semiconductors': -35, 'automotive': -30,
+      'industrial': -20, 'materials': -25, 'retail': -15,
+      'agriculture': -30, 'manufacturing': -25,
+    },
+    assetKeywords: ['china', 'chinese', 'mexico', 'canada', 'eu', 'europe', 'import', 'export', 'trade', 'manufacturing'],
+  },
+  {
+    type: 'trade_war_escalation',
+    requiredKeywords: ['trade war', 'guerra comercial', 'retaliat', 'counter-tariff', 'trade tension'],
+    boostKeywords: ['escalat', 'intensif', 'worsen', 'deepen', 'spread'],
+    negativeKeywords: ['escalat', 'worsen', 'threat', 'warn'],
+    positiveKeywords: ['ease', 'cool', 'de-escalat', 'talks', 'negotiat'],
+    baseSeverity: 'severe',
+    baseImpact: -35,
+    durationDays: 14,
+    defaultSectorImpact: {
+      'technology': -30, 'semiconductors': -40, 'automotive': -35,
+      'industrial': -30, 'emerging_markets': -35,
+    },
+    assetKeywords: ['global', 'international', 'supply chain', 'export', 'import'],
+  },
+  {
+    type: 'trade_deal',
+    requiredKeywords: ['trade deal', 'trade agreement', 'acuerdo comercial', 'free trade', 'bilateral'],
+    boostKeywords: ['sign', 'reach', 'agree', 'announce', 'historic', 'breakthrough'],
+    negativeKeywords: ['fail', 'collapse', 'reject', 'block'],
+    positiveKeywords: ['sign', 'reach', 'agree', 'lower tariff', 'reduce barrier'],
+    baseSeverity: 'moderate',
+    baseImpact: 15,
+    durationDays: 7,
+    defaultSectorImpact: {
+      'technology': 15, 'manufacturing': 20, 'retail': 10,
+      'emerging_markets': 20, 'industrial': 15,
+    },
+    assetKeywords: ['trade', 'export', 'import', 'bilateral'],
+  },
+  
+  // === FED Y POLÍTICA MONETARIA ===
+  {
+    type: 'fed_chair_nomination',
+    requiredKeywords: ['fed chair', 'fed chairman', 'federal reserve chair', 'fed president', 'fed nominee'],
+    boostKeywords: ['nomin', 'appoint', 'pick', 'select', 'name', 'trump', 'biden'],
+    negativeKeywords: ['hawkish', 'hawk', 'tight', 'inflation fight'],
+    positiveKeywords: ['dovish', 'dove', 'accommodat', 'stimul'],
+    baseSeverity: 'high',
+    baseImpact: -15,
+    durationDays: 14,
+    defaultSectorImpact: {
+      'technology': -20, 'growth': -25, 'reits': -20,
+      'utilities': -15, 'financials': 10, 'banks': 15,
+    },
+    assetKeywords: ['growth', 'tech', 'nasdaq', 'rate sensitive', 'dividend', 'reit', 'bond'],
+  },
+  {
+    type: 'rate_decision',
+    requiredKeywords: ['rate hike', 'rate cut', 'interest rate', 'fed rate', 'basis point', 'bps'],
+    boostKeywords: ['decision', 'announce', 'fomc', 'meeting', 'unexpect', 'surprise'],
+    negativeKeywords: ['hike', 'raise', 'increase', 'higher', 'hawk'],
+    positiveKeywords: ['cut', 'lower', 'reduce', 'pause', 'hold', 'dove'],
+    baseSeverity: 'high',
+    baseImpact: 0,
+    durationDays: 5,
+    defaultSectorImpact: {
+      'technology': -15, 'growth': -20, 'reits': -25,
+      'financials': 15, 'banks': 20, 'utilities': -10,
+    },
+    assetKeywords: ['rate sensitive', 'growth', 'dividend', 'bond', 'treasury'],
+  },
+  {
+    type: 'fed_policy_change',
+    requiredKeywords: ['federal reserve', 'fed policy', 'monetary policy', 'quantitative', 'qe', 'taper'],
+    boostKeywords: ['shift', 'change', 'pivot', 'reverse', 'signal', 'statement'],
+    negativeKeywords: ['tighten', 'reduce', 'end qe', 'hawkish', 'inflation'],
+    positiveKeywords: ['ease', 'stimulus', 'dovish', 'inject', 'support'],
+    baseSeverity: 'moderate',
+    baseImpact: -10,
+    durationDays: 10,
+    defaultSectorImpact: {
+      'technology': -15, 'growth': -20, 'financials': 10,
+    },
+    assetKeywords: ['fed', 'monetary', 'liquidity', 'treasury'],
+  },
+  
+  // === GEOPOLÍTICA ===
+  {
+    type: 'geopolitical_tension',
+    requiredKeywords: ['military', 'troops', 'missile', 'attack', 'strike', 'invasion', 'war', 'conflict'],
+    boostKeywords: ['launch', 'deploy', 'escalat', 'threat', 'border', 'nuclear'],
+    negativeKeywords: ['attack', 'strike', 'launch', 'invade', 'escalat', 'threat'],
+    positiveKeywords: ['ceasefire', 'peace', 'withdraw', 'de-escalat', 'talks'],
+    baseSeverity: 'severe',
+    baseImpact: -30,
+    durationDays: 14,
+    defaultSectorImpact: {
+      'defense': 25, 'oil': 20, 'energy': 15,
+      'airlines': -30, 'travel': -25, 'consumer': -15,
+    },
+    assetKeywords: ['defense', 'oil', 'gold', 'safe haven', 'military'],
+  },
+  {
+    type: 'sanctions',
+    requiredKeywords: ['sanction', 'embargo', 'ban', 'restrict', 'blacklist'],
+    boostKeywords: ['impose', 'new', 'expand', 'target', 'treasury'],
+    negativeKeywords: ['impose', 'expand', 'new', 'target'],
+    positiveKeywords: ['lift', 'ease', 'remove', 'waiver', 'exempt'],
+    baseSeverity: 'high',
+    baseImpact: -20,
+    durationDays: 30,
+    defaultSectorImpact: {
+      'energy': -25, 'financials': -20, 'technology': -15,
+    },
+    assetKeywords: ['russia', 'iran', 'china', 'venezuela', 'oil', 'bank'],
+  },
+  
+  // === MERCADOS Y VOLATILIDAD ===
+  {
+    type: 'market_crash',
+    requiredKeywords: ['crash', 'plunge', 'plummet', 'tumble', 'rout', 'selloff', 'sell-off', 'bloodbath'],
+    boostKeywords: ['worst', 'historic', 'record', 'billion', 'trillion', 'wipe'],
+    negativeKeywords: ['crash', 'plunge', 'worst', 'panic', 'fear'],
+    positiveKeywords: ['recover', 'rebound', 'bounce', 'stabiliz'],
+    baseSeverity: 'severe',
+    baseImpact: -40,
+    durationDays: 5,
+    defaultSectorImpact: {
+      'technology': -35, 'growth': -40, 'small_cap': -45,
+      'financials': -30, 'consumer': -25,
+    },
+    assetKeywords: ['stock', 'market', 'index', 'nasdaq', 's&p', 'dow'],
+  },
+  {
+    type: 'commodity_shock',
+    requiredKeywords: ['oil price', 'gold price', 'silver', 'copper', 'commodity'],
+    boostKeywords: ['surge', 'crash', 'plunge', 'spike', 'soar', 'collapse', 'record'],
+    negativeKeywords: ['crash', 'plunge', 'collapse', 'tumble', 'drop'],
+    positiveKeywords: ['surge', 'soar', 'rally', 'spike', 'record high'],
+    baseSeverity: 'high',
+    baseImpact: -20,
+    durationDays: 5,
+    defaultSectorImpact: {
+      'energy': -25, 'materials': -20, 'mining': -25,
+      'precious_metals': -30, 'commodities': -30,
+    },
+    assetKeywords: ['gold', 'silver', 'oil', 'copper', 'commodity', 'mining', 'energy'],
+  },
+  {
+    type: 'crypto_volatility',
+    requiredKeywords: ['bitcoin', 'crypto', 'cryptocurrency', 'ethereum'],
+    boostKeywords: ['crash', 'plunge', 'liquidat', 'billion', 'surge', 'rally', 'record'],
+    negativeKeywords: ['crash', 'plunge', 'liquidat', 'hack', 'fraud', 'ban'],
+    positiveKeywords: ['surge', 'rally', 'record', 'adopt', 'approv', 'etf'],
+    baseSeverity: 'high',
+    baseImpact: -15,
+    durationDays: 3,
+    defaultSectorImpact: {
+      'crypto': -35, 'blockchain': -25, 'fintech': -15,
+    },
+    assetKeywords: ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'coinbase', 'blockchain'],
+  },
+  
+  // === CRISIS FINANCIERAS ===
+  {
+    type: 'banking_crisis',
+    requiredKeywords: ['bank fail', 'bank collapse', 'bank run', 'banking crisis', 'svb', 'silicon valley bank'],
+    boostKeywords: ['fdic', 'bailout', 'rescue', 'contagion', 'systemic'],
+    negativeKeywords: ['fail', 'collapse', 'run', 'crisis', 'contagion'],
+    positiveKeywords: ['rescue', 'stabiliz', 'contain', 'recover'],
+    baseSeverity: 'extreme',
+    baseImpact: -45,
+    durationDays: 14,
+    defaultSectorImpact: {
+      'financials': -50, 'banks': -60, 'regional_banks': -70,
+      'technology': -25, 'reits': -30,
+    },
+    assetKeywords: ['bank', 'financial', 'deposit', 'credit'],
+  },
+  {
+    type: 'debt_crisis',
+    requiredKeywords: ['debt crisis', 'default', 'debt ceiling', 'sovereign debt', 'bond yield'],
+    boostKeywords: ['imminent', 'warn', 'deadline', 'spike', 'surge'],
+    negativeKeywords: ['crisis', 'default', 'spike', 'risk'],
+    positiveKeywords: ['deal', 'agree', 'resolve', 'avoid'],
+    baseSeverity: 'severe',
+    baseImpact: -35,
+    durationDays: 14,
+    defaultSectorImpact: {
+      'financials': -30, 'government': -40, 'bonds': -35,
+    },
+    assetKeywords: ['treasury', 'bond', 'debt', 'government'],
+  },
+  
+  // === REGULACIÓN ===
+  {
+    type: 'regulatory_action',
+    requiredKeywords: ['antitrust', 'regulat', 'lawsuit', 'investig', 'fine', 'penalty', 'sec', 'ftc', 'doj'],
+    boostKeywords: ['billion', 'record', 'break up', 'monopoly', 'fraud'],
+    negativeKeywords: ['sue', 'fine', 'penalty', 'ban', 'block', 'investigate'],
+    positiveKeywords: ['settle', 'dismiss', 'clear', 'approve'],
+    baseSeverity: 'moderate',
+    baseImpact: -15,
+    durationDays: 7,
+    defaultSectorImpact: {
+      'technology': -20, 'big_tech': -30, 'financials': -15,
+    },
+    assetKeywords: ['tech', 'big tech', 'antitrust', 'regulation'],
+  },
 ];
 
-const FED_KEYWORDS = [
-  'federal reserve', 'fed chair', 'fed chairman', 'fed president',
-  'jerome powell', 'kevin warsh', 'interest rate', 'rate hike', 'rate cut',
-  'monetary policy', 'quantitative easing', 'qe', 'tightening',
-  'fomc', 'federal open market',
-];
-
-const GEOPOLITICAL_KEYWORDS = [
-  'sanctions', 'embargo', 'sanciones', 'military', 'invasion',
-  'war', 'conflict', 'missile', 'nuclear', 'tension',
-  'crisis', 'diplomatic', 'blockade',
-];
-
-const TRADE_DEAL_KEYWORDS = [
-  'trade deal', 'trade agreement', 'acuerdo comercial',
-  'free trade', 'tariff reduction', 'trade talks',
-  'trade negotiations', 'bilateral agreement',
-];
-
-// ===== SECTOR IMPACTS =====
-
-const TARIFF_SECTOR_IMPACT: Record<string, number> = {
-  'technology': -25,
-  'semiconductors': -35,
-  'automotive': -30,
-  'industrial': -20,
-  'materials': -25,
-  'consumer_discretionary': -20,
-  'retail': -15,
-  'agriculture': -30,
-  'defense': 10,      // Beneficia de tensiones
-  'domestic_services': 5, // Menos expuesto
+// === PAÍSES Y REGIONES ===
+const COUNTRY_PATTERNS: Record<string, string[]> = {
+  'US': ['us', 'u.s.', 'united states', 'america', 'washington', 'trump', 'biden', 'congress'],
+  'China': ['china', 'chinese', 'beijing', 'xi jinping', 'prc'],
+  'EU': ['europe', 'european', 'eu', 'brussels', 'germany', 'france', 'ecb'],
+  'UK': ['uk', 'britain', 'british', 'london', 'england', 'boe'],
+  'Japan': ['japan', 'japanese', 'tokyo', 'boj', 'yen'],
+  'India': ['india', 'indian', 'mumbai', 'rbi', 'modi'],
+  'Russia': ['russia', 'russian', 'moscow', 'putin', 'kremlin'],
+  'Mexico': ['mexico', 'mexican'],
+  'Canada': ['canada', 'canadian', 'ottawa'],
+  'Brazil': ['brazil', 'brazilian'],
+  'Middle East': ['iran', 'saudi', 'israel', 'opec', 'middle east', 'oil'],
+  'Asia': ['asia', 'asian', 'korea', 'taiwan', 'vietnam'],
 };
 
-const FED_HAWKISH_SECTOR_IMPACT: Record<string, number> = {
-  'technology': -30,
-  'growth': -35,
-  'reits': -25,
-  'utilities': -20,
-  'consumer_discretionary': -20,
-  'financials': 15,   // Bancos benefician de tasas altas
-  'value': 5,
-};
-
-const FED_DOVISH_SECTOR_IMPACT: Record<string, number> = {
-  'technology': 25,
-  'growth': 30,
-  'reits': 20,
-  'utilities': 15,
-  'consumer_discretionary': 15,
-  'financials': -10,
-  'precious_metals': 20,
-};
-
-// ===== CACHE Y ESTADO =====
+// ===== CACHE =====
 
 interface EventCache {
   events: GeopoliticalEvent[];
   lastFetch: Date;
-  manualEvents: GeopoliticalEvent[]; // Eventos agregados manualmente
+  newsHashes: Set<string>;
 }
 
 let eventCache: EventCache = {
   events: [],
   lastFetch: new Date(0),
-  manualEvents: [],
+  newsHashes: new Set(),
 };
 
-const CACHE_TTL = 30 * 60 * 1000; // 30 minutos
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutos
 
-// ===== FUNCIONES AUXILIARES =====
+// ===== FUNCIONES DE ANÁLISIS =====
 
-function calculateSeverityMultipliers(severity: ImpactSeverity): {
-  volatilityMultiplier: number;
-  confidenceReduction: number;
-} {
-  switch (severity) {
-    case 'extreme':
-      return { volatilityMultiplier: 2.5, confidenceReduction: 40 };
-    case 'severe':
-      return { volatilityMultiplier: 2.0, confidenceReduction: 30 };
-    case 'high':
-      return { volatilityMultiplier: 1.6, confidenceReduction: 20 };
-    case 'moderate':
-      return { volatilityMultiplier: 1.3, confidenceReduction: 10 };
-    case 'low':
-    default:
-      return { volatilityMultiplier: 1.1, confidenceReduction: 5 };
-  }
+function hashNews(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 50);
 }
 
-function determineSeverity(score: number): ImpactSeverity {
-  const absScore = Math.abs(score);
-  if (absScore >= 80) return 'extreme';
-  if (absScore >= 60) return 'severe';
-  if (absScore >= 40) return 'high';
-  if (absScore >= 20) return 'moderate';
+function detectCountries(text: string): string[] {
+  const lowerText = text.toLowerCase();
+  const detected: string[] = [];
+  
+  for (const [country, patterns] of Object.entries(COUNTRY_PATTERNS)) {
+    if (patterns.some(p => lowerText.includes(p))) {
+      detected.push(country);
+    }
+  }
+  
+  return detected.length > 0 ? detected : ['Global'];
+}
+
+function countKeywordMatches(text: string, keywords: string[]): number {
+  const lowerText = text.toLowerCase();
+  return keywords.filter(kw => lowerText.includes(kw.toLowerCase())).length;
+}
+
+function calculateSeverity(
+  baseScore: number,
+  boostMatches: number,
+  hasPercentage: boolean
+): ImpactSeverity {
+  let score = baseScore + (boostMatches * 10) + (hasPercentage ? 15 : 0);
+  
+  if (score >= 80) return 'extreme';
+  if (score >= 60) return 'severe';
+  if (score >= 40) return 'high';
+  if (score >= 20) return 'moderate';
   return 'low';
 }
 
-function isAssetAffected(
-  symbol: string, 
-  assetName: string | undefined,
-  event: GeopoliticalEvent
-): boolean {
-  const searchText = `${symbol} ${assetName || ''}`.toLowerCase();
-  return event.relatedKeywords.some(keyword => 
-    searchText.includes(keyword.toLowerCase())
-  );
+function extractPercentage(text: string): number | null {
+  const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
+  return match ? parseFloat(match[1]) : null;
 }
 
-// ===== CREACIÓN DE EVENTOS =====
+function extractBillions(text: string): number | null {
+  const match = text.match(/\$?\s*(\d+(?:\.\d+)?)\s*(billion|trillion|B|T)/i);
+  if (!match) return null;
+  const value = parseFloat(match[1]);
+  const unit = match[2].toLowerCase();
+  return unit.startsWith('t') ? value * 1000 : value;
+}
 
-function createTariffEvent(
-  countries: string[],
-  tariffRate: number,
-  isRetaliatory: boolean = false
-): GeopoliticalEvent {
-  const severity = tariffRate >= 25 ? 'severe' : tariffRate >= 10 ? 'high' : 'moderate';
-  const multipliers = calculateSeverityMultipliers(severity);
+function analyzeNewsItem(
+  title: string,
+  description: string = ''
+): GeopoliticalEvent | null {
+  const fullText = `${title} ${description}`.toLowerCase();
   
-  const baseImpact = -Math.min(50, tariffRate * 1.5);
+  // Buscar qué patrón coincide mejor
+  let bestMatch: { pattern: DetectionPattern; score: number } | null = null;
+  
+  for (const pattern of DETECTION_PATTERNS) {
+    const requiredMatches = countKeywordMatches(fullText, pattern.requiredKeywords);
+    
+    if (requiredMatches === 0) continue;
+    
+    const boostMatches = countKeywordMatches(fullText, pattern.boostKeywords);
+    const score = (requiredMatches * 30) + (boostMatches * 10);
+    
+    if (!bestMatch || score > bestMatch.score) {
+      bestMatch = { pattern, score };
+    }
+  }
+  
+  if (!bestMatch || bestMatch.score < 30) return null;
+  
+  const pattern = bestMatch.pattern;
+  
+  // Analizar sentimiento del evento
+  const negativeMatches = countKeywordMatches(fullText, pattern.negativeKeywords);
+  const positiveMatches = countKeywordMatches(fullText, pattern.positiveKeywords);
+  const isPositive = positiveMatches > negativeMatches;
+  
+  // Calcular impacto
+  let impact = pattern.baseImpact;
+  if (isPositive && pattern.baseImpact < 0) {
+    impact = Math.abs(pattern.baseImpact) * 0.7;
+  } else if (!isPositive && pattern.baseImpact > 0) {
+    impact = -pattern.baseImpact;
+  }
+  
+  // Ajustar por porcentajes mencionados
+  const percentage = extractPercentage(fullText);
+  if (percentage) {
+    if (percentage >= 25) impact *= 1.5;
+    else if (percentage >= 10) impact *= 1.2;
+  }
+  
+  // Ajustar por cantidades en billones
+  const billions = extractBillions(fullText);
+  if (billions) {
+    if (billions >= 100) impact *= 1.5;
+    else if (billions >= 10) impact *= 1.2;
+  }
+  
+  // Limitar impacto
+  impact = Math.max(-100, Math.min(100, impact));
+  
+  // Calcular severidad
+  const boostMatches = countKeywordMatches(fullText, pattern.boostKeywords);
+  const severity = calculateSeverity(bestMatch.score, boostMatches, percentage !== null);
+  
+  // Detectar países
+  const regions = detectCountries(fullText);
+  
+  // Ajustar sector impact según si es positivo o negativo
+  const sectorImpact = { ...pattern.defaultSectorImpact };
+  if (isPositive) {
+    for (const sector of Object.keys(sectorImpact)) {
+      sectorImpact[sector] = -sectorImpact[sector] * 0.6;
+    }
+  }
+  
+  // Multiplicadores de volatilidad y confianza
+  const severityMultipliers: Record<ImpactSeverity, { vol: number; conf: number }> = {
+    'extreme': { vol: 2.5, conf: 40 },
+    'severe': { vol: 2.0, conf: 30 },
+    'high': { vol: 1.6, conf: 20 },
+    'moderate': { vol: 1.3, conf: 10 },
+    'low': { vol: 1.1, conf: 5 },
+  };
+  
+  const multipliers = severityMultipliers[severity];
   
   return {
-    type: isRetaliatory ? 'trade_war_escalation' : 'tariff_announcement',
-    title: isRetaliatory 
-      ? `Guerra comercial: aranceles retaliatorios con ${countries.join(', ')}`
-      : `Nuevos aranceles del ${tariffRate}% anunciados`,
-    description: `Aranceles de ${tariffRate}% ${isRetaliatory ? 'retaliatorios ' : ''}afectando comercio con ${countries.join(', ')}`,
+    type: pattern.type,
+    title: title.length > 150 ? title.substring(0, 147) + '...' : title,
+    description: description || title,
     severity,
     detectedAt: new Date(),
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 días
+    expiresAt: new Date(Date.now() + pattern.durationDays * 24 * 60 * 60 * 1000),
     impact: {
-      overall: baseImpact * (isRetaliatory ? 1.5 : 1),
-      volatilityIncrease: multipliers.volatilityMultiplier,
-      confidenceReduction: multipliers.confidenceReduction,
+      overall: Math.round(impact),
+      volatilityIncrease: multipliers.vol,
+      confidenceReduction: multipliers.conf,
     },
-    sectorImpact: TARIFF_SECTOR_IMPACT,
-    regionsAffected: countries,
-    relatedKeywords: [
-      'china', 'chinese', 'mexico', 'mexican', 'canada', 'canadian',
-      'import', 'export', 'trade', 'manufacturing', 'supply chain',
-      ...countries.map(c => c.toLowerCase()),
-    ],
+    sectorImpact,
+    regionsAffected: regions,
+    relatedKeywords: [...pattern.assetKeywords, ...regions.map(r => r.toLowerCase())],
   };
 }
 
-function createFedEvent(
-  eventSubType: 'hawkish' | 'dovish' | 'chair_change',
-  details: string
-): GeopoliticalEvent {
-  const isHawkish = eventSubType === 'hawkish';
-  const isChairChange = eventSubType === 'chair_change';
-  
-  const severity = isChairChange ? 'high' : 'moderate';
-  const multipliers = calculateSeverityMultipliers(severity);
-  
-  return {
-    type: isChairChange ? 'fed_chair_nomination' : 'fed_policy_change',
-    title: isChairChange 
-      ? 'Nuevo presidente de la Fed nominado'
-      : `Fed señala política ${isHawkish ? 'restrictiva' : 'expansiva'}`,
-    description: details,
-    severity,
-    detectedAt: new Date(),
-    expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 días
-    impact: {
-      overall: isHawkish ? -20 : 15,
-      volatilityIncrease: multipliers.volatilityMultiplier,
-      confidenceReduction: multipliers.confidenceReduction,
-    },
-    sectorImpact: isHawkish ? FED_HAWKISH_SECTOR_IMPACT : FED_DOVISH_SECTOR_IMPACT,
-    regionsAffected: ['US', 'Global'],
-    relatedKeywords: [
-      'growth', 'tech', 'nasdaq', 'interest', 'bond', 'treasury',
-      'rate sensitive', 'dividend', 'reit',
-    ],
-  };
+// ===== FETCH DE NOTICIAS =====
+
+async function fetchNewsFromSource(query: string): Promise<Array<{ title: string; description?: string; url?: string }>> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&newsCount=8&quotesCount=0`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    
+    if (!response.ok) return [];
+    
+    const data: any = await response.json();
+    const newsItems = data.news || [];
+    
+    return newsItems
+      .filter((item: any) => {
+        if (!item.providerPublishTime) return true;
+        const publishedAt = new Date(item.providerPublishTime * 1000);
+        const hoursSince = (Date.now() - publishedAt.getTime()) / (1000 * 60 * 60);
+        return hoursSince <= 72;
+      })
+      .map((item: any) => ({
+        title: item.title || '',
+        description: item.summary || '',
+        url: item.link || '',
+      }));
+  } catch (error) {
+    return [];
+  }
 }
 
-function createCommodityShockEvent(
-  commodity: string,
-  changePercent: number,
-  reason: string
-): GeopoliticalEvent {
-  const severity = Math.abs(changePercent) >= 10 ? 'severe' : 
-                   Math.abs(changePercent) >= 5 ? 'high' : 'moderate';
-  const multipliers = calculateSeverityMultipliers(severity);
-  
-  const isNegative = changePercent < 0;
-  
-  return {
-    type: 'commodity_shock',
-    title: `${commodity} ${isNegative ? 'cae' : 'sube'} ${Math.abs(changePercent).toFixed(1)}%`,
-    description: `${reason}. Impacto significativo en mercados relacionados.`,
-    severity,
-    detectedAt: new Date(),
-    expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 días
-    impact: {
-      overall: changePercent * 2,
-      volatilityIncrease: multipliers.volatilityMultiplier,
-      confidenceReduction: multipliers.confidenceReduction,
-    },
-    sectorImpact: {
-      'energy': commodity.toLowerCase().includes('oil') ? changePercent * 1.5 : 0,
-      'materials': changePercent,
-      'precious_metals': commodity.toLowerCase().includes('gold') || 
-                         commodity.toLowerCase().includes('silver') ? changePercent : 0,
-      'mining': changePercent * 0.8,
-    },
-    regionsAffected: ['Global'],
-    relatedKeywords: [
-      commodity.toLowerCase(), 'commodity', 'commodities',
-      'oil', 'gold', 'silver', 'copper', 'mining', 'energy',
-    ],
-  };
-}
-
-// ===== ANÁLISIS DE NOTICIAS =====
-
-async function fetchAndAnalyzeNews(): Promise<GeopoliticalEvent[]> {
+async function fetchAndAnalyzeAllNews(): Promise<GeopoliticalEvent[]> {
   const events: GeopoliticalEvent[] = [];
   
-  try {
-    // Buscar noticias de mercado globales con más queries
-    const queries = [
-      'tariffs trade war',
-      'federal reserve fed chair',
-      'trump tariff',
-      'trade deal agreement',
-      'gold silver crash selloff',
-      'commodity prices',
-    ];
+  const queries = [
+    'tariffs trade war',
+    'trump tariff',
+    'trade deal agreement',
+    'china trade',
+    'federal reserve rate',
+    'fed chair powell',
+    'interest rate decision',
+    'sanctions russia',
+    'middle east conflict',
+    'military tension',
+    'stock market crash selloff',
+    'gold silver crash',
+    'bitcoin crypto crash',
+    'market volatility vix',
+    'banking crisis',
+    'debt ceiling default',
+    'antitrust big tech',
+    'sec investigation',
+  ];
+  
+  const batchSize = 4;
+  for (let i = 0; i < queries.length; i += batchSize) {
+    const batch = queries.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(q => fetchNewsFromSource(q)));
     
-    for (const query of queries) {
-      try {
-        const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&newsCount=5&quotesCount=0`;
+    for (const newsItems of results) {
+      for (const item of newsItems) {
+        if (!item.title) continue;
         
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          },
-          signal: AbortSignal.timeout(8000),
-        });
+        const hash = hashNews(item.title);
+        if (eventCache.newsHashes.has(hash)) continue;
         
-        if (!response.ok) continue;
+        const event = analyzeNewsItem(item.title, item.description);
         
-        const data: any = await response.json();
-        const newsItems = data.news || [];
-        
-        for (const item of newsItems) {
-          const title = (item.title || '').toLowerCase();
-          const publishedAt = item.providerPublishTime 
-            ? new Date(item.providerPublishTime * 1000) 
-            : new Date();
+        if (event) {
+          eventCache.newsHashes.add(hash);
+          event.sourceUrl = item.url;
           
-          // Solo noticias recientes (últimas 48 horas)
-          const hoursSincePublished = (Date.now() - publishedAt.getTime()) / (1000 * 60 * 60);
-          if (hoursSincePublished > 48) continue;
+          const isDuplicate = events.some(e => 
+            e.type === event.type && 
+            e.regionsAffected.some(r => event.regionsAffected.includes(r))
+          );
           
-          // Detectar eventos de aranceles
-          if (TARIFF_KEYWORDS.some(kw => title.includes(kw))) {
-            const countries: string[] = [];
-            if (title.includes('china') || title.includes('chinese')) countries.push('China');
-            if (title.includes('mexico') || title.includes('mexican')) countries.push('Mexico');
-            if (title.includes('canada') || title.includes('canadian')) countries.push('Canada');
-            if (title.includes('eu') || title.includes('europe')) countries.push('EU');
-            if (title.includes('india')) countries.push('India');
-            
-            if (countries.length > 0) {
-              const isRetaliatory = title.includes('retaliat') || title.includes('response') || title.includes('counter');
-              const tariffRate = extractTariffRate(title) || 25;
-              
-              // Verificar si ya existe un evento similar
-              const exists = events.some(e => 
-                e.type === 'tariff_announcement' && 
-                e.regionsAffected.some(r => countries.includes(r))
-              );
-              
-              if (!exists) {
-                events.push(createTariffEvent(countries, tariffRate, isRetaliatory));
-              }
-            }
-          }
-          
-          // Detectar eventos de la Fed
-          if (FED_KEYWORDS.some(kw => title.includes(kw))) {
-            const isHawkish = title.includes('hawkish') || title.includes('raise') || 
-                             title.includes('hike') || title.includes('tighten');
-            const isDovish = title.includes('dovish') || title.includes('cut') || 
-                            title.includes('lower') || title.includes('ease');
-            const isChairChange = title.includes('chair') || title.includes('nomin');
-            
-            if (isChairChange || isHawkish || isDovish) {
-              const eventSubType = isChairChange ? 'chair_change' : (isHawkish ? 'hawkish' : 'dovish');
-              
-              // Verificar si ya existe un evento de Fed
-              const exists = events.some(e => 
-                e.type === 'fed_policy_change' || e.type === 'fed_chair_nomination'
-              );
-              
-              if (!exists) {
-                events.push(createFedEvent(eventSubType, item.title || 'Cambio en política de la Fed'));
-              }
-            }
-          }
-          
-          // Detectar acuerdos comerciales (positivo)
-          if (TRADE_DEAL_KEYWORDS.some(kw => title.includes(kw))) {
-            const countries: string[] = [];
-            if (title.includes('china')) countries.push('China');
-            if (title.includes('india')) countries.push('India');
-            if (title.includes('mexico')) countries.push('Mexico');
-            if (title.includes('canada')) countries.push('Canada');
-            
-            if (countries.length > 0) {
-              const exists = events.some(e => e.type === 'trade_deal');
-              if (!exists) {
-                events.push({
-                  type: 'trade_deal',
-                  title: `Acuerdo comercial con ${countries.join(', ')}`,
-                  description: item.title || 'Nuevo acuerdo comercial anunciado',
-                  severity: 'moderate',
-                  detectedAt: new Date(),
-                  expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-                  impact: {
-                    overall: 15,
-                    volatilityIncrease: 1.1,
-                    confidenceReduction: 5,
-                  },
-                  sectorImpact: Object.fromEntries(
-                    Object.entries(TARIFF_SECTOR_IMPACT).map(([k, v]) => [k, -v * 0.5])
-                  ),
-                  regionsAffected: countries,
-                  relatedKeywords: countries.map(c => c.toLowerCase()),
-                });
-              }
-            }
+          if (!isDuplicate) {
+            events.push(event);
+            logger.debug(`[GeopoliticalEvents] Detected: [${event.type}] ${event.title.substring(0, 60)}...`);
           }
         }
-      } catch (err) {
-        // Continuar con siguiente query
       }
     }
     
-  } catch (error: any) {
-    logger.warn(`[GeopoliticalEvents] Error fetching news: ${error.message}`);
+    if (i + batchSize < queries.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
   }
   
-  return events;
+  events.sort((a, b) => {
+    const severityOrder: Record<ImpactSeverity, number> = {
+      'extreme': 5, 'severe': 4, 'high': 3, 'moderate': 2, 'low': 1
+    };
+    return severityOrder[b.severity] - severityOrder[a.severity];
+  });
+  
+  return events.slice(0, 10);
 }
 
-function extractTariffRate(text: string): number | null {
-  const match = text.match(/(\d+)%?\s*(?:tariff|percent|arancel)/i);
-  if (match) {
-    return parseInt(match[1], 10);
-  }
-  return null;
-}
-
-// ===== SERVICIO PRINCIPAL =====
+// ===== ANÁLISIS PRINCIPAL =====
 
 async function analyzeGeopoliticalEvents(): Promise<GeopoliticalAnalysis> {
-  // Verificar cache
   const cacheAge = Date.now() - eventCache.lastFetch.getTime();
   
   if (cacheAge < CACHE_TTL && eventCache.events.length > 0) {
-    return buildAnalysis([...eventCache.events, ...eventCache.manualEvents]);
+    return buildAnalysis(eventCache.events);
   }
   
-  // Fetch nuevos eventos
   try {
-    const fetchedEvents = await fetchAndAnalyzeNews();
+    logger.info('[GeopoliticalEvents] Fetching and analyzing news...');
+    const events = await fetchAndAnalyzeAllNews();
     
-    // Filtrar eventos expirados
     const now = new Date();
-    const validEvents = [
-      ...fetchedEvents,
-      ...eventCache.manualEvents.filter(e => e.expiresAt > now),
-    ].filter(e => e.expiresAt > now);
+    const validPrevious = eventCache.events.filter(e => e.expiresAt > now);
+    
+    const allEvents = [...events];
+    for (const prev of validPrevious) {
+      if (!allEvents.some(e => e.type === prev.type && e.title === prev.title)) {
+        allEvents.push(prev);
+      }
+    }
     
     eventCache = {
-      events: fetchedEvents,
+      events: allEvents,
       lastFetch: new Date(),
-      manualEvents: eventCache.manualEvents.filter(e => e.expiresAt > now),
+      newsHashes: eventCache.newsHashes,
     };
     
-    const analysis = buildAnalysis(validEvents);
+    if (eventCache.newsHashes.size > 500) {
+      const arr = Array.from(eventCache.newsHashes);
+      eventCache.newsHashes = new Set(arr.slice(-300));
+    }
+    
+    const analysis = buildAnalysis(allEvents);
     
     if (analysis.hasActiveEvents) {
-      logger.info(`[GeopoliticalEvents] ${validEvents.length} active events. Risk: ${analysis.overallRisk}. Impact: ${analysis.marketImpact.magnitude.toFixed(0)}`);
+      logger.info(`[GeopoliticalEvents] ${allEvents.length} events detected. Risk: ${analysis.overallRisk}. Direction: ${analysis.marketImpact.direction}`);
     }
     
     return analysis;
     
   } catch (error: any) {
-    logger.error(`[GeopoliticalEvents] Analysis error: ${error.message}`);
-    return buildAnalysis([...eventCache.events, ...eventCache.manualEvents]);
+    logger.error(`[GeopoliticalEvents] Error: ${error.message}`);
+    return buildAnalysis(eventCache.events);
   }
 }
 
 function buildAnalysis(events: GeopoliticalEvent[]): GeopoliticalAnalysis {
-  if (events.length === 0) {
+  const now = new Date();
+  const activeEvents = events.filter(e => e.expiresAt > now);
+  
+  if (activeEvents.length === 0) {
     return {
       hasActiveEvents: false,
       events: [],
@@ -492,18 +661,17 @@ function buildAnalysis(events: GeopoliticalEvent[]): GeopoliticalAnalysis {
         volatilityMultiplier: 1.0,
         confidenceAdjustment: 0,
       },
-      signals: ['Sin eventos geopolíticos significativos detectados'],
+      signals: ['📊 Sin eventos macro/geopolíticos significativos detectados'],
       reasoning: 'El mercado opera sin perturbaciones geopolíticas mayores.',
     };
   }
   
-  // Calcular impacto agregado
   let totalImpact = 0;
   let maxVolatilityMultiplier = 1.0;
   let maxConfidenceReduction = 0;
   const signals: string[] = [];
   
-  for (const event of events) {
+  for (const event of activeEvents) {
     totalImpact += event.impact.overall;
     maxVolatilityMultiplier = Math.max(maxVolatilityMultiplier, event.impact.volatilityIncrease);
     maxConfidenceReduction = Math.max(maxConfidenceReduction, event.impact.confidenceReduction);
@@ -512,16 +680,20 @@ function buildAnalysis(events: GeopoliticalEvent[]): GeopoliticalAnalysis {
     signals.push(`${emoji} ${event.title}`);
   }
   
-  // Determinar dirección y severidad
-  const direction = totalImpact > 10 ? 'bullish' : 
-                    totalImpact < -10 ? 'bearish' : 
-                    events.length > 1 ? 'mixed' : 'neutral';
+  const direction = totalImpact > 15 ? 'bullish' : 
+                    totalImpact < -15 ? 'bearish' : 
+                    activeEvents.length > 1 ? 'mixed' : 'neutral';
   
-  const overallRisk = determineSeverity(totalImpact);
+  const absImpact = Math.abs(totalImpact);
+  const overallRisk: ImpactSeverity = 
+    absImpact >= 60 ? 'extreme' :
+    absImpact >= 40 ? 'severe' :
+    absImpact >= 25 ? 'high' :
+    absImpact >= 10 ? 'moderate' : 'low';
   
   return {
     hasActiveEvents: true,
-    events,
+    events: activeEvents,
     overallRisk,
     marketImpact: {
       direction,
@@ -530,7 +702,7 @@ function buildAnalysis(events: GeopoliticalEvent[]): GeopoliticalAnalysis {
       confidenceAdjustment: maxConfidenceReduction,
     },
     signals,
-    reasoning: generateReasoning(events, direction, overallRisk),
+    reasoning: generateReasoning(activeEvents, direction, overallRisk),
   };
 }
 
@@ -539,67 +711,53 @@ function generateReasoning(
   direction: string, 
   risk: ImpactSeverity
 ): string {
-  const eventTypes = events.map(e => e.type);
+  const types = events.map(e => e.type);
+  const parts: string[] = [];
   
-  if (eventTypes.includes('tariff_announcement') || eventTypes.includes('trade_war_escalation')) {
-    return `Tensiones comerciales activas afectando mercados. Sectores expuestos al comercio internacional bajo presión. Volatilidad elevada esperada.`;
+  if (types.includes('tariff_announcement') || types.includes('trade_war_escalation')) {
+    parts.push('Tensiones comerciales activas afectando mercados');
+  }
+  if (types.includes('fed_chair_nomination') || types.includes('fed_policy_change') || types.includes('rate_decision')) {
+    parts.push('Cambios en política monetaria generando incertidumbre');
+  }
+  if (types.includes('geopolitical_tension') || types.includes('sanctions')) {
+    parts.push('Tensiones geopolíticas elevando prima de riesgo');
+  }
+  if (types.includes('market_crash') || types.includes('commodity_shock')) {
+    parts.push('Volatilidad extrema en mercados');
+  }
+  if (types.includes('crypto_volatility')) {
+    parts.push('Turbulencia en mercado cripto');
+  }
+  if (types.includes('trade_deal')) {
+    parts.push('Acuerdos comerciales mejorando perspectivas');
   }
   
-  if (eventTypes.includes('fed_chair_nomination') || eventTypes.includes('fed_policy_change')) {
-    return `Cambios en política monetaria de la Fed generando incertidumbre. Mercados ajustando expectativas de tasas y liquidez.`;
+  if (parts.length === 0) {
+    parts.push(`${events.length} eventos macro detectados`);
   }
   
-  if (eventTypes.includes('trade_deal')) {
-    return `Acuerdos comerciales positivos reduciendo tensiones. Mejora de expectativas para sectores exportadores.`;
-  }
-  
-  if (eventTypes.includes('commodity_shock')) {
-    return `Shock en mercados de commodities afectando sectores relacionados. Ajustar exposición a materiales y energía.`;
-  }
-  
-  return `Múltiples eventos geopolíticos activos (${events.length}). Riesgo ${risk}. Dirección del mercado: ${direction}.`;
+  return `${parts.join('. ')}. Riesgo: ${risk}. Sesgo: ${direction}.`;
 }
 
-// ===== EXPORT =====
+// ===== APLICACIÓN A PREDICCIONES =====
+
+function isAssetAffected(
+  symbol: string,
+  assetName: string | undefined,
+  event: GeopoliticalEvent
+): boolean {
+  const searchText = `${symbol} ${assetName || ''}`.toLowerCase();
+  return event.relatedKeywords.some(kw => searchText.includes(kw.toLowerCase()));
+}
+
+// ===== SERVICIO EXPORTADO =====
 
 export const geopoliticalEventsService = {
-  /**
-   * Obtiene el análisis actual de eventos geopolíticos
-   */
   async getCurrentAnalysis(): Promise<GeopoliticalAnalysis> {
     return analyzeGeopoliticalEvents();
   },
   
-  /**
-   * Agrega un evento manual (para eventos conocidos que el scraping no detecte)
-   */
-  addManualEvent(event: Omit<GeopoliticalEvent, 'detectedAt'>): void {
-    const fullEvent: GeopoliticalEvent = {
-      ...event,
-      detectedAt: new Date(),
-    };
-    eventCache.manualEvents.push(fullEvent);
-    logger.info(`[GeopoliticalEvents] Manual event added: ${event.title}`);
-  },
-  
-  /**
-   * Crea un evento de aranceles
-   */
-  createTariffEvent,
-  
-  /**
-   * Crea un evento de la Fed
-   */
-  createFedEvent,
-  
-  /**
-   * Crea un evento de shock de commodities
-   */
-  createCommodityShockEvent,
-  
-  /**
-   * Aplica el impacto geopolítico a una predicción
-   */
   async applyToPrediction(
     prediction: { change: number; confidence: number },
     symbol: string,
@@ -623,29 +781,25 @@ export const geopoliticalEventsService = {
         };
       }
       
-      // Filtrar eventos relevantes para este activo
       const relevantEvents = analysis.events.filter(event => 
         isAssetAffected(symbol, assetName, event)
       );
       
       if (relevantEvents.length === 0) {
-        // Aún aplicar ajuste de confianza por incertidumbre general
         const generalConfidenceReduction = analysis.marketImpact.confidenceAdjustment * 0.3;
         
         return {
           adjustedChange: prediction.change,
-          adjustedConfidence: Math.max(15, prediction.confidence - generalConfidenceReduction),
+          adjustedConfidence: Math.max(15, Math.round(prediction.confidence - generalConfidenceReduction)),
           applied: generalConfidenceReduction > 2,
           geopoliticalInfo: analysis,
         };
       }
       
-      // Calcular ajuste específico
       let totalAdjustment = 0;
       const appliedEvents: string[] = [];
       
       for (const event of relevantEvents) {
-        // Factor de aplicación según tipo de activo
         let applicationFactor = 1.0;
         switch (assetType) {
           case 'stock':
@@ -656,7 +810,7 @@ export const geopoliticalEventsService = {
             applicationFactor = 0.8;
             break;
           case 'crypto':
-            applicationFactor = 0.5; // Cripto menos correlacionado con geopolítica
+            applicationFactor = event.type === 'crypto_volatility' ? 1.2 : 0.5;
             break;
           case 'forex':
             applicationFactor = 0.7;
@@ -672,13 +826,11 @@ export const geopoliticalEventsService = {
         appliedEvents.push(event.title);
       }
       
-      // Aplicar ajuste (máximo ±5% de cambio adicional)
       const changeAdjustment = Math.max(-5, Math.min(5, totalAdjustment * 3));
       const adjustedChange = prediction.change + changeAdjustment;
       
-      // Reducir confianza
       const confidenceReduction = analysis.marketImpact.confidenceAdjustment;
-      const adjustedConfidence = Math.max(15, Math.min(95, prediction.confidence - confidenceReduction));
+      const adjustedConfidence = Math.max(15, Math.min(95, Math.round(prediction.confidence - confidenceReduction)));
       
       logger.debug(`[GeopoliticalEvents] Applied to ${symbol}: change ${prediction.change.toFixed(2)}% → ${adjustedChange.toFixed(2)}%, confidence ${prediction.confidence}% → ${adjustedConfidence}%`);
       
@@ -691,7 +843,7 @@ export const geopoliticalEventsService = {
       };
       
     } catch (error: any) {
-      logger.error(`[GeopoliticalEvents] Error applying to prediction: ${error.message}`);
+      logger.error(`[GeopoliticalEvents] Error applying: ${error.message}`);
       return {
         adjustedChange: prediction.change,
         adjustedConfidence: prediction.confidence,
@@ -700,13 +852,11 @@ export const geopoliticalEventsService = {
     }
   },
   
-  /**
-   * Obtiene un resumen rápido
-   */
   async getQuickSummary(): Promise<{
     hasEvents: boolean;
     riskLevel: ImpactSeverity;
     mainEvent: string | null;
+    eventCount: number;
     emoji: string;
   }> {
     const analysis = await analyzeGeopoliticalEvents();
@@ -716,6 +866,7 @@ export const geopoliticalEventsService = {
         hasEvents: false,
         riskLevel: 'low',
         mainEvent: null,
+        eventCount: 0,
         emoji: '🌍',
       };
     }
@@ -727,126 +878,21 @@ export const geopoliticalEventsService = {
       hasEvents: true,
       riskLevel: analysis.overallRisk,
       mainEvent: analysis.events[0]?.title || null,
+      eventCount: analysis.events.length,
       emoji,
     };
   },
   
-  /**
-   * Limpia el cache
-   */
+  async forceRefresh(): Promise<GeopoliticalAnalysis> {
+    eventCache.lastFetch = new Date(0);
+    return analyzeGeopoliticalEvents();
+  },
+  
   clearCache(): void {
     eventCache = {
       events: [],
       lastFetch: new Date(0),
-      manualEvents: [],
+      newsHashes: new Set(),
     };
-  },
-  
-  /**
-   * Carga eventos conocidos actuales (basados en noticias recientes)
-   * Llamar al iniciar el servidor para tener eventos pre-cargados
-   */
-  loadKnownCurrentEvents(): void {
-    const now = new Date();
-    
-    // Evento: Nominación de Kevin Warsh como presidente de la Fed
-    // Esto causó caída en commodities (especialmente metales preciosos)
-    // Warsh es considerado "hawkish" - política monetaria restrictiva
-    const warshEvent: GeopoliticalEvent = {
-      type: 'fed_chair_nomination',
-      title: 'Kevin Warsh nominado como próximo presidente de la Fed',
-      description: 'Trump nominó a Kevin Warsh como nuevo presidente de la Fed. Warsh es considerado hawkish, lo que provocó una fuerte caída en metales preciosos y commodities por expectativas de política monetaria más restrictiva.',
-      severity: 'high',
-      detectedAt: new Date('2026-01-31'),
-      expiresAt: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000), // 14 días
-      impact: {
-        overall: -25,
-        volatilityIncrease: 1.5,
-        confidenceReduction: 15,
-      },
-      sectorImpact: {
-        ...FED_HAWKISH_SECTOR_IMPACT,
-        'precious_metals': -40, // Caída extra fuerte en metales
-        'commodities': -30,
-      },
-      regionsAffected: ['US', 'Global'],
-      relatedKeywords: [
-        'gold', 'silver', 'platinum', 'palladium', 'precious',
-        'commodity', 'commodities', 'mining', 'gld', 'slv',
-        'growth', 'tech', 'nasdaq', 'rate sensitive',
-      ],
-    };
-    
-    // Evento: Acuerdo comercial con India
-    // Positivo para mercados, reduce tensiones comerciales
-    const indiaTradeEvent: GeopoliticalEvent = {
-      type: 'trade_deal',
-      title: 'Acuerdo comercial EE.UU.-India: reducción de aranceles',
-      description: 'Trump anunció acuerdo comercial con India para reducir aranceles inmediatamente. Esto reduce tensiones comerciales globales y es positivo para mercados emergentes.',
-      severity: 'moderate',
-      detectedAt: new Date('2026-02-02'),
-      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7 días
-      impact: {
-        overall: 10,
-        volatilityIncrease: 1.1,
-        confidenceReduction: 5,
-      },
-      sectorImpact: {
-        'technology': 10,
-        'emerging_markets': 15,
-        'manufacturing': 8,
-        'pharmaceuticals': 10, // India es gran exportador de pharma
-      },
-      regionsAffected: ['US', 'India', 'Asia'],
-      relatedKeywords: [
-        'india', 'indian', 'emerging', 'asia', 'pharma',
-        'generic', 'outsourcing', 'it services',
-      ],
-    };
-    
-    // Evento: Volatilidad extrema en cripto
-    // $2.5B en liquidaciones de Bitcoin
-    const cryptoVolatilityEvent: GeopoliticalEvent = {
-      type: 'commodity_shock',
-      title: 'Volatilidad extrema en cripto: $2.5B en liquidaciones',
-      description: 'El mercado cripto experimentó volatilidad extrema con $2.5 billones en liquidaciones de Bitcoin. Señal de aversión al riesgo en activos especulativos.',
-      severity: 'high',
-      detectedAt: new Date('2026-02-02'),
-      expiresAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000), // 3 días
-      impact: {
-        overall: -15,
-        volatilityIncrease: 2.0,
-        confidenceReduction: 20,
-      },
-      sectorImpact: {
-        'crypto': -30,
-        'blockchain': -20,
-        'fintech': -10,
-        'speculative': -25,
-      },
-      regionsAffected: ['Global'],
-      relatedKeywords: [
-        'bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'cryptocurrency',
-        'coinbase', 'coin', 'blockchain', 'defi',
-      ],
-    };
-    
-    // Solo agregar si no están expirados y no existen ya
-    const knownEvents = [warshEvent, indiaTradeEvent, cryptoVolatilityEvent];
-    
-    for (const event of knownEvents) {
-      if (event.expiresAt > now) {
-        const exists = eventCache.manualEvents.some(e => 
-          e.type === event.type && e.title === event.title
-        );
-        if (!exists) {
-          eventCache.manualEvents.push(event);
-          logger.info(`[GeopoliticalEvents] Loaded known event: ${event.title}`);
-        }
-      }
-    }
   },
 };
-
-// Auto-cargar eventos conocidos al importar el módulo
-geopoliticalEventsService.loadKnownCurrentEvents();
