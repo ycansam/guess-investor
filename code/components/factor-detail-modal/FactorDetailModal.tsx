@@ -509,6 +509,8 @@ const NewsDetail = ({ data }: { data: any }) => {
 
 // Trend Detail - Usa la estructura de TrendAnalysis del API
 const TrendDetail = ({ data }: { data: any }) => {
+  const [showSimple, setShowSimple] = React.useState(false);
+  
   if (!data) {
     return <Text style={styles.noData}>Sin datos de tendencia disponibles</Text>;
   }
@@ -538,12 +540,200 @@ const TrendDetail = ({ data }: { data: any }) => {
   const momentumColor = momentumSignal === 'bullish' ? COLORS.green : 
                         momentumSignal === 'bearish' ? COLORS.red : COLORS.yellow;
 
+  // === GENERADOR DE EXPLICACIONES SIMPLES ===
+  const generateSimpleExplanations = () => {
+    const explanations: { title: string; icon: string; text: string; color?: string }[] = [];
+
+    // Racha actual
+    const streakDays = data.currentStreak?.days || 0;
+    const streakTotal = Math.abs(data.currentStreak?.totalChange || 0);
+    
+    if (streakDirection === 'down') {
+      explanations.push({
+        title: '📉 Racha bajista',
+        icon: '😰',
+        text: `Lleva ${streakDays} días seguidos cayendo y ha perdido un ${streakTotal.toFixed(1)}% en ese tiempo. ${
+          streakTotal > 20 ? '¡Eso es MUCHO! Algo gordo ha pasado.' : 
+          streakTotal > 10 ? 'Es una caída considerable.' : 'Una caída moderada.'
+        }`,
+        color: COLORS.red,
+      });
+    } else if (streakDirection === 'up') {
+      explanations.push({
+        title: '📈 Racha alcista',
+        icon: '🎉',
+        text: `Lleva ${streakDays} días seguidos subiendo con una ganancia total de ${streakTotal.toFixed(1)}%. ${
+          streakTotal > 20 ? '¡Impresionante subida!' : 
+          streakTotal > 10 ? 'Buenas ganancias.' : 'Subida moderada pero positiva.'
+        }`,
+        color: COLORS.green,
+      });
+    } else {
+      explanations.push({
+        title: '😐 Movimiento lateral',
+        icon: '🤷',
+        text: `Lleva ${streakDays} días sin moverse mucho. El mercado está indeciso.`,
+      });
+    }
+
+    // Momentum
+    const shortMom = data.momentum?.short || 0;
+    const longMom = data.momentum?.long || 0;
+    
+    if (momentumSignal === 'bullish' && shortMom < 0) {
+      explanations.push({
+        title: '🤔 Señales contradictorias',
+        icon: '⚠️',
+        text: `A largo plazo iba muy bien (+${longMom.toFixed(0)} puntos), pero ahora mismo está cayendo fuerte (${shortMom.toFixed(0)} puntos). Es como un coche que iba a 120km/h pero acaba de frenar bruscamente.`,
+        color: COLORS.orange,
+      });
+    } else if (momentumSignal === 'bearish' && shortMom > 0) {
+      explanations.push({
+        title: '🤔 Posible recuperación',
+        icon: '🌅',
+        text: `Venía cayendo a largo plazo, pero en el corto plazo está empezando a subir. Podría ser el inicio de una recuperación... o solo un rebote temporal.`,
+        color: COLORS.orange,
+      });
+    } else if (momentumSignal === 'bullish') {
+      explanations.push({
+        title: '💪 Tendencia fuerte al alza',
+        icon: '🚀',
+        text: `Todo apunta hacia arriba. El momentum es positivo en todos los plazos. El activo tiene "viento a favor".`,
+        color: COLORS.green,
+      });
+    } else if (momentumSignal === 'bearish') {
+      explanations.push({
+        title: '⬇️ Tendencia bajista',
+        icon: '📉',
+        text: `Todo apunta hacia abajo. El momentum es negativo en todos los plazos.`,
+        color: COLORS.red,
+      });
+    }
+
+    // Volatilidad
+    const volPercentile = data.volatility?.percentile || 50;
+    const volCurrent = data.volatility?.current || 0;
+    const volAvg = data.volatility?.average || 0;
+    
+    if (volPercentile > 90) {
+      explanations.push({
+        title: '⚡ Volatilidad EXTREMA',
+        icon: '🎢',
+        text: `El precio está más nervioso que el ${volPercentile.toFixed(0)}% de su historia. Volatilidad actual: ${volCurrent.toFixed(0)}% (lo normal es ${volAvg.toFixed(0)}%). ¡Cuidado con las decisiones impulsivas!`,
+        color: COLORS.red,
+      });
+    } else if (volPercentile > 70) {
+      explanations.push({
+        title: '⚡ Alta volatilidad',
+        icon: '😬',
+        text: `El precio se está moviendo más de lo habitual. Hay más riesgo pero también más oportunidad.`,
+        color: COLORS.orange,
+      });
+    }
+
+    // Predicción
+    const prediction = data.trendPrediction;
+    if (prediction) {
+      if (prediction.direction === 'uncertain') {
+        explanations.push({
+          title: '🔮 Predicción: No tengo ni idea',
+          icon: '🤷',
+          text: `Las señales son tan contradictorias que no me atrevo a predecir. Cuando la probabilidad es 50%, es como tirar una moneda.`,
+        });
+      } else if (prediction.direction === 'continue') {
+        explanations.push({
+          title: '🔮 Predicción: Seguirá igual',
+          icon: streakDirection === 'up' ? '📈' : '📉',
+          text: `Hay un ${prediction.probability}% de probabilidad de que la tendencia actual continúe.`,
+          color: streakDirection === 'up' ? COLORS.green : COLORS.red,
+        });
+      } else {
+        explanations.push({
+          title: '🔮 Predicción: Posible cambio',
+          icon: '🔄',
+          text: `Hay un ${prediction.probability}% de probabilidad de que la tendencia cambie de dirección.`,
+          color: COLORS.orange,
+        });
+      }
+    }
+
+    // Evento extremo
+    const worstDay = data.stats?.worst_day_30d;
+    if (worstDay && worstDay.change < -15) {
+      explanations.push({
+        title: '💥 Evento extremo reciente',
+        icon: '😱',
+        text: `El ${worstDay.date} cayó un ${Math.abs(worstDay.change).toFixed(1)}% en UN SOLO DÍA. Eso no es normal. Probablemente pasó algo importante.`,
+        color: COLORS.red,
+      });
+    }
+
+    return explanations;
+  };
+
+  // Renderizado del modo simple
+  if (showSimple) {
+    const explanations = generateSimpleExplanations();
+    
+    return (
+      <View style={styles.detailContent}>
+        {/* Botón para volver */}
+        <Pressable 
+          style={styles.backToTechnicalButton}
+          onPress={() => setShowSimple(false)}
+        >
+          <Ionicons name="analytics-outline" size={16} color={COLORS.textSecondary} />
+          <Text style={styles.backToTechnicalText}>Ver datos técnicos</Text>
+        </Pressable>
+        
+        <View style={styles.simpleHeader}>
+          <Text style={styles.simpleHeaderIcon}>🧠</Text>
+          <Text style={styles.simpleHeaderTitle}>Explicación para humanos</Text>
+          <Text style={styles.simpleHeaderSubtitle}>Sin jerga técnica, sin complicaciones</Text>
+        </View>
+        
+        {explanations.map((exp, index) => (
+          <View 
+            key={index} 
+            style={[
+              styles.simpleCard,
+              exp.color ? { borderLeftColor: exp.color, borderLeftWidth: 4 } : {}
+            ]}
+          >
+            <View style={styles.simpleCardHeader}>
+              <Text style={styles.simpleCardIcon}>{exp.icon}</Text>
+              <Text style={[styles.simpleCardTitle, exp.color ? { color: exp.color } : {}]}>
+                {exp.title}
+              </Text>
+            </View>
+            <Text style={styles.simpleCardText}>{exp.text}</Text>
+          </View>
+        ))}
+        
+        <View style={styles.simpleTip}>
+          <Text style={styles.simpleTipIcon}>💡</Text>
+          <Text style={styles.simpleTipText}>
+            Recuerda: Las predicciones son orientativas. Nunca inviertas más de lo que puedas permitirte perder.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.detailContent}>
-      {/* Racha Actual */}
+      {/* Botón para modo simple */}
+      <Pressable 
+        style={styles.simpleToggleButton}
+        onPress={() => setShowSimple(true)}
+      >
+        <Text style={{ fontSize: 18 }}>🧠</Text>
+        <Text style={styles.simpleToggleText}>Explicar en simple</Text>
+      </Pressable>
       {data.currentStreak && (
         <View style={styles.indicatorSection}>
           <Text style={styles.indicatorTitle}>📊 Racha Actual</Text>
+          <Text style={styles.indicatorExplain}>= Cuántos días seguidos sube o baja el precio</Text>
           <View style={styles.streakCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
               <Text style={{ fontSize: 32 }}>{streakEmoji}</Text>
@@ -565,6 +755,7 @@ const TrendDetail = ({ data }: { data: any }) => {
               {typeof data.currentStreak.avgDailyChange === 'number' && (
                 <View style={styles.trendItem}>
                   <Text style={styles.trendLabel}>Media diaria</Text>
+                  <Text style={styles.trendLabelExplain}>Lo que gana/pierde de media cada día</Text>
                   <Text style={[styles.trendValue, { color: streakColor }]}>
                     {formatPercent(data.currentStreak.avgDailyChange)}
                   </Text>
@@ -585,6 +776,7 @@ const TrendDetail = ({ data }: { data: any }) => {
       {data.momentum && (
         <View style={styles.indicatorSection}>
           <Text style={styles.indicatorTitle}>🚀 Momentum</Text>
+          <Text style={styles.indicatorExplain}>= Velocidad y fuerza del movimiento del precio</Text>
           <View style={{ marginBottom: 12 }}>
             <Text style={[{ fontSize: 18, fontWeight: '700' }, { color: momentumColor }]}>
               {momentumSignal === 'bullish' ? '📈 Alcista' : 
@@ -599,6 +791,7 @@ const TrendDetail = ({ data }: { data: any }) => {
             {typeof data.momentum.short === 'number' && (
               <View style={styles.momentumGridItem}>
                 <Text style={styles.momentumGridLabel}>Corto</Text>
+                <Text style={styles.trendLabelExplain}>últimos días</Text>
                 <View style={styles.momentumBarSmall}>
                   <View style={[styles.momentumFill, { 
                     width: `${Math.min(Math.abs(data.momentum.short) * 10, 100)}%`,
@@ -615,6 +808,7 @@ const TrendDetail = ({ data }: { data: any }) => {
             {typeof data.momentum.medium === 'number' && (
               <View style={styles.momentumGridItem}>
                 <Text style={styles.momentumGridLabel}>Medio</Text>
+                <Text style={styles.trendLabelExplain}>~2 semanas</Text>
                 <View style={styles.momentumBarSmall}>
                   <View style={[styles.momentumFill, { 
                     width: `${Math.min(Math.abs(data.momentum.medium) * 10, 100)}%`,
@@ -631,6 +825,7 @@ const TrendDetail = ({ data }: { data: any }) => {
             {typeof data.momentum.long === 'number' && (
               <View style={styles.momentumGridItem}>
                 <Text style={styles.momentumGridLabel}>Largo</Text>
+                <Text style={styles.trendLabelExplain}>~1 mes</Text>
                 <View style={styles.momentumBarSmall}>
                   <View style={[styles.momentumFill, { 
                     width: `${Math.min(Math.abs(data.momentum.long) * 10, 100)}%`,
@@ -652,11 +847,13 @@ const TrendDetail = ({ data }: { data: any }) => {
       {(data.supports?.length > 0 || data.resistances?.length > 0) && (
         <View style={styles.indicatorSection}>
           <Text style={styles.indicatorTitle}>📍 Niveles Clave</Text>
+          <Text style={styles.indicatorExplain}>= Precios donde el activo suele rebotar o frenar</Text>
           
           {/* Resistencias */}
           {data.resistances?.length > 0 && (
             <View style={{ marginBottom: 12 }}>
               <Text style={[styles.srSubtitle, { color: COLORS.red }]}>🔺 Resistencias (arriba)</Text>
+              <Text style={styles.trendLabelExplain}>Techos - el precio suele frenar al llegar aquí</Text>
               {data.resistances.slice(0, 2).map((r: any, i: number) => (
                 <View key={i} style={styles.srItem}>
                   <Text style={styles.srValue}>${safeToFixed(r.level ?? r.price)}</Text>
@@ -682,6 +879,7 @@ const TrendDetail = ({ data }: { data: any }) => {
           {data.supports?.length > 0 && (
             <View>
               <Text style={[styles.srSubtitle, { color: COLORS.green }]}>🔻 Soportes (abajo)</Text>
+              <Text style={styles.trendLabelExplain}>Suelos - el precio suele rebotar hacia arriba aquí</Text>
               {data.supports.slice(0, 2).map((s: any, i: number) => (
                 <View key={i} style={styles.srItem}>
                   <Text style={styles.srValue}>${safeToFixed(s.level ?? s.price)}</Text>
@@ -701,6 +899,7 @@ const TrendDetail = ({ data }: { data: any }) => {
       {data.stats && (
         <View style={styles.indicatorSection}>
           <Text style={styles.indicatorTitle}>📈 Últimos 30 días</Text>
+          <Text style={styles.indicatorExplain}>= Resumen de cómo se ha comportado el precio este mes</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <Text style={[styles.statValue, { color: COLORS.green }]}>
@@ -762,6 +961,7 @@ const TrendDetail = ({ data }: { data: any }) => {
       {data.trendPrediction && (
         <View style={styles.indicatorSection}>
           <Text style={styles.indicatorTitle}>🔮 Predicción de Tendencia</Text>
+          <Text style={styles.indicatorExplain}>= Qué esperamos que haga el precio en los próximos días</Text>
           <View style={[styles.predictionCard, { 
             backgroundColor: data.trendPrediction.direction === 'continue' ? COLORS.green + '22' : 
                             data.trendPrediction.direction === 'reverse' ? COLORS.orange + '22' : COLORS.yellow + '22'
@@ -789,6 +989,7 @@ const TrendDetail = ({ data }: { data: any }) => {
       {data.volatility && (
         <View style={styles.indicatorSection}>
           <Text style={styles.indicatorTitle}>⚡ Volatilidad</Text>
+          <Text style={styles.indicatorExplain}>= Cuánto se mueve el precio de un día a otro (riesgo)</Text>
           <View style={styles.volatilityGrid}>
             {typeof data.volatility.current === 'number' && (
               <View style={styles.volatilityItem}>
@@ -1402,7 +1603,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.text,
+    marginBottom: 4,
+  },
+  indicatorExplain: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    color: COLORS.textSecondary,
     marginBottom: 12,
+    opacity: 0.8,
   },
 
   // RSI
@@ -1689,6 +1897,13 @@ const styles = StyleSheet.create({
   trendLabel: {
     fontSize: 11,
     color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  trendLabelExplain: {
+    fontSize: 9,
+    fontStyle: 'italic',
+    color: COLORS.textSecondary,
+    opacity: 0.7,
     marginBottom: 4,
   },
   trendValue: {
@@ -2010,6 +2225,114 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
+  },
+  
+  // Estilos para modo simple en TrendDetail
+  simpleToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fbbf24',
+    borderRadius: 25,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 8,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  simpleToggleText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  backToTechnicalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  backToTechnicalText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  simpleHeader: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  simpleHeaderIcon: {
+    fontSize: 36,
+    marginBottom: 8,
+  },
+  simpleHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  simpleHeaderSubtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  simpleCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderLeftWidth: 0,
+    borderLeftColor: 'transparent',
+  },
+  simpleCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 10,
+  },
+  simpleCardIcon: {
+    fontSize: 22,
+  },
+  simpleCardTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    flex: 1,
+  },
+  simpleCardText: {
+    fontSize: 14,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+  simpleTip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.blue + '15',
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 8,
+    gap: 10,
+  },
+  simpleTipIcon: {
+    fontSize: 18,
+  },
+  simpleTipText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 16,
   },
 });
 
