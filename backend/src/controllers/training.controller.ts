@@ -6,7 +6,10 @@ import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import { factorWeightLearningService } from '../services/ml/factor-weight-learning.service.js';
+import { probabilisticModelService } from '../services/ml/probabilistic-model.service.js';
+import { reinforcementLearningService } from '../services/ml/reinforcement-learning.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
+import { confidenceCalibrationService } from '../services/prediction/confidence-calibration.service.js';
 import { ensembleService } from '../services/prediction/ensemble.service.js';
 
 // ============================================================================
@@ -679,6 +682,13 @@ export const trainingController = {
     // 3. Borrar estados de modelos ML (RL, probabilístico, correlación, meta-learning)
     const mlModelsResult = await prisma.mLModelState.deleteMany({});
     results.mlModels = mlModelsResult.count;
+
+    // 3.1. Resetear estado EN MEMORIA de los servicios ML
+    // (importante: la DB está vacía pero los servicios mantienen estado en memoria)
+    await reinforcementLearningService.reset();
+    await probabilisticModelService.reset();
+    await classifierLearningService.reset();
+    await confidenceCalibrationService.reset();
 
     // 4. Resetear pesos aprendidos a valores por defecto (no uniformes)
     // Estos son los pesos por defecto para swing (balance entre corto y largo plazo)

@@ -592,4 +592,13 @@ export const probabilisticModelService = {
       lastUpdate: calibrationState?.lastUpdate || null,
     };
   },
+
+  /**
+   * Resetea el modelo probabilístico a estado inicial (también en memoria)
+   */
+  async reset(): Promise<void> {
+    calibrationState = this.createEmptyState();
+    stateLoaded = true;
+    logger.info('[ProbabilisticModel] Model reset to initial state');
+  },
 };
