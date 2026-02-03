@@ -38,6 +38,8 @@ import {
   reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
+import { commodityCorrelationService } from './commodity-correlation.service.js';
+import { commodityUnderlyingService, UnderlyingInfo } from './commodity-underlying.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
 import { trackRecordService } from './track-record.service.js';
 
@@ -87,6 +89,7 @@ export interface CalculatedPrediction {
     streakAdjustment?: { days: number; direction: string; adjustment: number };
     meanReversionAdjustment?: { recentDrop: number; todayRecovery: number; adjustment: number };
     intradayMomentumAdjustment?: { currentChange: number; projectedContinuation: number; adjustment: number; confidenceBoost: number };
+    commodityCorrelationAdjustment?: { adjusted: boolean; reason: string | null };
     // Información de selección dinámica de modelos
     activeModels?: string[];
     modelSelectionReason?: string;
@@ -535,9 +538,23 @@ export const predictionCalculatorService = {
         return null;
       }
 
-      // 2. Obtener datos históricos (necesarios para determinar precio base correcto)
-      const history = await yahooService.getHistory(symbol, '3mo', '1d');
+      // 2. DETECTAR SI ES ETF DE COMMODITY → USAR DATOS DEL SUBYACENTE
+      // Para ETFs de oro/plata/etc., usamos los datos del commodity real
+      // Esto garantiza que todos los ETFs del mismo commodity predigan la misma dirección
+      const commodityUnderlying = await commodityUnderlyingService.getTechnicalForETF(symbol, quote.name);
+      let underlyingInfo: UnderlyingInfo | undefined;
+      
+      // 3. Obtener datos históricos - del subyacente si es commodity ETF
+      const historySymbol = commodityUnderlying.useUnderlying && commodityUnderlying.underlying
+        ? commodityUnderlying.underlying.underlyingSymbol
+        : symbol;
+      const history = await yahooService.getHistory(historySymbol, '3mo', '1d');
       const historical = this.processHistoricalData(history);
+      
+      if (commodityUnderlying.useUnderlying && commodityUnderlying.underlying) {
+        underlyingInfo = commodityUnderlying.underlying;
+        logger.info(`[PredictionCalc] 🔗 COMMODITY ETF: ${symbol} → Using ${underlyingInfo.underlyingSymbol} (${underlyingInfo.commodityType}) historical & technical data`);
+      }
 
       // IMPORTANTE: Usar el último precio de cierre del historial como base
       // previousClose de Yahoo puede ser incorrecto para futuros/commodities
@@ -545,17 +562,24 @@ export const predictionCalculatorService = {
       let basePrice: number;
       if (history.length > 0) {
         const lastHistoricalClose = history[history.length - 1].close;
-        basePrice = lastHistoricalClose;
-        logger.info(`[PredictionCalc] Using last historical close (${basePrice}) as base price. Quote price: ${quote.price}, previousClose: ${quote.previousClose}`);
+        // Para ETFs de commodities, el basePrice debe ser del ETF (para calcular precio target correcto)
+        // pero los cambios % vienen del subyacente
+        if (commodityUnderlying.useUnderlying) {
+          basePrice = quote.previousClose || quote.price;
+          logger.info(`[PredictionCalc] Commodity ETF: Using ETF's previousClose (${basePrice}) as base, but changes from ${historySymbol}`);
+        } else {
+          basePrice = lastHistoricalClose;
+          logger.info(`[PredictionCalc] Using last historical close (${basePrice}) as base price. Quote price: ${quote.price}, previousClose: ${quote.previousClose}`);
+        }
       } else {
         // Fallback si no hay historial
         basePrice = quote.previousClose || quote.price;
         logger.warn(`[PredictionCalc] No historical data, using previousClose (${basePrice}) as fallback`);
       }
-
-      // 3. Obtener todos los datos en paralelo
+      
+      // 4. Obtener todos los datos en paralelo
       const [
-        technical,
+        technicalRaw,
         sentiment,
         news,
         macro,
@@ -566,7 +590,10 @@ export const predictionCalculatorService = {
         financials,
         events,
       ] = await Promise.all([
-        technicalService.analyze(symbol),
+        // Si es commodity ETF, usar técnicos del subyacente; si no, del ETF
+        commodityUnderlying.useUnderlying && commodityUnderlying.technical
+          ? Promise.resolve(commodityUnderlying.technical)
+          : technicalService.analyze(symbol),
         sentimentService.getSentiment(symbol, type),
         newsService.getNews(symbol, type),
         macroService.getIndicators(symbol, type),
@@ -578,7 +605,10 @@ export const predictionCalculatorService = {
         eventsService.getEvents(symbol),
       ]);
 
-      // 4. Obtener análisis de competidores (necesita datos históricos)
+      // Asignar technical (ya viene del subyacente si es commodity ETF)
+      const technical = technicalRaw;
+
+      // 5. Obtener análisis de competidores (necesita datos históricos)
       const companyChange1d = historical.change30d ? historical.change30d / 30 : 0;
       const companyChange1w = historical.change30d ? historical.change30d / 4 : 0;
       const companyChange1m = historical.change30d || 0;
@@ -587,6 +617,11 @@ export const predictionCalculatorService = {
       );
 
       // 5. Calcular predicción determinística usando basePrice (previousClose)
+      // Para commodity ETFs, usar el cambio intradía del subyacente para mejor coherencia
+      const currentDayChange = commodityUnderlying.useUnderlying && commodityUnderlying.underlyingData
+        ? commodityUnderlying.underlyingData.change1d
+        : (quote.changePercent || 0);
+      
       const prediction = await this.calculateFromData(
         symbol,
         type,
@@ -606,7 +641,7 @@ export const predictionCalculatorService = {
         events,
         timeframeDays,
         quote.name || symbol, // Pasar el nombre del activo para clasificación inteligente
-        quote.changePercent || 0 // Cambio % del día actual (para detectar caídas intradía)
+        currentDayChange // Cambio % del día actual (del subyacente si es commodity)
       );
 
       // --- REINFORCEMENT LEARNING: Obtener recomendación de política ---
@@ -633,6 +668,15 @@ export const predictionCalculatorService = {
       } else if (rlRecommendation.recommendedAction === 'predict_high' && rlRecommendation.confidence > 0.6) {
         prediction.confidence = Math.min(95, prediction.confidence + 5);
         logger.info(`[PredictionCalc] RL suggests high confidence prediction (+5%)`);
+      }
+
+      // Añadir info del subyacente si es ETF de commodity
+      if (underlyingInfo) {
+        (prediction as any).commodityUnderlying = {
+          symbol: underlyingInfo.underlyingSymbol,
+          type: underlyingInfo.commodityType,
+          currency: underlyingInfo.underlyingCurrency,
+        };
       }
 
       logger.info(`[PredictionCalc] Prediction: ${prediction.direction} ${prediction.predictedChange.toFixed(2)}% (confidence: ${prediction.confidence}%)`);
@@ -1419,6 +1463,28 @@ export const predictionCalculatorService = {
       direction = 'neutral';
     }
     
+    // --- CORRELACIÓN DE COMMODITIES (NUEVO) ---
+    // Si es un commodity (oro, plata, etc.), ajustar para coherencia con otros ETFs del mismo subyacente
+    // Es imposible que un ETF de plata suba y otro baje - deben ir en la misma dirección
+    let commodityCorrelationInfo: { adjusted: boolean; reason: string | null } | undefined;
+    const commodityAdjustment = commodityCorrelationService.adjustPrediction(
+      symbol,
+      assetName,
+      direction,
+      expectedChange,
+      finalConfidence
+    );
+    if (commodityAdjustment.adjusted) {
+      direction = commodityAdjustment.newDirection;
+      expectedChange = commodityAdjustment.newChange;
+      finalConfidence = commodityAdjustment.newConfidence;
+      commodityCorrelationInfo = {
+        adjusted: true,
+        reason: commodityAdjustment.reason,
+      };
+      logger.info(`[PredictionCalc] Commodity correlation adjustment: ${commodityAdjustment.reason}`);
+    }
+    
     logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%, Direction: ${direction}`);
     
     const margin = periodVol * 0.5;
@@ -1479,6 +1545,7 @@ export const predictionCalculatorService = {
         streakAdjustment: streakAdjustmentInfo,
         meanReversionAdjustment: recentDropReboundInfo,
         intradayMomentumAdjustment: intradayMomentumInfo,
+        commodityCorrelationAdjustment: commodityCorrelationInfo,
         // Información de selección dinámica de modelos
         activeModels: ensembleResult.activeModels,
         modelSelectionReason: ensembleResult.modelSelectionReason,

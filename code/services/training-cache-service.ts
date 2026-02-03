@@ -291,16 +291,22 @@ class TrainingCacheService {
   async removeMultiple(items: Array<{ symbol: string; timeframe: TrainingTimeframe }>): Promise<number> {
     let removed = 0;
     
+    // Eliminar del cache local primero
     for (const item of items) {
       const key = this.getKey(item.symbol, item.timeframe);
       if (this.cache.has(key)) {
         this.cache.delete(key);
         removed++;
       }
-      
-      // Eliminar del backend
-      apiClient.deleteTrainingCache(item.symbol, item.timeframe).catch(console.error);
     }
+    
+    // Eliminar del backend - ESPERAR a que terminen todas las eliminaciones
+    const deletePromises = items.map(item => 
+      apiClient.deleteTrainingCache(item.symbol, item.timeframe).catch(err => {
+        console.error(`[TrainingCache] Error deleting ${item.symbol}:`, err);
+      })
+    );
+    await Promise.all(deletePromises);
     
     console.log(`[TrainingCache] Removed ${removed} predictions`);
     return removed;

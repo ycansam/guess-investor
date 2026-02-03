@@ -88,7 +88,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [cachedPredictions, setCachedPredictions] = useState<TrainingPrediction[]>([]);
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [isPredictingBatch, setIsPredictingBatch] = useState(false);
-  const [selectionMode, setSelectionMode] = useState<'predict' | 'delete'>('predict');
   const [sortBy, setSortBy] = useState<'default' | 'pred_desc' | 'pred_asc'>('default');
   const [selectedPrediction, setSelectedPrediction] = useState<TrainingPrediction | null>(null);
   const [recommendedTimeframes, setRecommendedTimeframes] = useState<Map<string, TrainingTimeframe>>(new Map());
@@ -532,36 +531,32 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     });
   }, []);
 
-  // Seleccionar todos según modo
+  // Seleccionar todos los activos disponibles
   const selectAll = useCallback(() => {
-    if (selectionMode === 'predict') {
-      // Seleccionar activos sin predicción
-      const availableSymbols = displayedAssets
-        .filter(a => !a.loading && a.price !== undefined && !getCachedPrediction(a.symbol, selectedTimeframe))
-        .map(a => a.symbol);
-      setSelectedSymbols(new Set(availableSymbols));
-    } else {
-      // Seleccionar predicciones existentes del timeframe actual
-      const predictedSymbols = cachedPredictions
-        .filter(p => p.timeframe === selectedTimeframe)
-        .map(p => p.symbol);
-      setSelectedSymbols(new Set(predictedSymbols));
-    }
-  }, [selectionMode, displayedAssets, selectedTimeframe, getCachedPrediction, cachedPredictions]);
+    const availableSymbols = displayedAssets
+      .filter(a => !a.loading && a.price !== undefined)
+      .map(a => a.symbol);
+    setSelectedSymbols(new Set(availableSymbols));
+  }, [displayedAssets]);
 
   // Deseleccionar todos
   const deselectAll = useCallback(() => {
     setSelectedSymbols(new Set());
   }, []);
 
-  // Obtener activos seleccionables según modo
+  // Obtener todos los activos seleccionables
   const selectableAssets = useMemo(() => {
-    if (selectionMode === 'predict') {
-      return displayedAssets.filter(a => !a.loading && a.price !== undefined && !getCachedPrediction(a.symbol, selectedTimeframe));
-    } else {
-      return displayedAssets.filter(a => getCachedPrediction(a.symbol, selectedTimeframe) !== null);
-    }
-  }, [selectionMode, displayedAssets, selectedTimeframe, getCachedPrediction]);
+    return displayedAssets.filter(a => !a.loading && a.price !== undefined);
+  }, [displayedAssets]);
+
+  // Contar seleccionados para predecir (sin predicción) y eliminar (con predicción)
+  const selectedToPredictCount = useMemo(() => {
+    return Array.from(selectedSymbols).filter(s => !getCachedPrediction(s, selectedTimeframe)).length;
+  }, [selectedSymbols, selectedTimeframe, getCachedPrediction]);
+
+  const selectedToDeleteCount = useMemo(() => {
+    return Array.from(selectedSymbols).filter(s => getCachedPrediction(s, selectedTimeframe) !== null).length;
+  }, [selectedSymbols, selectedTimeframe, getCachedPrediction]);
 
   // Debounce para la búsqueda
   useEffect(() => {
@@ -808,17 +803,15 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     const isPredicting = predictingSymbol === item.symbol;
     const isSelected = selectedSymbols.has(item.symbol);
     
-    // En modo predecir: seleccionar activos sin predicción
-    // En modo eliminar: seleccionar activos con predicción
-    const canSelect = !item.loading && item.price !== undefined && 
-      (selectionMode === 'predict' ? !cached : !!cached);
+    // Siempre se puede seleccionar si tiene precio
+    const canSelect = !item.loading && item.price !== undefined;
 
     return (
       <TouchableOpacity 
         style={[
           styles.assetRow, 
           isDesktop && styles.assetRowDesktop,
-          selectionMode === 'delete' && cached && styles.assetRowDeleteMode,
+          isSelected && cached && styles.assetRowDeleteMode,
         ]}
         onPress={() => canSelect && toggleSelection(item.symbol)}
         disabled={!canSelect}
@@ -826,30 +819,20 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       >
         {/* Checkbox */}
         <View style={styles.checkboxContainer}>
-          {selectionMode === 'delete' && cached ? (
-            // En modo eliminar, mostrar checkbox para predicciones
-            <View style={[
-              styles.checkbox,
-              isSelected && styles.checkboxDeleteSelected,
-            ]}>
-              {isSelected && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-          ) : cached ? (
-            // Mostrar predicción existente en lugar de checkbox
-            <View style={[styles.predictionBadgeSmall, { backgroundColor: cached.direction === 'up' ? '#10b981' : cached.direction === 'down' ? '#ef4444' : '#6b7280' }]}>
-              <Text style={styles.predictionIconSmall}>
-                {cached.direction === 'up' ? '📈' : cached.direction === 'down' ? '📉' : '➡️'}
-              </Text>
-            </View>
-          ) : isPredicting ? (
+          {isPredicting ? (
             <ActivityIndicator size="small" color="#3b82f6" />
           ) : (
             <View style={[
               styles.checkbox,
-              isSelected && styles.checkboxSelected,
+              isSelected && (cached ? styles.checkboxDeleteSelected : styles.checkboxSelected),
               !canSelect && styles.checkboxDisabled,
             ]}>
               {isSelected && <Text style={styles.checkmark}>✓</Text>}
+              {!isSelected && cached && (
+                <Text style={styles.predictionIndicator}>
+                  {cached.direction === 'up' ? '↑' : cached.direction === 'down' ? '↓' : '→'}
+                </Text>
+              )}
             </View>
           )}
         </View>
@@ -1105,26 +1088,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         </Text>
       </View>
 
-      {/* Selector de modo */}
-      <View style={styles.modeSelector}>
-        <TouchableOpacity
-          style={[styles.modeButton, selectionMode === 'predict' && styles.modeButtonActive]}
-          onPress={() => { setSelectionMode('predict'); setSelectedSymbols(new Set()); }}
-        >
-          <Text style={[styles.modeButtonText, selectionMode === 'predict' && styles.modeButtonTextActive]}>
-            🔮 Predecir
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.modeButton, selectionMode === 'delete' && styles.modeButtonDeleteActive]}
-          onPress={() => { setSelectionMode('delete'); setSelectedSymbols(new Set()); }}
-        >
-          <Text style={[styles.modeButtonText, selectionMode === 'delete' && styles.modeButtonTextActive]}>
-            🗑️ Eliminar
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Barra de acciones */}
       <View style={styles.actionsBar}>
         <TouchableOpacity
@@ -1142,44 +1105,47 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           </Text>
         </TouchableOpacity>
 
-        {selectionMode === 'predict' ? (
+        {/* Botones de acción juntos */}
+        <View style={styles.actionButtonsGroup}>
+          {/* Botón Predecir - solo activos sin predicción */}
           <TouchableOpacity
             style={[
               styles.predictAllButton,
-              (selectedSymbols.size === 0 || isPredictingBatch) && styles.predictAllButtonDisabled,
+              (selectedToPredictCount === 0 || isPredictingBatch) && styles.predictAllButtonDisabled,
             ]}
             onPress={predictSelected}
-            disabled={selectedSymbols.size === 0 || isPredictingBatch}
+            disabled={selectedToPredictCount === 0 || isPredictingBatch}
           >
             {isPredictingBatch ? (
               <>
                 <ActivityIndicator size="small" color="#ffffff" />
-                <Text style={styles.predictAllText}>Analizando...</Text>
+                <Text style={styles.predictAllText}>...</Text>
               </>
             ) : (
               <>
                 <Text style={styles.predictAllIcon}>🔮</Text>
                 <Text style={styles.predictAllText}>
-                  Predecir {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}
+                  {selectedToPredictCount > 0 ? `${selectedToPredictCount}` : ''}
                 </Text>
               </>
             )}
           </TouchableOpacity>
-        ) : (
+
+          {/* Botón Eliminar - solo activos con predicción */}
           <TouchableOpacity
             style={[
               styles.deleteAllButton,
-              selectedSymbols.size === 0 && styles.deleteAllButtonDisabled,
+              selectedToDeleteCount === 0 && styles.deleteAllButtonDisabled,
             ]}
             onPress={deleteSelected}
-            disabled={selectedSymbols.size === 0}
+            disabled={selectedToDeleteCount === 0}
           >
             <Text style={styles.deleteAllIcon}>🗑️</Text>
             <Text style={styles.deleteAllText}>
-              Eliminar {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}
+              {selectedToDeleteCount > 0 ? `${selectedToDeleteCount}` : ''}
             </Text>
           </TouchableOpacity>
-        )}
+        </View>
       </View>
     </View>
   );
@@ -1717,6 +1683,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
+  predictionIndicator: {
+    color: '#9ca3af',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   predictionBadgeSmall: {
     width: 26,
     height: 26,
@@ -1760,24 +1731,31 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginLeft: 4,
   },
+  actionButtonsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   predictAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#6366f1',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    minWidth: 50,
+    justifyContent: 'center',
   },
   predictAllButtonDisabled: {
     backgroundColor: '#4b5563',
   },
   predictAllIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    fontSize: 14,
+    marginRight: 4,
   },
   predictAllText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   // Mode selector
@@ -1812,20 +1790,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ef4444',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    minWidth: 50,
+    justifyContent: 'center',
   },
   deleteAllButtonDisabled: {
-    backgroundColor: '#fca5a5',
+    backgroundColor: '#6b7280',
   },
   deleteAllIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    fontSize: 14,
+    marginRight: 4,
   },
   deleteAllText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   // Asset row delete mode
