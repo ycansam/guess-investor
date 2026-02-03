@@ -13,7 +13,24 @@
 
 ---
 
-## 📋 Descripción
+## � Quick Start
+
+```
+Ctrl+Shift+B
+```
+
+Esto inicia los 3 servicios en terminales divididas:
+| Servicio | Puerto | Descripción |
+|----------|--------|-------------|
+| **Backend** | `localhost:3000` | API Node.js |
+| **Frontend** | Expo DevTools | App React Native |
+| **Python ML** | `localhost:5000` | Servicio ML |
+
+> También puedes usar `.\start-all.bat` o `.\start-all.ps1` desde el explorador.
+
+---
+
+## �📋 Descripción
 
 Guess Investor analiza **11 factores** diferentes para cada activo financiero y genera predicciones de precio con niveles de confianza. La aplicación aprende de sus propios errores mediante un sistema de machine learning que ajusta los pesos de cada factor basándose en el historial de predicciones verificadas.
 

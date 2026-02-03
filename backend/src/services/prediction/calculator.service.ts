@@ -85,6 +85,8 @@ export interface CalculatedPrediction {
     trackRecordAdjustment?: number;
     correlationAdjustment?: number;
     streakAdjustment?: { days: number; direction: string; adjustment: number };
+    meanReversionAdjustment?: { recentDrop: number; todayRecovery: number; adjustment: number };
+    intradayMomentumAdjustment?: { currentChange: number; projectedContinuation: number; adjustment: number; confidenceBoost: number };
     // Información de selección dinámica de modelos
     activeModels?: string[];
     modelSelectionReason?: string;
@@ -958,6 +960,152 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Significant intraday drop (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
     }
     
+    // --- AJUSTE POR MEAN REVERSION DESPUÉS DE CAÍDA RECIENTE (NUEVO) ---
+    // Si el activo cayó fuerte ayer/días recientes pero HOY está rebotando o lateral,
+    // aumentar probabilidad de subida (mean reversion / rebote técnico)
+    // Esto corrige el sesgo de seguir prediciendo caída después de una corrección
+    let recentDropReboundInfo: { recentDrop: number; todayRecovery: number; adjustment: number } | undefined;
+    try {
+      const trendData = await trendsService.analyzeTrend(symbol);
+      if (trendData?.stats && trendData.currentStreak) {
+        const worstDayRecent = trendData.stats.worst_day_30d?.change || 0;
+        const avgDownMove = trendData.stats.avg_down_move || 0;
+        const streak = trendData.currentStreak;
+        
+        // Detectar si hubo caída fuerte reciente (últimos 1-3 días)
+        // Una racha de bajada que acaba de terminar o está terminando
+        const recentlyDropped = (
+          // Racha de bajada corta (1-3 días) que indica corrección reciente
+          (streak.direction === 'down' && streak.days >= 1 && streak.days <= 3 && streak.totalChange < -2) ||
+          // El peor día fue muy negativo y aún no ha pasado mucho tiempo
+          (worstDayRecent < -3 && avgDownMove < -1.5)
+        );
+        
+        // Si cayó recientemente Y hoy está lateral o rebotando ligeramente
+        if (recentlyDropped && intradayChange > -1 && intradayChange < 3) {
+          // Calcular ajuste por mean reversion
+          const dropIntensity = Math.abs(streak.totalChange || avgDownMove);
+          let reboundAdjustment = 0;
+          
+          // Cuanto más fuerte fue la caída, más probable el rebote
+          if (dropIntensity > 5) {
+            reboundAdjustment = 0.20; // +20% hacia arriba si caída fue >5%
+          } else if (dropIntensity > 3) {
+            reboundAdjustment = 0.15; // +15% hacia arriba si caída fue >3%
+          } else if (dropIntensity > 2) {
+            reboundAdjustment = 0.10; // +10% hacia arriba si caída fue >2%
+          }
+          
+          // Si hoy ya está rebotando (intradayChange > 0), aumentar confianza del rebote
+          if (intradayChange > 0) {
+            reboundAdjustment += 0.10; // Confirma el rebote
+            logger.info(`[PredictionCalc] Rebound in progress: today +${intradayChange.toFixed(1)}% after recent drop`);
+          }
+          
+          // Aplicar ajuste hacia arriba (mean reversion)
+          if (reboundAdjustment > 0) {
+            const oldChange = expectedChange;
+            // Si predicción era bajista, ajustar hacia cero o positivo
+            if (expectedChange < 0) {
+              expectedChange = expectedChange * (1 - reboundAdjustment) + (reboundAdjustment * Math.abs(expectedChange) * 0.5);
+            } else {
+              // Si ya era alcista, potenciar
+              expectedChange = expectedChange * (1 + reboundAdjustment * 0.5);
+            }
+            
+            recentDropReboundInfo = {
+              recentDrop: streak.totalChange || avgDownMove,
+              todayRecovery: intradayChange,
+              adjustment: Math.round((expectedChange - oldChange) * 100) / 100,
+            };
+            
+            logger.info(`[PredictionCalc] Mean reversion adjustment: recent drop ${streak.totalChange?.toFixed(1) || avgDownMove.toFixed(1)}%, ` +
+                       `today ${intradayChange.toFixed(1)}%, adjustment: ${reboundAdjustment * 100}% → change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%`);
+          }
+        }
+        // Caso opuesto: si subió mucho recientemente y hoy lateral, posible pullback
+        else if (streak.direction === 'up' && streak.days >= 3 && streak.totalChange > 5 && intradayChange < 1 && intradayChange > -3) {
+          // Después de subida fuerte, es normal un pequeño retroceso
+          const oldChange = expectedChange;
+          if (expectedChange > 0) {
+            expectedChange = expectedChange * 0.85; // Reducir optimismo por posible pullback
+            logger.info(`[PredictionCalc] Extended rally (${streak.totalChange.toFixed(1)}% in ${streak.days}d), reducing bullish prediction by 15%`);
+          }
+        }
+      }
+    } catch (e) {
+      logger.debug(`[PredictionCalc] Could not analyze recent drop rebound: ${(e as Error).message}`);
+    }
+    
+    // --- AJUSTE POR MOMENTUM INTRADÍA (NUEVO) ---
+    // Si el activo está subiendo/bajando fuerte HOY (desde apertura hasta ahora),
+    // proyectar ese momentum hacia el cierre y día siguiente.
+    // Ej: Si abrió a 1€ y ahora está a 2€, es probable que siga subiendo hacia 2.5€
+    // Esto captura el momentum intradía que no está en datos históricos (que solo tienen cierre)
+    let intradayMomentumInfo: { currentChange: number; projectedContinuation: number; adjustment: number; confidenceBoost: number } | undefined;
+    if (Math.abs(intradayChange) >= 1.0) { // Umbral más bajo: movimiento >1%
+      let momentumMultiplier = 0;
+      let confidenceBoost = 0;
+      
+      // Movimientos muy fuertes intradía tienden a continuar hacia el cierre
+      // Multiplicadores aumentados para dar más peso al momentum actual
+      if (Math.abs(intradayChange) >= 8) {
+        // Movimiento extremo (>8%): momentum muy fuerte pero posible agotamiento
+        momentumMultiplier = 0.20;
+        confidenceBoost = 8; // +8% confianza si alineado
+      } else if (Math.abs(intradayChange) >= 5) {
+        // Movimiento muy fuerte (5-8%): momentum alto
+        momentumMultiplier = 0.35;
+        confidenceBoost = 12; // +12% confianza si alineado
+      } else if (Math.abs(intradayChange) >= 3) {
+        // Movimiento fuerte (3-5%): momentum moderado-alto
+        momentumMultiplier = 0.30;
+        confidenceBoost = 10; // +10% confianza si alineado
+      } else if (Math.abs(intradayChange) >= 2) {
+        // Movimiento moderado (2-3%): momentum moderado
+        momentumMultiplier = 0.25;
+        confidenceBoost = 8; // +8% confianza si alineado
+      } else if (Math.abs(intradayChange) >= 1) {
+        // Movimiento leve (1-2%): momentum leve
+        momentumMultiplier = 0.20;
+        confidenceBoost = 5; // +5% confianza si alineado
+      }
+      
+      // Calcular continuación proyectada
+      const projectedContinuation = intradayChange * momentumMultiplier;
+      
+      // Ajustar la predicción en la dirección del momentum intradía
+      const oldChange = expectedChange;
+      const oldConfidence = finalConfidence;
+      
+      // Si predicción y momentum van en la misma dirección, potenciar AMBOS
+      if ((expectedChange > 0 && intradayChange > 0) || (expectedChange < 0 && intradayChange < 0)) {
+        // Momentum confirma predicción: boost significativo
+        expectedChange = expectedChange + projectedContinuation * 0.7;
+        finalConfidence = Math.min(95, finalConfidence + confidenceBoost);
+        logger.info(`[PredictionCalc] Intraday momentum CONFIRMS prediction: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}% today, conf +${confidenceBoost}%`);
+      }
+      // Si van en direcciones opuestas, el momentum intradía es información más fresca
+      else {
+        // Conflicto: dar más peso al momentum actual (es información más reciente)
+        expectedChange = expectedChange * 0.4 + projectedContinuation * 1.2;
+        // Reducir confianza por conflicto de señales
+        finalConfidence = Math.max(25, finalConfidence - Math.round(confidenceBoost * 0.5));
+        logger.info(`[PredictionCalc] Intraday momentum CONFLICTS: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}% today vs predicted ${oldChange > 0 ? '+' : ''}${oldChange.toFixed(2)}%, adjusting toward momentum`);
+      }
+      
+      intradayMomentumInfo = {
+        currentChange: intradayChange,
+        projectedContinuation,
+        adjustment: Math.round((expectedChange - oldChange) * 100) / 100,
+        confidenceBoost: finalConfidence - oldConfidence,
+      };
+      
+      logger.info(`[PredictionCalc] Intraday momentum: today ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%, ` +
+                 `projected ${projectedContinuation > 0 ? '+' : ''}${projectedContinuation.toFixed(2)}%, ` +
+                 `change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, conf ${oldConfidence}% → ${finalConfidence}%`);
+    }
+    
     // --- AJUSTE POR CORRELACIÓN DE FACTORES (ML) ---
     // Detecta double-counting y ajusta confianza según coherencia de señales
     const factorScores: Record<string, number> = {};
@@ -1329,6 +1477,8 @@ export const predictionCalculatorService = {
         trackRecordAdjustment,
         correlationAdjustment: correlationAdjustment.adjustedConfidence - correlationAdjustment.originalConfidence,
         streakAdjustment: streakAdjustmentInfo,
+        meanReversionAdjustment: recentDropReboundInfo,
+        intradayMomentumAdjustment: intradayMomentumInfo,
         // Información de selección dinámica de modelos
         activeModels: ensembleResult.activeModels,
         modelSelectionReason: ensembleResult.modelSelectionReason,
