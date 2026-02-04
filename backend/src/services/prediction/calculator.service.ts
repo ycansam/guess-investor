@@ -33,9 +33,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  probabilisticModelService,
-  reinforcementLearningService,
+    factorCorrelationService,
+    probabilisticModelService,
+    reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { commodityCorrelationService } from './commodity-correlation.service.js';
@@ -1453,14 +1453,24 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Extreme magnitude penalty (${absChange.toFixed(2)}% > ${magnitudeThreshold}%): confidence ${oldConfidence}% → ${finalConfidence}%`);
     }
     
-    // --- LÓGICA DE CONFIANZA BAJA = NEUTRAL ---
-    // Si la confianza es < 50%, no tiene sentido predecir dirección
-    // Una confianza de 30% en "up" no significa 70% "down", significa "no sé"
-    // Por tanto, si no estamos seguros, mejor ser honestos y decir "neutral"
+    // --- LÓGICA DE CONFIANZA BAJA = NEUTRAL (MEJORADA) ---
+    // Si la confianza es < 50% Y el cambio predicho es pequeño, usar neutral
+    // PERO: si el cambio predicho es significativo (>1%), mantener la dirección
+    // Razón: La confianza baja ya comunica incertidumbre. Cambiar dirección a neutral
+    // cuando predecimos +4% causa inconsistencia y scores incorrectos al verificar.
     const LOW_CONFIDENCE_THRESHOLD = 50;
+    const SIGNIFICANT_CHANGE_THRESHOLD = 1.0; // 1% es un cambio significativo
+    const absExpectedChange = Math.abs(expectedChange);
+    
     if (finalConfidence < LOW_CONFIDENCE_THRESHOLD && direction !== 'neutral') {
-      logger.info(`[PredictionCalc] Low confidence (${finalConfidence}%) - changing direction from '${direction}' to 'neutral'`);
-      direction = 'neutral';
+      // Solo forzar neutral si el cambio predicho es pequeño
+      if (absExpectedChange < SIGNIFICANT_CHANGE_THRESHOLD) {
+        logger.info(`[PredictionCalc] Low confidence (${finalConfidence}%) + small change (${expectedChange.toFixed(2)}%) - changing to 'neutral'`);
+        direction = 'neutral';
+      } else {
+        // Mantener dirección pero advertir que la confianza es baja
+        logger.info(`[PredictionCalc] Low confidence (${finalConfidence}%) but significant change (${expectedChange.toFixed(2)}%) - keeping direction '${direction}'`);
+      }
     }
     
     // --- CORRELACIÓN DE COMMODITIES (NUEVO) ---
