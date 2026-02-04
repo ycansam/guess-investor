@@ -14,7 +14,7 @@ import { logger } from '../../middleware/logger.js';
 import { predictionRepository, PredictionType } from '../../repositories/prediction.repository.js';
 import { weightsRepository } from '../../repositories/weights.repository.js';
 import { broadMarketContextService } from '../external/broad-market-context.service.js';
-import { CalendarEffectsAnalysis, calendarEffectsService } from '../external/calendar-effects.service.js';
+// Calendar Effects eliminado - el efecto lunes es casi mito
 import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
 import { AssetEvents, eventsService } from '../external/events.service.js';
 import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
@@ -33,9 +33,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-    factorCorrelationService,
-    probabilisticModelService,
-    reinforcementLearningService,
+  factorCorrelationService,
+  probabilisticModelService,
+  reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { commodityCorrelationService } from './commodity-correlation.service.js';
@@ -183,20 +183,7 @@ export interface CalculatedPrediction {
     reasoning: string;
   };
   
-  // Efectos de calendario (fin de mes, viernes, etc.)
-  calendarEffects?: {
-    dayOfWeek: string;
-    dayOfMonth: number;
-    month: string;
-    riskLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'none';
-    riskScore: number;
-    isEndOfMonth: boolean;
-    isFriday: boolean;
-    isEndOfJanuary: boolean;
-    dangerousCombination: boolean;
-    signals: string[];
-    reasoning: string;
-  };
+  // Calendar Effects eliminado - el efecto lunes es casi mito
   
   // Psicología del mercado
   marketPsychology?: {
@@ -1325,28 +1312,7 @@ export const predictionCalculatorService = {
       logger.warn(`[PredictionCalc] Could not analyze precious metals correlation: ${(e as Error).message}`);
     }
     
-    // --- EFECTOS DE CALENDARIO ---
-    // Solo informativo - el calendario NO ajusta predicciones
-    let calendarEffectsInfo: CalendarEffectsAnalysis | undefined;
-    try {
-      const isPreciousMetal = preciousMetalsInfo?.isPreciousMetal || false;
-      const recentPerformance30d = historical.change30d || 0;
-      
-      const calendarAdjustment = calendarEffectsService.applyToPrediction(
-        { change: expectedChange, confidence: finalConfidence },
-        this.inferAssetType(symbol, type),
-        {
-          isPreciousMetal,
-          recentPerformance30d,
-        }
-      );
-      
-      // Siempre obtener la info del calendario (aunque no ajusta nada)
-      calendarEffectsInfo = calendarAdjustment.calendarInfo;
-      
-    } catch (e) {
-      logger.warn(`[PredictionCalc] Could not analyze calendar effects: ${(e as Error).message}`);
-    }
+    // Calendar Effects eliminado - el efecto lunes es casi mito
     
     // --- PSICOLOGÍA DEL MERCADO ---
     // Detecta estados emocionales: euforia, miedo, pánico, complacencia, etc.
@@ -1508,7 +1474,7 @@ export const predictionCalculatorService = {
                         `${Math.round(timeframeDays / 7)} semanas`;
 
     // --- GENERAR RECOMENDACIÓN INTELIGENTE ---
-    // Considera: predicción + psicología + calendario + tendencia largo plazo + fundamental
+    // Considera: predicción + psicología + tendencia largo plazo + fundamental
     const recommendation = this.generateSmartRecommendation({
       direction,
       predictedChange: expectedChange,
@@ -1517,8 +1483,8 @@ export const predictionCalculatorService = {
       change90d: historical.change90d || 0,
       volatility: historical.volatility || 20,
       intradayChange: intradayChange || 0,
-      calendarRiskScore: calendarEffectsInfo?.calendarRisk.score || 0,
-      calendarDangerousCombination: calendarEffectsInfo?.dangerousCombination || calendarEffectsInfo?.extremeDanger || false,
+      calendarRiskScore: 0, // Calendar Effects eliminado
+      calendarDangerousCombination: false,
       psychologyState: marketPsychologyInfo?.currentState || 'neutral',
       psychologyIntensity: marketPsychologyInfo?.stateIntensity || 50,
       contrarianSignal: marketPsychologyInfo?.predictionImpact.contrarianSignal || false,
@@ -1622,19 +1588,7 @@ export const predictionCalculatorService = {
         signals: preciousMetalsInfo.signals,
         reasoning: preciousMetalsInfo.reasoning,
       } : undefined,
-      calendarEffects: calendarEffectsInfo ? {
-        dayOfWeek: calendarEffectsInfo.dayOfWeek,
-        dayOfMonth: calendarEffectsInfo.dayOfMonth,
-        month: calendarEffectsInfo.month,
-        riskLevel: calendarEffectsInfo.calendarRisk.level,
-        riskScore: calendarEffectsInfo.calendarRisk.score,
-        isEndOfMonth: calendarEffectsInfo.isEndOfMonth,
-        isFriday: calendarEffectsInfo.isFriday,
-        isEndOfJanuary: calendarEffectsInfo.isEndOfJanuary,
-        dangerousCombination: calendarEffectsInfo.dangerousCombination || calendarEffectsInfo.extremeDanger,
-        signals: calendarEffectsInfo.signals,
-        reasoning: calendarEffectsInfo.reasoning,
-      } : undefined,
+      // Calendar Effects eliminado - el efecto lunes es casi mito
       marketPsychology: marketPsychologyInfo ? {
         state: marketPsychologyInfo.currentState,
         stateIntensity: marketPsychologyInfo.stateIntensity,
