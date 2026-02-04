@@ -15,7 +15,7 @@ import { predictionRepository, PredictionType } from '../../repositories/predict
 import { weightsRepository } from '../../repositories/weights.repository.js';
 import { broadMarketContextService } from '../external/broad-market-context.service.js';
 // Calendar Effects eliminado - el efecto lunes es casi mito
-import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
+// Competitors eliminado - no añade señal limpia, mejor usar ETF sectorial o momentum relativo
 import { AssetEvents, eventsService } from '../external/events.service.js';
 import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
@@ -236,12 +236,12 @@ interface AssetGroupConfig {
 
 const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
   large_cap_stock: {
-    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
     minFactorsForHighConfidence: 5,
     description: 'Acciones de gran capitalización',
   },
   small_cap_stock: {
-    relevantFactors: ['trend', 'technical', 'news', 'competitors', 'seasonality', 'financials'],
+    relevantFactors: ['trend', 'technical', 'news', 'seasonality', 'financials'],
     minFactorsForHighConfidence: 3,
     description: 'Acciones pequeñas/medianas',
   },
@@ -276,7 +276,7 @@ const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
     description: 'Pares de divisas',
   },
   adr: {
-    relevantFactors: ['trend', 'technical', 'news', 'forex', 'macro', 'competitors', 'financials'],
+    relevantFactors: ['trend', 'technical', 'news', 'forex', 'macro', 'financials'],
     minFactorsForHighConfidence: 4,
     description: 'ADRs',
   },
@@ -339,87 +339,76 @@ const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
   'EURUSD=X': 'forex', 'GBPUSD=X': 'forex', 'USDJPY=X': 'forex', 'USDCHF=X': 'forex',
 };
 
-// Pesos por defecto según timeframe (11 factores)
+// Pesos por defecto según timeframe (10 factores - competitors eliminado)
 const DEFAULT_WEIGHTS = {
   intraday: {
-    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.16,
-    macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
+    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
+    macro: 0.05, forex: 0.05, institutional: 0.05,
     seasonality: 0.04, financials: 0.02, expectations: 0.01
   },
   swing: {
-    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
-    macro: 0.08, competitors: 0.07, forex: 0.06, institutional: 0.10,
-    seasonality: 0.04, financials: 0.05, expectations: 0.05
+    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.17,
+    macro: 0.10, forex: 0.08, institutional: 0.10,
+    seasonality: 0.04, financials: 0.05, expectations: 0.06
   },
   long: {
-    trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.07,
-    macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
-    seasonality: 0.08, financials: 0.12, expectations: 0.12
+    trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.08,
+    macro: 0.15, forex: 0.10, institutional: 0.14,
+    seasonality: 0.08, financials: 0.13, expectations: 0.13
   },
 };
 
 // --- MULTIPLICADORES DE PESO POR GRUPO DE ACTIVO ---
-// Diferentes tipos de activos requieren diferentes combinaciones de factores
+// Diferentes tipos de activos requieren diferentes combinaciones de factores (10 factores - competitors eliminado)
 const ASSET_GROUP_WEIGHT_MULTIPLIERS: Record<AssetGroup, Record<string, number>> = {
   large_cap_stock: {
-    // Acciones grandes: balance de todos los factores, énfasis en institucional y financials
     trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.0,
-    macro: 1.1, competitors: 1.2, forex: 0.8, institutional: 1.4,
+    macro: 1.1, forex: 0.8, institutional: 1.4,
     seasonality: 1.0, financials: 1.3, expectations: 1.2
   },
   small_cap_stock: {
-    // Small caps: más técnico/momentum, menos institucional (poco volumen)
     trend: 1.3, technical: 1.4, sentiment: 1.2, news: 1.3,
-    macro: 0.7, competitors: 1.0, forex: 0.5, institutional: 0.5,
+    macro: 0.7, forex: 0.5, institutional: 0.5,
     seasonality: 0.9, financials: 1.1, expectations: 0.8
   },
   crypto_major: {
-    // Bitcoin/Ethereum: técnico + sentiment + macro (correlación con risk-on/off)
     trend: 1.3, technical: 1.4, sentiment: 1.5, news: 1.2,
-    macro: 1.2, competitors: 0.3, forex: 0.8, institutional: 1.0,
+    macro: 1.2, forex: 0.8, institutional: 1.0,
     seasonality: 0.5, financials: 0.1, expectations: 0.3
   },
   crypto_alt: {
-    // Altcoins: muy técnico + sentiment, casi nada de fundamentales
     trend: 1.5, technical: 1.6, sentiment: 1.8, news: 1.0,
-    macro: 0.5, competitors: 0.2, forex: 0.3, institutional: 0.3,
+    macro: 0.5, forex: 0.3, institutional: 0.3,
     seasonality: 0.4, financials: 0.1, expectations: 0.2
   },
   etf_index: {
-    // ETFs/Índices: macro domina, poco técnico individual
     trend: 0.8, technical: 0.7, sentiment: 0.9, news: 0.8,
-    macro: 1.5, competitors: 0.4, forex: 1.2, institutional: 1.3,
+    macro: 1.5, forex: 1.2, institutional: 1.3,
     seasonality: 1.3, financials: 0.3, expectations: 0.5
   },
   commodity: {
-    // Materias primas: macro + forex dominan, seasonality reducida (solo aplica a ciclos de demanda industrial)
-    // Nota: seasonality histórica es menos relevante que macro/USD para metales preciosos
     trend: 1.0, technical: 1.1, sentiment: 0.7, news: 1.1,
-    macro: 1.8, competitors: 0.2, forex: 1.6, institutional: 0.8,
+    macro: 1.8, forex: 1.6, institutional: 0.8,
     seasonality: 0.7, financials: 0.1, expectations: 0.3
   },
   reit: {
-    // REITs: macro (tasas de interés) + financials
     trend: 0.9, technical: 0.8, sentiment: 0.6, news: 0.8,
-    macro: 1.6, competitors: 0.9, forex: 0.5, institutional: 1.2,
+    macro: 1.6, forex: 0.5, institutional: 1.2,
     seasonality: 1.0, financials: 1.5, expectations: 1.1
   },
   forex: {
-    // Forex: macro absoluto + técnico
     trend: 1.2, technical: 1.4, sentiment: 0.5, news: 1.0,
-    macro: 1.8, competitors: 0.1, forex: 0.5, institutional: 0.8,
+    macro: 1.8, forex: 0.5, institutional: 0.8,
     seasonality: 0.8, financials: 0.1, expectations: 0.3
   },
   adr: {
-    // ADRs: mezcla de factores + forex importante
     trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.1,
-    macro: 1.1, competitors: 1.0, forex: 1.4, institutional: 1.0,
+    macro: 1.1, forex: 1.4, institutional: 1.0,
     seasonality: 0.9, financials: 1.2, expectations: 1.0
   },
   default: {
-    // Sin ajuste
     trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
-    macro: 1.0, competitors: 1.0, forex: 1.0, institutional: 1.0,
+    macro: 1.0, forex: 1.0, institutional: 1.0,
     seasonality: 1.0, financials: 1.0, expectations: 1.0
   }
 };
@@ -462,7 +451,7 @@ function adjustWeightsForVolatility(
     // Baja volatilidad: priorizar fundamentales
     volatilityMultiplier = {
       trend: 0.8, technical: 0.7, sentiment: 0.6, news: 0.8,
-      macro: 1.3, competitors: 1.2, forex: 1.1, institutional: 1.4,
+      macro: 1.3, forex: 1.1, institutional: 1.4,
       seasonality: 1.2, financials: 1.5, expectations: 1.5
     };
     logger.debug(`[PredictionCalc] Low volatility (${assetVolatility.toFixed(1)}%): prioritizing fundamentals`);
@@ -470,14 +459,14 @@ function adjustWeightsForVolatility(
     // Volatilidad media: sin ajuste
     volatilityMultiplier = {
       trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
-      macro: 1.0, competitors: 1.0, forex: 1.0, institutional: 1.0,
+      macro: 1.0, forex: 1.0, institutional: 1.0,
       seasonality: 1.0, financials: 1.0, expectations: 1.0
     };
   } else {
     // Alta volatilidad: priorizar técnico/momentum/sentiment
     volatilityMultiplier = {
       trend: 1.4, technical: 1.5, sentiment: 1.4, news: 1.3,
-      macro: 0.7, competitors: 0.8, forex: 0.9, institutional: 0.8,
+      macro: 0.7, forex: 0.9, institutional: 0.8,
       seasonality: 0.6, financials: 0.5, expectations: 0.5
     };
     logger.debug(`[PredictionCalc] High volatility (${assetVolatility.toFixed(1)}%): prioritizing technical/sentiment`);
@@ -595,14 +584,6 @@ export const predictionCalculatorService = {
       // Asignar technical (ya viene del subyacente si es commodity ETF)
       const technical = technicalRaw;
 
-      // 5. Obtener análisis de competidores (necesita datos históricos)
-      const companyChange1d = historical.change30d ? historical.change30d / 30 : 0;
-      const companyChange1w = historical.change30d ? historical.change30d / 4 : 0;
-      const companyChange1m = historical.change30d || 0;
-      const competitors = await competitorsService.analyzeCompetitors(
-        symbol, companyChange1d, companyChange1w, companyChange1m
-      );
-
       // 5. Calcular predicción determinística usando basePrice (previousClose)
       // Para commodity ETFs, usar el cambio intradía del subyacente para mejor coherencia
       const currentDayChange = commodityUnderlying.useUnderlying && commodityUnderlying.underlyingData
@@ -621,7 +602,6 @@ export const predictionCalculatorService = {
         macro,
         seasonality,
         expectations,
-        competitors,
         forex,
         institutional,
         financials,
@@ -722,7 +702,6 @@ export const predictionCalculatorService = {
     macro: MacroIndicators,
     seasonality: SeasonalityAnalysis,
     expectations: ExpectationsData | null,
-    competitors: CompetitorAnalysis,
     forex: ForexImpact,
     institutional: InstitutionalData,
     financials: FinancialsData | null,
@@ -739,19 +718,17 @@ export const predictionCalculatorService = {
     const hasMacroData = macro.hasData;
     const hasSeasonalityData = seasonality.hasData;
     const hasExpectationsData = expectations?.hasData || false;
-    const hasCompetitorsData = competitors.hasData;
     const hasForexData = forex.hasData;
     const hasInstitutionalData = institutional.hasData;
     const hasFinancialsData = financials?.hasData || false;
 
-    // Objeto de disponibilidad de datos para el ensemble
+    // Objeto de disponibilidad de datos para el ensemble (10 factores - competitors eliminado)
     const dataAvailability: DataAvailability = {
       trend: hasHistoricalData,
       technical: hasTechnicalData,
       sentiment: hasSentimentData,
       news: hasNewsData,
       macro: hasMacroData,
-      competitors: hasCompetitorsData,
       forex: hasForexData,
       institutional: hasInstitutionalData,
       seasonality: hasSeasonalityData,
@@ -761,7 +738,7 @@ export const predictionCalculatorService = {
 
     // Log de disponibilidad de datos
     const availableCount = Object.values(dataAvailability).filter(Boolean).length;
-    logger.info(`[PredictionCalc] Data availability: ${availableCount}/11 factors`);
+    logger.info(`[PredictionCalc] Data availability: ${availableCount}/10 factors`);
 
     // Scores de cada factor (-100 a +100)
     const trendScore = hasHistoricalData ? this.calculateTrendScore(historical.change30d, historical.change90d) : 0;
@@ -787,12 +764,11 @@ export const predictionCalculatorService = {
     }
     
     const expectationsScore = hasExpectationsData ? expectations!.expectationsScore : 0;
-    const competitorsScore = hasCompetitorsData ? competitors.competitorScore : 0;
     const forexScore = hasForexData ? forex.forexScore : 0;
     const institutionalScore = hasInstitutionalData ? institutional.institutionalScore : 0;
     const financialsScore = hasFinancialsData ? financials!.financialsScore : 0;
 
-    logger.info(`[PredictionCalc] Scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}, macro=${macroScore}, seasonality=${seasonalityScore}, expectations=${expectationsScore}, competitors=${competitorsScore}, forex=${forexScore}, institutional=${institutionalScore}, financials=${financialsScore}`);
+    logger.info(`[PredictionCalc] Scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}, macro=${macroScore}, seasonality=${seasonalityScore}, expectations=${expectationsScore}, forex=${forexScore}, institutional=${institutionalScore}, financials=${financialsScore}`);
 
     // Obtener pesos (aprendidos o por defecto)
     type WeightsType = { trend: number; technical: number; sentiment: number; news: number; macro: number };
@@ -827,7 +803,7 @@ export const predictionCalculatorService = {
     
     logger.debug(`[PredictionCalc] Weights: group=${assetGroup}, volatility=${assetVolatility.toFixed(1)}%`);
 
-    // Definir los 11 factores
+    // Definir los 10 factores (competitors eliminado - no añade señal limpia)
     // NOTA: seasonality usa effectiveHasSeasonality que considera la fiabilidad de datos
     const factors = [
       { name: 'trend', score: trendScore, hasData: hasHistoricalData, weight: weights.trend },
@@ -835,7 +811,6 @@ export const predictionCalculatorService = {
       { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, weight: weights.sentiment },
       { name: 'news', score: newsScore, hasData: hasNewsData, weight: weights.news },
       { name: 'macro', score: macroScore, hasData: hasMacroData, weight: weights.macro },
-      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, weight: weights.competitors },
       { name: 'forex', score: forexScore, hasData: hasForexData, weight: weights.forex },
       { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, weight: weights.institutional },
       { name: 'seasonality', score: seasonalityScore, hasData: effectiveHasSeasonality, weight: weights.seasonality },

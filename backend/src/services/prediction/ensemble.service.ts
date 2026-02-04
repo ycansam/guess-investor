@@ -19,10 +19,10 @@ import { logger } from '../../middleware/logger.js';
 import { trainingRepository } from '../../repositories/training.repository.js';
 import { pythonMlService, type AssetProfile } from '../ml/python-ml.service.js';
 
-// Factores de análisis (debe coincidir con los del sistema)
+// Factores de análisis (debe coincidir con los del sistema - 10 factores, competitors eliminado)
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'competitors', 'forex', 'institutional', 'seasonality',
+  'forex', 'institutional', 'seasonality',
   'financials', 'expectations'
 ] as const;
 
@@ -44,7 +44,6 @@ export interface DataAvailability {
   sentiment: boolean;
   news: boolean;
   macro: boolean;
-  competitors: boolean;
   forex: boolean;
   institutional: boolean;
   seasonality: boolean;
@@ -101,36 +100,36 @@ export type MarketRegime = 'trending_up' | 'trending_down' | 'high_volatility' |
  * Pesos fijos para modelo Momentum (prioriza tendencia)
  */
 const MOMENTUM_WEIGHTS: WeightsMap = {
-  trend: 0.30, technical: 0.28, sentiment: 0.15, news: 0.10,
-  macro: 0.02, competitors: 0.03, forex: 0.02, institutional: 0.04,
-  seasonality: 0.02, financials: 0.02, expectations: 0.02
+  trend: 0.32, technical: 0.30, sentiment: 0.15, news: 0.10,
+  macro: 0.02, forex: 0.02, institutional: 0.04,
+  seasonality: 0.02, financials: 0.02, expectations: 0.01
 };
 
 /**
  * Pesos fijos para modelo Mean Reversion (contrarian)
  */
 const MEAN_REVERSION_WEIGHTS: WeightsMap = {
-  trend: 0.05, technical: 0.35, sentiment: 0.08, news: 0.05,
-  macro: 0.10, competitors: 0.08, forex: 0.05, institutional: 0.10,
-  seasonality: 0.04, financials: 0.05, expectations: 0.05
+  trend: 0.05, technical: 0.35, sentiment: 0.10, news: 0.05,
+  macro: 0.12, forex: 0.05, institutional: 0.12,
+  seasonality: 0.05, financials: 0.06, expectations: 0.05
 };
 
 /**
  * Pesos fijos para modelo Fundamental (prioriza análisis fundamental)
  */
 const FUNDAMENTAL_WEIGHTS: WeightsMap = {
-  trend: 0.05, technical: 0.05, sentiment: 0.05, news: 0.08,
-  macro: 0.18, competitors: 0.12, forex: 0.07, institutional: 0.10,
-  seasonality: 0.05, financials: 0.15, expectations: 0.10
+  trend: 0.05, technical: 0.05, sentiment: 0.05, news: 0.10,
+  macro: 0.20, forex: 0.08, institutional: 0.12,
+  seasonality: 0.05, financials: 0.18, expectations: 0.12
 };
 
 /**
  * Pesos fijos para modelo Sentiment-Driven (prioriza sentiment y news)
  */
 const SENTIMENT_DRIVEN_WEIGHTS: WeightsMap = {
-  trend: 0.10, technical: 0.10, sentiment: 0.30, news: 0.25,
-  macro: 0.05, competitors: 0.05, forex: 0.03, institutional: 0.05,
-  seasonality: 0.02, financials: 0.02, expectations: 0.03
+  trend: 0.10, technical: 0.10, sentiment: 0.32, news: 0.27,
+  macro: 0.05, forex: 0.03, institutional: 0.05,
+  seasonality: 0.02, financials: 0.03, expectations: 0.03
 };
 
 /**
@@ -138,19 +137,19 @@ const SENTIMENT_DRIVEN_WEIGHTS: WeightsMap = {
  */
 const DEFAULT_GLOBAL_WEIGHTS: Record<Timeframe, WeightsMap> = {
   intraday: {
-    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
-    macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
-    seasonality: 0.02, financials: 0.02, expectations: 0.01
+    trend: 0.22, technical: 0.27, sentiment: 0.16, news: 0.18,
+    macro: 0.04, forex: 0.04, institutional: 0.05,
+    seasonality: 0.02, financials: 0.01, expectations: 0.01
   },
   swing: {
-    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
-    macro: 0.08, competitors: 0.07, forex: 0.06, institutional: 0.10,
-    seasonality: 0.04, financials: 0.05, expectations: 0.05
+    trend: 0.13, technical: 0.20, sentiment: 0.11, news: 0.15,
+    macro: 0.09, forex: 0.06, institutional: 0.11,
+    seasonality: 0.04, financials: 0.06, expectations: 0.05
   },
   long: {
-    trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08,
-    macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
-    seasonality: 0.08, financials: 0.13, expectations: 0.12
+    trend: 0.05, technical: 0.08, sentiment: 0.05, news: 0.08,
+    macro: 0.15, forex: 0.10, institutional: 0.14,
+    seasonality: 0.08, financials: 0.15, expectations: 0.12
   }
 };
 
@@ -171,7 +170,7 @@ const REGIME_WEIGHTS: Record<MarketRegime, Partial<WeightsMap>> = {
     financials: 0.20, macro: 0.15, expectations: 0.15,
   },
   ranging: {
-    technical: 0.25, sentiment: 0.15, competitors: 0.10,
+    technical: 0.28, sentiment: 0.18,
   }
 };
 
@@ -219,7 +218,7 @@ const MODEL_DATA_REQUIREMENTS: Record<ModelType, { required: Factor[]; preferred
   },
   fundamental: {
     required: ['financials'],
-    preferred: ['macro', 'expectations', 'competitors', 'institutional'],
+    preferred: ['macro', 'expectations', 'institutional'],
     minRequired: 2, // financials + at least 1 preferred
   },
   sentiment_driven: {
@@ -365,7 +364,7 @@ export const ensembleService = {
     const hasTechnicalData = availability.trend || availability.technical;
     const hasFundamentalData = availability.financials || availability.macro || availability.expectations;
     const hasSentimentData = availability.sentiment || availability.news;
-    const hasAlternativeData = availability.institutional || availability.competitors || availability.forex;
+    const hasAlternativeData = availability.institutional || availability.forex;
     
     const totalFactors = Object.values(availability).filter(Boolean).length;
     

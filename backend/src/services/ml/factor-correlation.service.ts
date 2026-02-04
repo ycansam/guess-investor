@@ -17,7 +17,7 @@ import { logger } from '../../middleware/logger.js';
 
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'competitors', 'forex', 'institutional', 'seasonality',
+  'forex', 'institutional', 'seasonality',
   'financials', 'expectations'
 ] as const;
 
@@ -77,7 +77,7 @@ const KNOWN_SYNERGIES: [Factor, Factor, number][] = [
   ['sentiment', 'news', 0.12],         // Sentiment coherente con noticias
   ['institutional', 'financials', 0.10], // Institucionales siguen fundamentales
   ['macro', 'forex', 0.08],            // Macro afecta divisas
-  ['competitors', 'seasonality', 0.05], // Sector + estacionalidad
+  ['seasonality', 'macro', 0.05],      // Estacionalidad + macro
 ];
 
 // Pares redundantes (dan info similar)

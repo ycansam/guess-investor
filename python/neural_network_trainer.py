@@ -46,7 +46,7 @@ except ImportError:
 
 FACTORS = [
     'trend', 'technical', 'sentiment', 'news', 'macro',
-    'competitors', 'forex', 'institutional', 'seasonality',
+    'forex', 'institutional', 'seasonality',
     'financials', 'expectations'
 ]
 

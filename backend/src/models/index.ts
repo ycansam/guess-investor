@@ -13,14 +13,13 @@ export type Timeframe = z.infer<typeof TimeframeSchema>;
 export const DirectionSchema = z.enum(['up', 'down']);
 export type Direction = z.infer<typeof DirectionSchema>;
 
-// Factor scores
+// Factor scores (10 factores - competitors eliminado)
 export const FactorScoresSchema = z.object({
   trend: z.number(),
   technical: z.number(),
   sentiment: z.number(),
   news: z.number(),
   macro: z.number(),
-  competitors: z.number(),
   forex: z.number(),
   institutional: z.number(),
   seasonality: z.number(),
@@ -134,7 +133,6 @@ export const WeightsSchema = z.object({
   sentiment: z.number().min(0).max(1),
   news: z.number().min(0).max(1),
   macro: z.number().min(0).max(1),
-  competitors: z.number().min(0).max(1),
   forex: z.number().min(0).max(1),
   institutional: z.number().min(0).max(1),
   seasonality: z.number().min(0).max(1),

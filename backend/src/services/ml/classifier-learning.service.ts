@@ -14,14 +14,13 @@
 import { prisma } from '../../config/database.js';
 import { logger } from '../../middleware/logger.js';
 
-// Tipo para los multiplicadores de un clasificador
+// Tipo para los multiplicadores de un clasificador (10 factores - competitors eliminado)
 interface ClassifierMultipliers {
   trend: number;
   technical: number;
   sentiment: number;
   news: number;
   macro: number;
-  competitors: number;
   forex: number;
   institutional: number;
   seasonality: number;
@@ -50,7 +49,6 @@ const BASE_MULTIPLIERS: ClassifierMultipliers = {
   sentiment: 1.0,
   news: 1.0,
   macro: 1.0,
-  competitors: 1.0,
   forex: 1.0,
   institutional: 1.0,
   seasonality: 1.0,
@@ -78,7 +76,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     news: 1.3,
     macro: 1.2,
     financials: 0.1,
-    competitors: 0.3,
     expectations: 0.2,
   },
   crypto_alt: {
@@ -86,7 +83,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     technical: 1.3,
     news: 1.4,
     financials: 0.05,
-    competitors: 0.2,
     macro: 0.7,
     expectations: 0.1,
   },
@@ -95,7 +91,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     trend: 1.2,
     forex: 1.1,
     financials: 0.3,
-    competitors: 0.4,
     expectations: 0.5,
   },
   commodity: {
@@ -104,7 +99,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     seasonality: 1.5,
     sentiment: 0.7,
     financials: 0.1,
-    competitors: 0.2,
     expectations: 0.3,
   },
   reit: {
@@ -112,14 +106,12 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     institutional: 1.3,
     financials: 1.2,
     forex: 0.6,
-    competitors: 0.7,
   },
   forex: {
     macro: 1.8,
     sentiment: 1.3,
     news: 1.2,
     financials: 0.1,
-    competitors: 0.1,
     institutional: 0.3,
     expectations: 0.2,
   },
@@ -127,7 +119,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     forex: 1.5,
     macro: 1.3,
     sentiment: 1.2,
-    competitors: 0.8,
   },
   default: {},
 };

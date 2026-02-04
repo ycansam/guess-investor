@@ -2,12 +2,12 @@ import { Request, Response, Router } from 'express';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  featureEngineeringService,
-  metaLearningService,
-  probabilisticModelService,
-  reinforcementLearningService,
-  temporalCrossValidationService,
+    factorCorrelationService,
+    featureEngineeringService,
+    metaLearningService,
+    probabilisticModelService,
+    reinforcementLearningService,
+    temporalCrossValidationService,
 } from '../services/ml/index.js';
 
 const router = Router();
@@ -153,31 +153,30 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
   const fs = await import('fs');
   const path = await import('path');
   
-  // Pesos base (hardcoded)
+  // Pesos base (hardcoded - 10 factores, competitors eliminado)
   const BASE_WEIGHTS = {
-    trend: 0.20,
-    technical: 0.25,
-    sentiment: 0.15,
+    trend: 0.22,
+    technical: 0.27,
+    sentiment: 0.16,
     news: 0.16,
     macro: 0.04,
-    competitors: 0.04,
     forex: 0.03,
     institutional: 0.05,
     seasonality: 0.03,
-    financials: 0.03,
+    financials: 0.02,
     expectations: 0.02,
   };
 
-  // Multiplicadores por grupo de activo
+  // Multiplicadores por grupo de activo (competitors eliminado)
   const ASSET_GROUP_MULTIPLIERS = {
-    large_cap_stock: { sentiment: 0.85, institutional: 1.3, financials: 1.2, competitors: 1.2 },
+    large_cap_stock: { sentiment: 0.85, institutional: 1.3, financials: 1.2 },
     small_cap_stock: { sentiment: 1.2, technical: 1.15, institutional: 0.7 },
-    crypto_major: { sentiment: 1.3, technical: 1.2, macro: 1.0, competitors: 0.3, financials: 0.1 },
-    crypto_alt: { sentiment: 1.5, technical: 1.3, news: 1.2, macro: 0.5, competitors: 0.2, financials: 0.05 },
-    etf_index: { macro: 1.5, competitors: 0.5, institutional: 1.2, financials: 0.3 },
-    commodity: { macro: 1.5, forex: 2.0, seasonality: 1.5, sentiment: 0.7, competitors: 0.2, financials: 0.1 },
+    crypto_major: { sentiment: 1.3, technical: 1.2, macro: 1.0, financials: 0.1 },
+    crypto_alt: { sentiment: 1.5, technical: 1.3, news: 1.2, macro: 0.5, financials: 0.05 },
+    etf_index: { macro: 1.5, institutional: 1.2, financials: 0.3 },
+    commodity: { macro: 1.5, forex: 2.0, seasonality: 1.5, sentiment: 0.7, financials: 0.1 },
     reit: { macro: 1.3, institutional: 1.2, financials: 1.5, sentiment: 0.8 },
-    forex: { macro: 1.8, forex: 0.5, sentiment: 0.6, competitors: 0.3, financials: 0.1 },
+    forex: { macro: 1.8, forex: 0.5, sentiment: 0.6, financials: 0.1 },
     adr: { forex: 1.5, macro: 1.3, sentiment: 0.9 },
     default: {},
   };

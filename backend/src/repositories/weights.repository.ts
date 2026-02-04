@@ -24,37 +24,36 @@ interface LearnedWeightsJson {
   };
 }
 
-// Pesos por defecto (11 factores, igual peso)
+// Pesos por defecto (10 factores - competitors eliminado)
 const DEFAULT_WEIGHTS: Weights = {
-  trend: 0.091,
-  technical: 0.091,
-  sentiment: 0.091,
-  news: 0.091,
-  macro: 0.091,
-  competitors: 0.091,
-  forex: 0.091,
-  institutional: 0.091,
-  seasonality: 0.091,
-  financials: 0.091,
-  expectations: 0.091,
+  trend: 0.10,
+  technical: 0.10,
+  sentiment: 0.10,
+  news: 0.10,
+  macro: 0.10,
+  forex: 0.10,
+  institutional: 0.10,
+  seasonality: 0.10,
+  financials: 0.10,
+  expectations: 0.10,
 };
 
 // Pesos por defecto por timeframe (usados si no hay archivo)
 const DEFAULT_TIMEFRAME_WEIGHTS = {
   intraday: {
-    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18, macro: 0.04,
-    competitors: 0.04, forex: 0.04, institutional: 0.05, seasonality: 0.02,
-    financials: 0.02, expectations: 0.01
+    trend: 0.22, technical: 0.27, sentiment: 0.16, news: 0.18, macro: 0.04,
+    forex: 0.04, institutional: 0.05, seasonality: 0.02,
+    financials: 0.01, expectations: 0.01
   },
   swing: {
-    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15, macro: 0.08,
-    competitors: 0.07, forex: 0.06, institutional: 0.10, seasonality: 0.04,
+    trend: 0.14, technical: 0.20, sentiment: 0.11, news: 0.15, macro: 0.09,
+    forex: 0.06, institutional: 0.11, seasonality: 0.04,
     financials: 0.05, expectations: 0.05
   },
   long: {
-    trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08, macro: 0.12,
-    competitors: 0.10, forex: 0.08, institutional: 0.12, seasonality: 0.08,
-    financials: 0.13, expectations: 0.12
+    trend: 0.06, technical: 0.09, sentiment: 0.05, news: 0.09, macro: 0.14,
+    forex: 0.09, institutional: 0.14, seasonality: 0.08,
+    financials: 0.14, expectations: 0.12
   }
 };
 
@@ -130,7 +129,6 @@ export const weightsRepository = {
       sentiment: swingWeights.sentiment || DEFAULT_WEIGHTS.sentiment,
       news: swingWeights.news || DEFAULT_WEIGHTS.news,
       macro: swingWeights.macro || DEFAULT_WEIGHTS.macro,
-      competitors: swingWeights.competitors || DEFAULT_WEIGHTS.competitors,
       forex: swingWeights.forex || DEFAULT_WEIGHTS.forex,
       institutional: swingWeights.institutional || DEFAULT_WEIGHTS.institutional,
       seasonality: swingWeights.seasonality || DEFAULT_WEIGHTS.seasonality,
