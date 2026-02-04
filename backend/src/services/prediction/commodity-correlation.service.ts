@@ -1,14 +1,19 @@
 /**
  * Commodity Correlation Service
  * 
- * Asegura que los ETFs/ETCs del mismo subyacente (oro, plata, etc.)
- * tengan predicciones coherentes - no puede uno subir y otro bajar.
+ * Los ETFs de commodities (oro, plata, etc.) siguen al futuro base.
+ * - Plata: SI=F
+ * - Oro: GC=F
+ * - Petróleo: CL=F
+ * - Gas: NG=F
  * 
- * Si hay múltiples predicciones para el mismo commodity, se usa
- * el consenso ponderado por confianza.
+ * Cuando se predice un ETF de commodity:
+ * 1. Obtener el cambio % del día del futuro base desde Yahoo
+ * 2. Usar esa dirección para el ETF
  */
 
 import { logger } from '../../middleware/logger.js';
+import { yahooService } from '../external/yahoo.service.js';
 
 // ============================================================================
 // TIPOS
@@ -16,22 +21,26 @@ import { logger } from '../../middleware/logger.js';
 
 export type CommodityType = 'gold' | 'silver' | 'platinum' | 'palladium' | 'oil' | 'gas' | 'other';
 
-export interface CommodityPrediction {
-  symbol: string;
-  commodityType: CommodityType;
+interface CachedDirection {
   direction: 'up' | 'down' | 'neutral';
   predictedChange: number;
   confidence: number;
   timestamp: number;
 }
 
-interface ConsensusPrediction {
-  direction: 'up' | 'down' | 'neutral';
-  avgChange: number;
-  avgConfidence: number;
-  participantCount: number;
-  strongestSignal: CommodityPrediction | null;
-}
+// ============================================================================
+// FUTURO BASE POR COMMODITY
+// ============================================================================
+
+const BASE_FUTURES: Record<CommodityType, string> = {
+  gold: 'GC=F',
+  silver: 'SI=F',
+  platinum: 'PL=F',
+  palladium: 'PA=F',
+  oil: 'CL=F',
+  gas: 'NG=F',
+  other: '',
+};
 
 // ============================================================================
 // DETECCIÓN DE COMMODITY
@@ -43,26 +52,34 @@ const COMMODITY_PATTERNS: Record<CommodityType, RegExp[]> = {
     /\boro\b/i, /\bphau\b/i, /physical gold/i, /wisdomtree.*gold/i,
     /invesco.*gold/i, /ishares.*gold/i, /spdr.*gold/i, /xetra.*gold/i,
     /euwax.*gold/i, /amundi.*gold/i, /xtrackers.*gold/i,
+    /\begln\b/i, /\bigln\b/i, /\bsgbs\b/i,
+    /\bgc=f\b/i, // El propio futuro
   ],
   silver: [
     /\bsilver\b/i, /\bslv\b/i, /\bxag/i, /\bphag\b/i, /\bsivr\b/i,
     /\bplata\b/i, /physical silver/i, /wisdomtree.*silver/i,
     /ishares.*silver/i, /sprott.*silver/i, /xtrackers.*silver/i,
+    /\bssln\b/i, /\bisln\b/i, /\bslvp\b/i,
+    /\bsi=f\b/i, // El propio futuro
   ],
   platinum: [
     /\bplatinum\b/i, /\bpplt\b/i, /\bxpt/i, /\bplatino\b/i,
-    /physical platinum/i, /wisdomtree.*platinum/i,
+    /physical platinum/i, /wisdomtree.*platinum/i, /\bphpt\b/i,
+    /\bpl=f\b/i,
   ],
   palladium: [
     /\bpalladium\b/i, /\bpall\b/i, /\bxpd/i, /\bpaladio\b/i,
-    /physical palladium/i, /wisdomtree.*palladium/i,
+    /physical palladium/i, /wisdomtree.*palladium/i, /\bphpm\b/i,
+    /\bpa=f\b/i,
   ],
   oil: [
     /\boil\b/i, /\bcrude\b/i, /\bbrent\b/i, /\bwti\b/i, /\buso\b/i,
     /\bpetroleo\b/i, /\bpetróleo\b/i, /crude oil/i,
+    /\bcl=f\b/i, /\bbz=f\b/i,
   ],
   gas: [
-    /\bgas\b/i, /\bnatural gas\b/i, /\bung\b/i, /\bboil\b/i,
+    /\bnatural gas\b/i, /\bung\b/i, /\bboil\b/i,
+    /\bng=f\b/i, /\bngas\b/i,
   ],
   other: [],
 };
@@ -85,23 +102,49 @@ export function detectCommodityType(symbol: string, assetName?: string): Commodi
   return null;
 }
 
+/**
+ * Verifica si el símbolo es el futuro base de su commodity
+ */
+function isBaseFuture(symbol: string): boolean {
+  const upperSymbol = symbol.toUpperCase();
+  return Object.values(BASE_FUTURES).some(f => f && upperSymbol === f);
+}
+
 // ============================================================================
-// CACHE DE PREDICCIONES RECIENTES (últimos 5 minutos)
+// CACHE DE DIRECCIÓN DEL FUTURO BASE (30 minutos)
 // ============================================================================
 
-const recentPredictions = new Map<CommodityType, CommodityPrediction[]>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const baseDirectionCache = new Map<CommodityType, CachedDirection>();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
-function cleanExpiredPredictions() {
-  const now = Date.now();
-  for (const [type, predictions] of recentPredictions.entries()) {
-    const valid = predictions.filter(p => now - p.timestamp < CACHE_TTL);
-    if (valid.length > 0) {
-      recentPredictions.set(type, valid);
-    } else {
-      recentPredictions.delete(type);
-    }
+function getCachedDirection(commodityType: CommodityType): CachedDirection | null {
+  const cached = baseDirectionCache.get(commodityType);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached;
   }
+  return null;
+}
+
+function setCachedDirection(commodityType: CommodityType, direction: 'up' | 'down' | 'neutral', predictedChange: number, confidence: number): void {
+  baseDirectionCache.set(commodityType, {
+    direction,
+    predictedChange,
+    confidence,
+    timestamp: Date.now(),
+  });
+}
+
+function getCommodityName(type: CommodityType): string {
+  const names: Record<CommodityType, string> = {
+    gold: 'Oro',
+    silver: 'Plata',
+    platinum: 'Platino',
+    palladium: 'Paladio',
+    oil: 'Petróleo',
+    gas: 'Gas Natural',
+    other: 'Commodity',
+  };
+  return names[type];
 }
 
 // ============================================================================
@@ -110,9 +153,10 @@ function cleanExpiredPredictions() {
 
 export const commodityCorrelationService = {
   /**
-   * Registra una predicción de commodity para usar en consenso
+   * Registra la dirección del futuro base para un commodity.
+   * Llamar esto cuando se calcula la predicción del futuro (SI=F, GC=F, etc.)
    */
-  registerPrediction(
+  registerBaseFutureDirection(
     symbol: string,
     assetName: string,
     direction: 'up' | 'down' | 'neutral',
@@ -122,143 +166,142 @@ export const commodityCorrelationService = {
     const commodityType = detectCommodityType(symbol, assetName);
     if (!commodityType) return;
     
-    cleanExpiredPredictions();
-    
-    const prediction: CommodityPrediction = {
-      symbol,
-      commodityType,
-      direction,
-      predictedChange,
-      confidence,
-      timestamp: Date.now(),
-    };
-    
-    const existing = recentPredictions.get(commodityType) || [];
-    // Evitar duplicados del mismo símbolo
-    const filtered = existing.filter(p => p.symbol !== symbol);
-    filtered.push(prediction);
-    recentPredictions.set(commodityType, filtered);
-    
-    logger.debug(`[CommodityCorr] Registered ${symbol} (${commodityType}): ${direction} ${predictedChange.toFixed(2)}%`);
-  },
-
-  /**
-   * Obtiene el consenso de predicciones para un commodity
-   */
-  getConsensus(commodityType: CommodityType): ConsensusPrediction | null {
-    cleanExpiredPredictions();
-    
-    const predictions = recentPredictions.get(commodityType);
-    if (!predictions || predictions.length === 0) return null;
-    
-    // Calcular promedio ponderado por confianza
-    let totalWeight = 0;
-    let weightedChangeSum = 0;
-    let upVotes = 0;
-    let downVotes = 0;
-    let strongestSignal: CommodityPrediction | null = null;
-    let strongestConfidence = 0;
-    
-    for (const pred of predictions) {
-      const weight = pred.confidence / 100;
-      totalWeight += weight;
-      weightedChangeSum += pred.predictedChange * weight;
-      
-      if (pred.direction === 'up') upVotes += weight;
-      else if (pred.direction === 'down') downVotes += weight;
-      
-      if (pred.confidence > strongestConfidence) {
-        strongestConfidence = pred.confidence;
-        strongestSignal = pred;
-      }
+    // Solo registrar si es el futuro base
+    if (isBaseFuture(symbol)) {
+      setCachedDirection(commodityType, direction, predictedChange, confidence);
+      logger.info(`[CommodityCorr] Registrado futuro base ${symbol} (${commodityType}): ${direction} ${predictedChange.toFixed(2)}%`);
     }
-    
-    const avgChange = totalWeight > 0 ? weightedChangeSum / totalWeight : 0;
-    const avgConfidence = predictions.reduce((sum, p) => sum + p.confidence, 0) / predictions.length;
-    
-    // Determinar dirección por consenso
-    let direction: 'up' | 'down' | 'neutral' = 'neutral';
-    if (upVotes > downVotes * 1.2) direction = 'up';
-    else if (downVotes > upVotes * 1.2) direction = 'down';
-    
-    return {
-      direction,
-      avgChange,
-      avgConfidence,
-      participantCount: predictions.length,
-      strongestSignal,
-    };
   },
 
   /**
-   * Ajusta una predicción según el consenso del commodity
-   * Devuelve la predicción ajustada si hay conflicto con el consenso
+   * Ajusta la predicción de un ETF de commodity para seguir al futuro base.
+   * Si no hay caché, obtiene el cambio actual del futuro base desde Yahoo.
    */
-  adjustPrediction(
+  async adjustPrediction(
     symbol: string,
     assetName: string,
     direction: 'up' | 'down' | 'neutral',
     predictedChange: number,
     confidence: number
-  ): { 
+  ): Promise<{ 
     adjusted: boolean;
     newDirection: 'up' | 'down' | 'neutral';
     newChange: number;
     newConfidence: number;
     reason: string | null;
-  } {
+  }> {
     const commodityType = detectCommodityType(symbol, assetName);
+    
+    // No es un commodity → no ajustar
     if (!commodityType) {
-      return { adjusted: false, newDirection: direction, newChange: predictedChange, newConfidence: confidence, reason: null };
+      return { 
+        adjusted: false, 
+        newDirection: direction, 
+        newChange: predictedChange, 
+        newConfidence: confidence, 
+        reason: null 
+      };
     }
     
-    // Primero registrar esta predicción
-    this.registerPrediction(symbol, assetName, direction, predictedChange, confidence);
-    
-    // Obtener consenso (incluyendo esta predicción)
-    const consensus = this.getConsensus(commodityType);
-    if (!consensus || consensus.participantCount < 2) {
-      // No hay suficientes predicciones para consenso
-      return { adjusted: false, newDirection: direction, newChange: predictedChange, newConfidence: confidence, reason: null };
+    // Si ES el futuro base, registrar su dirección y no ajustar
+    if (isBaseFuture(symbol)) {
+      setCachedDirection(commodityType, direction, predictedChange, confidence);
+      return { 
+        adjusted: false, 
+        newDirection: direction, 
+        newChange: predictedChange, 
+        newConfidence: confidence, 
+        reason: null 
+      };
     }
     
-    // Detectar conflicto: esta predicción va contra el consenso
-    const isConflicting = (
-      (direction === 'up' && consensus.direction === 'down') ||
-      (direction === 'down' && consensus.direction === 'up')
+    // Es un ETF de commodity → buscar dirección del futuro base
+    let baseDirection = getCachedDirection(commodityType);
+    
+    // Si no hay caché, obtener el cambio actual del futuro base
+    if (!baseDirection) {
+      const baseFuture = BASE_FUTURES[commodityType];
+      if (baseFuture) {
+        try {
+          logger.info(`[CommodityCorr] ${symbol}: Obteniendo dirección de ${baseFuture}...`);
+          const quote = await yahooService.getQuote(baseFuture);
+          if (quote) {
+            const futureChange = quote.regularMarketChangePercent || 0;
+            const futureDirection: 'up' | 'down' | 'neutral' = 
+              futureChange > 0.3 ? 'up' : futureChange < -0.3 ? 'down' : 'neutral';
+            
+            setCachedDirection(commodityType, futureDirection, futureChange, 70);
+            baseDirection = { direction: futureDirection, predictedChange: futureChange, confidence: 70, timestamp: Date.now() };
+            
+            logger.info(`[CommodityCorr] ${baseFuture} cambio hoy: ${futureChange.toFixed(2)}% → dirección: ${futureDirection}`);
+          }
+        } catch (error) {
+          logger.warn(`[CommodityCorr] Error obteniendo ${baseFuture}: ${error}`);
+        }
+      }
+    }
+    
+    if (!baseDirection) {
+      // No pudimos obtener dirección del futuro base
+      logger.debug(`[CommodityCorr] ${symbol}: No se pudo obtener dirección del futuro base`);
+      return { 
+        adjusted: false, 
+        newDirection: direction, 
+        newChange: predictedChange, 
+        newConfidence: confidence, 
+        reason: null 
+      };
+    }
+    
+    // Hay dirección del futuro base → verificar si coincide
+    const needsAdjustment = (
+      (direction === 'up' && baseDirection.direction === 'down') ||
+      (direction === 'down' && baseDirection.direction === 'up')
     );
     
-    if (!isConflicting) {
-      // No hay conflicto, mantener predicción original
-      return { adjusted: false, newDirection: direction, newChange: predictedChange, newConfidence: confidence, reason: null };
+    if (!needsAdjustment) {
+      // Misma dirección, todo OK
+      return { 
+        adjusted: false, 
+        newDirection: direction, 
+        newChange: predictedChange, 
+        newConfidence: confidence, 
+        reason: null 
+      };
     }
     
-    // HAY CONFLICTO: Ajustar hacia el consenso
-    const commodityName = commodityType === 'gold' ? 'Oro' : 
-                         commodityType === 'silver' ? 'Plata' : 
-                         commodityType === 'platinum' ? 'Platino' :
-                         commodityType === 'palladium' ? 'Paladio' :
-                         commodityType === 'oil' ? 'Petróleo' :
-                         commodityType === 'gas' ? 'Gas Natural' : 'Commodity';
+    // CONFLICTO: El ETF va en dirección opuesta al futuro base → corregir
+    const commodityName = getCommodityName(commodityType);
+    const baseFuture = BASE_FUTURES[commodityType];
     
-    // Usar el consenso como nueva predicción
-    const newDirection = consensus.direction;
-    // Promedio entre predicción original y consenso (dar más peso al consenso)
-    const newChange = consensus.avgChange * 0.7 + predictedChange * 0.3;
-    // Reducir confianza por el conflicto
-    const newConfidence = Math.max(30, Math.min(confidence, consensus.avgConfidence) - 10);
+    const newDirection = baseDirection.direction;
+    // Ajustar el cambio: usar el signo del futuro base con magnitud del ETF
+    const sign = baseDirection.direction === 'up' ? 1 : baseDirection.direction === 'down' ? -1 : 0;
+    const newChange = sign * Math.abs(predictedChange);
     
-    const reason = `Ajustado por coherencia con otros ETFs de ${commodityName} (${consensus.participantCount} activos). ` +
-                  `Consenso: ${consensus.direction === 'up' ? '📈' : '📉'} ${consensus.avgChange.toFixed(2)}%`;
+    const reason = `Ajustado para seguir al ${commodityName} (${baseFuture}): ${baseDirection.direction === 'up' ? '📈' : '📉'} ${baseDirection.predictedChange.toFixed(2)}%`;
     
-    logger.info(`[CommodityCorr] ${symbol}: Conflict with ${commodityType} consensus. ` +
-               `Original: ${direction} ${predictedChange.toFixed(2)}% → Adjusted: ${newDirection} ${newChange.toFixed(2)}%`);
+    logger.info(`[CommodityCorr] ${symbol}: Corregido para seguir ${baseFuture}. ` +
+               `Original: ${direction} ${predictedChange.toFixed(2)}% → Corregido: ${newDirection} ${newChange.toFixed(2)}%`);
     
-    return { adjusted: true, newDirection, newChange, newConfidence, reason };
+    return { 
+      adjusted: true, 
+      newDirection, 
+      newChange, 
+      newConfidence: confidence, 
+      reason 
+    };
   },
 
   /**
-   * Verifica si un activo es un commodity trackeable
+   * Obtiene el símbolo del futuro base para un commodity
+   */
+  getBaseFuture(commodityType: CommodityType): string {
+    return BASE_FUTURES[commodityType] || '';
+  },
+
+  /**
+   * Verifica si un activo es un commodity
    */
   isCommodity(symbol: string, assetName?: string): boolean {
     return detectCommodityType(symbol, assetName) !== null;
@@ -267,17 +310,20 @@ export const commodityCorrelationService = {
   /**
    * Obtiene estadísticas del cache
    */
-  getStats(): { commodityType: string; count: number; latestDirection: string }[] {
-    cleanExpiredPredictions();
+  getStats(): { commodityType: string; direction: string; baseFuture: string; age: string }[] {
+    const stats: { commodityType: string; direction: string; baseFuture: string; age: string }[] = [];
+    const now = Date.now();
     
-    const stats: { commodityType: string; count: number; latestDirection: string }[] = [];
-    for (const [type, predictions] of recentPredictions.entries()) {
-      const consensus = this.getConsensus(type);
-      stats.push({
-        commodityType: type,
-        count: predictions.length,
-        latestDirection: consensus?.direction || 'neutral',
-      });
+    for (const [type, data] of baseDirectionCache.entries()) {
+      if (now - data.timestamp < CACHE_TTL) {
+        const ageMinutes = Math.round((now - data.timestamp) / 60000);
+        stats.push({
+          commodityType: type,
+          direction: `${data.direction} ${data.predictedChange.toFixed(2)}%`,
+          baseFuture: BASE_FUTURES[type],
+          age: `${ageMinutes}min`,
+        });
+      }
     }
     return stats;
   },
@@ -286,7 +332,7 @@ export const commodityCorrelationService = {
    * Limpia el cache
    */
   clearCache(): void {
-    recentPredictions.clear();
+    baseDirectionCache.clear();
     logger.info('[CommodityCorr] Cache cleared');
   },
 };

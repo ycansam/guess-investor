@@ -1474,10 +1474,10 @@ export const predictionCalculatorService = {
     }
     
     // --- CORRELACIÓN DE COMMODITIES (NUEVO) ---
-    // Si es un commodity (oro, plata, etc.), ajustar para coherencia con otros ETFs del mismo subyacente
-    // Es imposible que un ETF de plata suba y otro baje - deben ir en la misma dirección
+    // Si es un commodity (oro, plata, etc.), ajustar para coherencia con el futuro base
+    // SSLN.L, PHAG.MI, ISLN.L deben seguir la dirección de SI=F (plata)
     let commodityCorrelationInfo: { adjusted: boolean; reason: string | null } | undefined;
-    const commodityAdjustment = commodityCorrelationService.adjustPrediction(
+    const commodityAdjustment = await commodityCorrelationService.adjustPrediction(
       symbol,
       assetName,
       direction,
