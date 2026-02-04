@@ -1338,38 +1338,38 @@ export const predictionCalculatorService = {
       logger.warn(`[PredictionCalc] Could not analyze market psychology: ${(e as Error).message}`);
     }
     
-    // --- EVENTOS GEOPOLÍTICOS ---
-    // Detecta aranceles, cambios de la Fed, tensiones comerciales, etc.
+    // --- SHOCK DETECTION (antes Geopolitical Events) ---
+    // NUEVO ENFOQUE: Solo reduce confianza, NO modifica el cambio predicho
+    // Los shocks son imposibles de cuantificar direccionalmente
     let geopoliticalInfo: GeopoliticalAnalysis | undefined;
     let geopoliticalApplied = false;
     try {
-      const geoAdjustment = await geopoliticalEventsService.applyToPrediction(
+      const shockAdjustment = await geopoliticalEventsService.applyToPrediction(
         { change: expectedChange, confidence: finalConfidence },
         symbol,
         quote?.name,
         this.inferAssetType(symbol, type)
       );
       
-      if (geoAdjustment.applied && geoAdjustment.geopoliticalInfo) {
-        const oldChange = expectedChange;
+      if (shockAdjustment.applied && shockAdjustment.geopoliticalInfo) {
         const oldConfidence = finalConfidence;
         
-        expectedChange = geoAdjustment.adjustedChange;
-        finalConfidence = geoAdjustment.adjustedConfidence;
-        geopoliticalInfo = geoAdjustment.geopoliticalInfo;
+        // IMPORTANTE: Solo ajustamos confianza, NO el cambio predicho
+        finalConfidence = shockAdjustment.adjustedConfidence;
+        geopoliticalInfo = shockAdjustment.geopoliticalInfo;
         geopoliticalApplied = true;
         
-        logger.info(`[PredictionCalc] Geopolitical events (${geopoliticalInfo.overallRisk}, ${geopoliticalInfo.events.length} events): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
+        logger.info(`[PredictionCalc] Shock Detection (${geopoliticalInfo.overallRisk}, ${geopoliticalInfo.events.length} shocks): confidence ${oldConfidence}% → ${finalConfidence}% (cambio sin modificar)`);
         
-        if (geoAdjustment.appliedEvents?.length) {
-          logger.info(`[PredictionCalc] Applied geopolitical events: ${geoAdjustment.appliedEvents.join(', ')}`);
+        if (shockAdjustment.appliedEvents?.length) {
+          logger.info(`[PredictionCalc] Active shocks: ${shockAdjustment.appliedEvents.slice(0, 3).join(', ')}`);
         }
-      } else if (geoAdjustment.geopoliticalInfo?.hasActiveEvents) {
-        // Hay eventos pero no afectan directamente a este activo
-        geopoliticalInfo = geoAdjustment.geopoliticalInfo;
+      } else if (shockAdjustment.geopoliticalInfo?.hasActiveEvents) {
+        // Hay shocks pero no afectan directamente a este activo
+        geopoliticalInfo = shockAdjustment.geopoliticalInfo;
       }
     } catch (e) {
-      logger.warn(`[PredictionCalc] Could not analyze geopolitical events: ${(e as Error).message}`);
+      logger.warn(`[PredictionCalc] Shock detection error: ${(e as Error).message}`);
     }
     
     // --- MODELO PROBABILÍSTICO ---
