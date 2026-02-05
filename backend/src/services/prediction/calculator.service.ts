@@ -8,6 +8,11 @@
  * - Si hay datos fundamentales → activa modelo fundamental
  * - Si hay datos de sentiment/news → activa modelo sentiment_driven
  * - Si solo hay datos técnicos → usa modelos momentum/mean_reversion
+ * 
+ * FACTORES SIMPLIFICADOS (9):
+ * - CORE: trend, technical, sentiment, news, institutional, financials, macro
+ * - CONDICIONALES: seasonality (bias suave ×0.5), forex (solo si exposición internacional)
+ * - ELIMINADOS: competitors (ruido), expectations (redundante con news)
  */
 
 import { logger } from '../../middleware/logger.js';
@@ -16,8 +21,8 @@ import { weightsRepository } from '../../repositories/weights.repository.js';
 import { broadMarketContextService } from '../external/broad-market-context.service.js';
 // Calendar Effects eliminado - el efecto lunes es casi mito
 // Competitors eliminado - no añade señal limpia, mejor usar ETF sectorial o momentum relativo
+// Expectations eliminado - redundante con news (analyst actions ya incluidas en news)
 import { AssetEvents, eventsService } from '../external/events.service.js';
-import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
 import { ForexImpact, forexService } from '../external/forex.service.js';
 import { GeopoliticalAnalysis, geopoliticalEventsService } from '../external/geopolitical-events.service.js';
@@ -339,77 +344,80 @@ const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
   'EURUSD=X': 'forex', 'GBPUSD=X': 'forex', 'USDJPY=X': 'forex', 'USDCHF=X': 'forex',
 };
 
-// Pesos por defecto según timeframe (10 factores - competitors eliminado)
+// Pesos por defecto según timeframe (9 factores - competitors y expectations eliminados)
+// Seasonality como bias suave (peso reducido), forex condicional
 const DEFAULT_WEIGHTS = {
   intraday: {
-    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
+    trend: 0.22, technical: 0.27, sentiment: 0.16, news: 0.19,
     macro: 0.05, forex: 0.05, institutional: 0.05,
-    seasonality: 0.04, financials: 0.02, expectations: 0.01
+    seasonality: 0.01, financials: 0.00 // seasonality mínimo en intraday
   },
   swing: {
-    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.17,
-    macro: 0.10, forex: 0.08, institutional: 0.10,
-    seasonality: 0.04, financials: 0.05, expectations: 0.06
+    trend: 0.14, technical: 0.20, sentiment: 0.12, news: 0.20, // news absorbe expectations
+    macro: 0.10, forex: 0.06, institutional: 0.10,
+    seasonality: 0.02, financials: 0.06 // seasonality como bias suave
   },
   long: {
-    trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.08,
-    macro: 0.15, forex: 0.10, institutional: 0.14,
-    seasonality: 0.08, financials: 0.13, expectations: 0.13
+    trend: 0.06, technical: 0.10, sentiment: 0.05, news: 0.12,
+    macro: 0.15, forex: 0.08, institutional: 0.14,
+    seasonality: 0.04, financials: 0.26 // financials absorbe expectations
   },
 };
 
 // --- MULTIPLICADORES DE PESO POR GRUPO DE ACTIVO ---
-// Diferentes tipos de activos requieren diferentes combinaciones de factores (10 factores - competitors eliminado)
+// Diferentes tipos de activos requieren diferentes combinaciones de factores (9 factores)
+// Seasonality solo aplica a sectores cíclicos (retail, commodities, utilities)
+// Forex solo aplica a activos con exposición internacional significativa
 const ASSET_GROUP_WEIGHT_MULTIPLIERS: Record<AssetGroup, Record<string, number>> = {
   large_cap_stock: {
-    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.0,
+    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.2, // news absorbe expectations
     macro: 1.1, forex: 0.8, institutional: 1.4,
-    seasonality: 1.0, financials: 1.3, expectations: 1.2
+    seasonality: 0.3, financials: 1.5 // seasonality muy bajo, financials absorbe expectations
   },
   small_cap_stock: {
-    trend: 1.3, technical: 1.4, sentiment: 1.2, news: 1.3,
-    macro: 0.7, forex: 0.5, institutional: 0.5,
-    seasonality: 0.9, financials: 1.1, expectations: 0.8
+    trend: 1.3, technical: 1.4, sentiment: 1.2, news: 1.5,
+    macro: 0.7, forex: 0.3, institutional: 0.5,
+    seasonality: 0.2, financials: 1.3
   },
   crypto_major: {
-    trend: 1.3, technical: 1.4, sentiment: 1.5, news: 1.2,
-    macro: 1.2, forex: 0.8, institutional: 1.0,
-    seasonality: 0.5, financials: 0.1, expectations: 0.3
+    trend: 1.3, technical: 1.4, sentiment: 1.5, news: 1.3,
+    macro: 1.2, forex: 0.0, institutional: 1.0, // forex no aplica a crypto
+    seasonality: 0.1, financials: 0.0 // sin financials ni seasonality relevante
   },
   crypto_alt: {
-    trend: 1.5, technical: 1.6, sentiment: 1.8, news: 1.0,
-    macro: 0.5, forex: 0.3, institutional: 0.3,
-    seasonality: 0.4, financials: 0.1, expectations: 0.2
+    trend: 1.5, technical: 1.6, sentiment: 1.8, news: 1.2,
+    macro: 0.5, forex: 0.0, institutional: 0.3,
+    seasonality: 0.0, financials: 0.0
   },
   etf_index: {
-    trend: 0.8, technical: 0.7, sentiment: 0.9, news: 0.8,
-    macro: 1.5, forex: 1.2, institutional: 1.3,
-    seasonality: 1.3, financials: 0.3, expectations: 0.5
+    trend: 0.8, technical: 0.7, sentiment: 0.9, news: 1.0,
+    macro: 1.5, forex: 1.0, institutional: 1.3,
+    seasonality: 0.8, financials: 0.5 // ETFs tienen algo de seasonality
   },
   commodity: {
-    trend: 1.0, technical: 1.1, sentiment: 0.7, news: 1.1,
+    trend: 1.0, technical: 1.1, sentiment: 0.7, news: 1.2,
     macro: 1.8, forex: 1.6, institutional: 0.8,
-    seasonality: 0.7, financials: 0.1, expectations: 0.3
+    seasonality: 1.2, financials: 0.1 // commodities SÍ tienen seasonality
   },
   reit: {
-    trend: 0.9, technical: 0.8, sentiment: 0.6, news: 0.8,
-    macro: 1.6, forex: 0.5, institutional: 1.2,
-    seasonality: 1.0, financials: 1.5, expectations: 1.1
+    trend: 0.9, technical: 0.8, sentiment: 0.6, news: 1.0,
+    macro: 1.6, forex: 0.3, institutional: 1.2,
+    seasonality: 0.4, financials: 1.8
   },
   forex: {
-    trend: 1.2, technical: 1.4, sentiment: 0.5, news: 1.0,
-    macro: 1.8, forex: 0.5, institutional: 0.8,
-    seasonality: 0.8, financials: 0.1, expectations: 0.3
+    trend: 1.2, technical: 1.4, sentiment: 0.5, news: 1.2,
+    macro: 1.8, forex: 0.0, institutional: 0.8, // forex factor no aplica a pares FX
+    seasonality: 0.2, financials: 0.0
   },
   adr: {
-    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.1,
-    macro: 1.1, forex: 1.4, institutional: 1.0,
-    seasonality: 0.9, financials: 1.2, expectations: 1.0
+    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.3,
+    macro: 1.1, forex: 1.6, institutional: 1.0, // ADRs SÍ tienen exposición forex
+    seasonality: 0.3, financials: 1.4
   },
   default: {
-    trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
-    macro: 1.0, forex: 1.0, institutional: 1.0,
-    seasonality: 1.0, financials: 1.0, expectations: 1.0
+    trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.2,
+    macro: 1.0, forex: 0.5, institutional: 1.0,
+    seasonality: 0.3, financials: 1.2
   }
 };
 
@@ -553,14 +561,13 @@ export const predictionCalculatorService = {
         logger.warn(`[PredictionCalc] No historical data, using previousClose (${basePrice}) as fallback`);
       }
       
-      // 4. Obtener todos los datos en paralelo
+      // 4. Obtener todos los datos en paralelo (9 factores - expectations eliminado)
       const [
         technicalRaw,
         sentiment,
         news,
         macro,
         seasonality,
-        expectations,
         institutional,
         forex,
         financials,
@@ -574,7 +581,6 @@ export const predictionCalculatorService = {
         newsService.getNews(symbol, type),
         macroService.getIndicators(symbol, type),
         seasonalityService.analyze(symbol, quote.name), // Ahora es async
-        expectationsService.getExpectations(symbol),
         institutionalService.getInstitutionalActivity(symbol, type),
         forexService.analyzeForexImpact(symbol, quote.name),
         financialsService.getFinancials(symbol, quote.price),
@@ -601,7 +607,6 @@ export const predictionCalculatorService = {
         news,
         macro,
         seasonality,
-        expectations,
         forex,
         institutional,
         financials,
@@ -689,6 +694,7 @@ export const predictionCalculatorService = {
 
   /**
    * Cálculo determinístico de la predicción
+   * FACTORES: 9 (trend, technical, sentiment, news, macro, forex, institutional, seasonality, financials)
    */
   async calculateFromData(
     symbol: string,
@@ -701,7 +707,6 @@ export const predictionCalculatorService = {
     news: NewsSummary,
     macro: MacroIndicators,
     seasonality: SeasonalityAnalysis,
-    expectations: ExpectationsData | null,
     forex: ForexImpact,
     institutional: InstitutionalData,
     financials: FinancialsData | null,
@@ -717,12 +722,11 @@ export const predictionCalculatorService = {
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
     const hasSeasonalityData = seasonality.hasData;
-    const hasExpectationsData = expectations?.hasData || false;
     const hasForexData = forex.hasData;
     const hasInstitutionalData = institutional.hasData;
     const hasFinancialsData = financials?.hasData || false;
 
-    // Objeto de disponibilidad de datos para el ensemble (10 factores - competitors eliminado)
+    // Objeto de disponibilidad de datos para el ensemble (9 factores)
     const dataAvailability: DataAvailability = {
       trend: hasHistoricalData,
       technical: hasTechnicalData,
@@ -733,12 +737,11 @@ export const predictionCalculatorService = {
       institutional: hasInstitutionalData,
       seasonality: hasSeasonalityData,
       financials: hasFinancialsData,
-      expectations: hasExpectationsData,
     };
 
     // Log de disponibilidad de datos
     const availableCount = Object.values(dataAvailability).filter(Boolean).length;
-    logger.info(`[PredictionCalc] Data availability: ${availableCount}/10 factors`);
+    logger.info(`[PredictionCalc] Data availability: ${availableCount}/9 factors`);
 
     // Scores de cada factor (-100 a +100)
     const trendScore = hasHistoricalData ? this.calculateTrendScore(historical.change30d, historical.change90d) : 0;
@@ -763,12 +766,11 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Seasonality: structural break detected for ${symbol}, reliability=${seasonalityReliability}`);
     }
     
-    const expectationsScore = hasExpectationsData ? expectations!.expectationsScore : 0;
     const forexScore = hasForexData ? forex.forexScore : 0;
     const institutionalScore = hasInstitutionalData ? institutional.institutionalScore : 0;
     const financialsScore = hasFinancialsData ? financials!.financialsScore : 0;
 
-    logger.info(`[PredictionCalc] Scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}, macro=${macroScore}, seasonality=${seasonalityScore}, expectations=${expectationsScore}, forex=${forexScore}, institutional=${institutionalScore}, financials=${financialsScore}`);
+    logger.info(`[PredictionCalc] Scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}, macro=${macroScore}, seasonality=${seasonalityScore}, forex=${forexScore}, institutional=${institutionalScore}, financials=${financialsScore}`);
 
     // Obtener pesos (aprendidos o por defecto)
     type WeightsType = { trend: number; technical: number; sentiment: number; news: number; macro: number };
@@ -803,8 +805,9 @@ export const predictionCalculatorService = {
     
     logger.debug(`[PredictionCalc] Weights: group=${assetGroup}, volatility=${assetVolatility.toFixed(1)}%`);
 
-    // Definir los 10 factores (competitors eliminado - no añade señal limpia)
+    // Definir los 9 factores (competitors y expectations eliminados)
     // NOTA: seasonality usa effectiveHasSeasonality que considera la fiabilidad de datos
+    // NOTA: seasonality tiene peso reducido (bias suave), forex es condicional por grupo de activo
     const factors = [
       { name: 'trend', score: trendScore, hasData: hasHistoricalData, weight: weights.trend },
       { name: 'technical', score: technicalScore, hasData: hasTechnicalData, weight: weights.technical },
@@ -815,7 +818,6 @@ export const predictionCalculatorService = {
       { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, weight: weights.institutional },
       { name: 'seasonality', score: seasonalityScore, hasData: effectiveHasSeasonality, weight: weights.seasonality },
       { name: 'financials', score: financialsScore, hasData: hasFinancialsData, weight: weights.financials },
-      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, weight: weights.expectations },
     ];
 
     const availableFactors = factors.filter(f => f.hasData);

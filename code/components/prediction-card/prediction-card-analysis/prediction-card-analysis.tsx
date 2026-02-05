@@ -35,12 +35,15 @@ interface PredictionCardAnalysisProps {
   prediction: InvestmentPrediction;
 }
 
-// Factores esenciales por tipo de activo (se muestran aunque no tengan datos)
+// Factores esenciales por tipo de activo (9 factores - competitors y expectations eliminados)
+// Seasonality: solo para activos cíclicos (commodity, retail)
+// Forex: solo para activos con exposición internacional
 const ESSENTIAL_FACTORS: Record<string, string[]> = {
-  stock: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
-  crypto: ['trend', 'technical', 'sentiment', 'news', 'macro', 'seasonality'],
+  stock: ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'financials'],
+  crypto: ['trend', 'technical', 'sentiment', 'news', 'macro'],
   etf: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
-  index: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
+  index: ['trend', 'technical', 'macro', 'sentiment'],
+  commodity: ['trend', 'technical', 'macro', 'forex', 'seasonality'], // commodities SÍ tienen seasonality
 };
 
 // Detectar tipo de activo y devolver factores esenciales
@@ -49,6 +52,11 @@ function getEssentialFactors(symbol: string): string[] {
   
   if (upperSymbol.includes('-USD') || ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'].some(c => upperSymbol.startsWith(c))) {
     return ESSENTIAL_FACTORS.crypto;
+  }
+  // Commodities (oro, petróleo, etc.)
+  if (['GC=F', 'CL=F', 'SI=F', 'NG=F', 'GLD', 'SLV', 'USO'].includes(upperSymbol) || 
+      upperSymbol.includes('GOLD') || upperSymbol.includes('SILVER') || upperSymbol.includes('OIL')) {
+    return ESSENTIAL_FACTORS.commodity;
   }
   if (['SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO'].includes(upperSymbol)) {
     return ESSENTIAL_FACTORS.etf;

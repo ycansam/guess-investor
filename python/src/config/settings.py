@@ -14,29 +14,30 @@ PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
 WEIGHTS_FILE = CODE_DIR / "config" / "learned_weights.json"
 TRAINING_LOG_FILE = DATA_DIR / "training_log.json"
 
-# Factores del modelo (10 factores - competitors eliminado)
+# Factores del modelo (9 factores - competitors y expectations eliminados)
+# Seasonality: solo como bias suave para activos cíclicos
+# Forex: solo para activos con exposición internacional significativa
 FACTORS = [
     'trend', 'technical', 'sentiment', 'news', 'macro',
-    'forex', 'institutional', 'seasonality',
-    'financials', 'expectations'
+    'forex', 'institutional', 'seasonality', 'financials'
 ]
 
-# Pesos por defecto por timeframe (10 factores - competitors eliminado)
+# Pesos por defecto por timeframe (9 factores)
 DEFAULT_WEIGHTS = {
     'intraday': {
-        'trend': 0.22, 'technical': 0.27, 'sentiment': 0.16, 'news': 0.18,
-        'macro': 0.04, 'forex': 0.04, 'institutional': 0.05,
-        'seasonality': 0.02, 'financials': 0.01, 'expectations': 0.01
+        'trend': 0.22, 'technical': 0.27, 'sentiment': 0.16, 'news': 0.19,
+        'macro': 0.05, 'forex': 0.05, 'institutional': 0.05,
+        'seasonality': 0.01, 'financials': 0.00
     },
     'swing': {
-        'trend': 0.14, 'technical': 0.20, 'sentiment': 0.11, 'news': 0.15,
-        'macro': 0.09, 'forex': 0.06, 'institutional': 0.11,
-        'seasonality': 0.04, 'financials': 0.05, 'expectations': 0.05
+        'trend': 0.14, 'technical': 0.20, 'sentiment': 0.12, 'news': 0.20,
+        'macro': 0.10, 'forex': 0.06, 'institutional': 0.10,
+        'seasonality': 0.02, 'financials': 0.06
     },
     'long': {
-        'trend': 0.06, 'technical': 0.09, 'sentiment': 0.05, 'news': 0.09,
-        'macro': 0.14, 'forex': 0.09, 'institutional': 0.14,
-        'seasonality': 0.08, 'financials': 0.14, 'expectations': 0.12
+        'trend': 0.06, 'technical': 0.10, 'sentiment': 0.05, 'news': 0.12,
+        'macro': 0.15, 'forex': 0.08, 'institutional': 0.14,
+        'seasonality': 0.04, 'financials': 0.26
     }
 }
 

@@ -153,18 +153,17 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
   const fs = await import('fs');
   const path = await import('path');
   
-  // Pesos base (hardcoded - 10 factores, competitors eliminado)
+  // Pesos base (hardcoded - 9 factores, competitors y expectations eliminados)
   const BASE_WEIGHTS = {
     trend: 0.22,
     technical: 0.27,
     sentiment: 0.16,
-    news: 0.16,
+    news: 0.19, // absorbe expectations
     macro: 0.04,
     forex: 0.03,
     institutional: 0.05,
-    seasonality: 0.03,
+    seasonality: 0.02, // reducido (bias suave)
     financials: 0.02,
-    expectations: 0.02,
   };
 
   // Multiplicadores por grupo de activo (competitors eliminado)
