@@ -917,40 +917,84 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Direction adjustment (${direction}): ${oldConfidence}% → ${finalConfidence}%`);
     }
     
-    // --- AJUSTE POR VOLATILIDAD EXTREMA (NUEVO) ---
-    // Activos con volatilidad >40% son mucho menos predecibles
-    // (assetVolatility ya definida arriba en línea ~719)
+    // --- AJUSTE POR VOLATILIDAD EXTREMA ---
+    // Activos con volatilidad >40% son menos predecibles
+    // PERO: solo penalizar moderadamente, no destruir la confianza
     if (assetVolatility > 60) {
       const oldConf = finalConfidence;
-      finalConfidence = Math.round(finalConfidence * 0.6); // -40% confianza
+      finalConfidence = Math.round(finalConfidence * 0.85); // -15% (antes era -40%)
       logger.info(`[PredictionCalc] Extreme volatility penalty (${assetVolatility.toFixed(0)}%): ${oldConf}% → ${finalConfidence}%`);
     } else if (assetVolatility > 40) {
       const oldConf = finalConfidence;
-      finalConfidence = Math.round(finalConfidence * 0.75); // -25% confianza
+      finalConfidence = Math.round(finalConfidence * 0.90); // -10% (antes era -25%)
       logger.info(`[PredictionCalc] High volatility penalty (${assetVolatility.toFixed(0)}%): ${oldConf}% → ${finalConfidence}%`);
     }
     
-    // --- AJUSTE POR CAÍDA INTRADÍA EXTREMA (NUEVO) ---
-    // Si el activo ha caído >5% hoy, reducir confianza drásticamente
+    // --- AJUSTE POR MOVIMIENTO INTRADÍA EXTREMO ---
+    // CORREGIDO: Solo penalizar si la predicción CONTRADICE el movimiento actual
+    // Si el activo cae -5% y predecimos bajista, eso CONFIRMA la predicción (no penalizar)
+    // Si el activo cae -5% y predecimos alcista, eso CONTRADICE (sí penalizar)
+    const predictionDirection = expectedChange > 0 ? 'up' : expectedChange < 0 ? 'down' : 'neutral';
+    const intradayDirection = intradayChange > 0.5 ? 'up' : intradayChange < -0.5 ? 'down' : 'neutral';
+    const movementConfirms = (predictionDirection === intradayDirection) || intradayDirection === 'neutral';
+    
     if (intradayChange < -10) {
-      const oldConf = finalConfidence;
-      finalConfidence = Math.round(finalConfidence * 0.5); // -50% confianza
-      // También ajustar la predicción hacia negativo si predice subida
-      if (expectedChange > 0) {
-        expectedChange = expectedChange * 0.3; // Reducir predicción alcista
+      if (movementConfirms) {
+        // Crash confirma predicción bajista → AUMENTAR confianza
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 10);
+        logger.info(`[PredictionCalc] CRASH confirms bearish prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        // Crash contradice predicción alcista → penalizar fuerte
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.5);
+        expectedChange = expectedChange * 0.3;
+        logger.info(`[PredictionCalc] CRASH contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
       }
-      logger.info(`[PredictionCalc] CRASH INTRADAY (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%, change adjusted`);
     } else if (intradayChange < -5) {
-      const oldConf = finalConfidence;
-      finalConfidence = Math.round(finalConfidence * 0.65); // -35% confianza
-      if (expectedChange > 0) {
-        expectedChange = expectedChange * 0.5; // Reducir predicción alcista
+      if (movementConfirms) {
+        // Caída fuerte confirma predicción bajista
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 5);
+        logger.info(`[PredictionCalc] Severe drop confirms bearish (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        // Caída fuerte contradice predicción alcista
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.65);
+        expectedChange = expectedChange * 0.5;
+        logger.info(`[PredictionCalc] Severe drop contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
       }
-      logger.info(`[PredictionCalc] Severe intraday drop (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
     } else if (intradayChange < -3) {
-      const oldConf = finalConfidence;
-      finalConfidence = Math.round(finalConfidence * 0.85); // -15% confianza
-      logger.info(`[PredictionCalc] Significant intraday drop (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      if (!movementConfirms) {
+        // Solo penalizar si contradice
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.85);
+        logger.info(`[PredictionCalc] Significant drop contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
+    }
+    // También para subidas fuertes
+    else if (intradayChange > 10) {
+      if (movementConfirms) {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 10);
+        logger.info(`[PredictionCalc] RALLY confirms bullish prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.5);
+        expectedChange = expectedChange * 0.3;
+        logger.info(`[PredictionCalc] RALLY contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
+    } else if (intradayChange > 5) {
+      if (movementConfirms) {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 5);
+        logger.info(`[PredictionCalc] Strong rally confirms bullish (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.65);
+        expectedChange = expectedChange * 0.5;
+        logger.info(`[PredictionCalc] Strong rally contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
     }
     
     // --- AJUSTE POR MEAN REVERSION DESPUÉS DE CAÍDA FUERTE (SIMPLIFICADO) ---
@@ -1175,11 +1219,9 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Lateral prediction (${expectedChange.toFixed(2)}%), capping confidence at 55%`);
     }
     
-    // CORRECCIÓN: Si bajista, ser más conservador (histórico: 41.8% vs 74% alcista)
-    if (direction === 'down' && finalConfidence > 60) {
-      finalConfidence = Math.round(finalConfidence * 0.85); // -15% para bajistas
-      logger.info(`[PredictionCalc] Bearish prediction confidence adjusted: ${finalConfidence}% (historical accuracy 41.8%)`);
-    }
+    // NOTA: Ya NO se penaliza automáticamente las predicciones bajistas.
+    // El ajuste por dirección del track-record ya considera el accuracy histórico.
+    // Si las señales son fuertes (signalSummary=coherent_bearish), la confianza debe ser alta.
     
     // --- PENALIZACIÓN POR MAGNITUD EXTREMA ---
     // Predicciones muy grandes (>3% intradía, >6% swing) son estadísticamente improbables
