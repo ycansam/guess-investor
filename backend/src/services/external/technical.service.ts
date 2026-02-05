@@ -566,9 +566,27 @@ export const technicalService = {
       signals.push({ indicator: 'Bollinger', signal: 'neutral', description: 'Squeeze: volatilidad baja', weight: 5 });
     }
 
-    // Volume
+    // Volume - MEJORADO: Confirma o debilita la señal según dirección
+    // Volumen alto + movimiento alcista = señal alcista más fuerte
+    // Volumen bajo + cualquier movimiento = señal debilitada
+    const intradayChange = data.currentPrice && data.sma20 
+      ? ((data.currentPrice - data.sma20) / data.sma20) * 100 
+      : 0;
+    
     if (data.volumeSignal === 'high') {
-      signals.push({ indicator: 'Volume', signal: 'neutral', description: 'Volumen alto (confirma movimiento)', weight: 5 });
+      if (intradayChange > 0.5) {
+        // Volumen alto confirmando subida
+        signals.push({ indicator: 'Volume', signal: 'bullish', description: 'Volumen alto confirmando subida', weight: 12 });
+      } else if (intradayChange < -0.5) {
+        // Volumen alto confirmando caída - señal bajista fuerte
+        signals.push({ indicator: 'Volume', signal: 'bearish', description: 'Volumen alto confirmando caída', weight: 12 });
+      } else {
+        // Volumen alto sin dirección clara - posible acumulación/distribución
+        signals.push({ indicator: 'Volume', signal: 'neutral', description: 'Volumen alto - posible cambio', weight: 5 });
+      }
+    } else if (data.volumeSignal === 'low') {
+      // Volumen bajo - movimiento no confirmado, reducir confianza
+      signals.push({ indicator: 'Volume', signal: 'neutral', description: 'Volumen bajo - movimiento débil', weight: -3 });
     }
 
     // SMA Position

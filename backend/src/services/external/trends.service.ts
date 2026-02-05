@@ -63,6 +63,9 @@ export interface TrendMomentum {
   long: number;   // 50 días
   signal: 'bullish' | 'bearish' | 'neutral';
   strength: 'strong' | 'moderate' | 'weak';
+  // Trend Agreement: si todos los timeframes van en la misma dirección
+  trendAgreement: 'aligned_bullish' | 'aligned_bearish' | 'divergent' | 'neutral';
+  agreementScore: number; // -100 a +100, más alto = más alineados
 }
 
 export interface TrendSupport {
@@ -313,7 +316,37 @@ export const trendsService = {
     else if (absAvg > 2) strength = 'moderate';
     else strength = 'weak';
 
-    return { short, medium, long, signal, strength };
+    // NUEVO: Trend Agreement - detectar si todos los timeframes están alineados
+    let trendAgreement: 'aligned_bullish' | 'aligned_bearish' | 'divergent' | 'neutral';
+    let agreementScore = 0;
+    
+    const shortDir = short > 0.5 ? 1 : short < -0.5 ? -1 : 0;
+    const mediumDir = medium > 0.5 ? 1 : medium < -0.5 ? -1 : 0;
+    const longDir = long > 0.5 ? 1 : long < -0.5 ? -1 : 0;
+    
+    // Contar direcciones
+    const bullishCount = [shortDir, mediumDir, longDir].filter(d => d > 0).length;
+    const bearishCount = [shortDir, mediumDir, longDir].filter(d => d < 0).length;
+    
+    if (bullishCount === 3) {
+      trendAgreement = 'aligned_bullish';
+      agreementScore = Math.min(100, Math.round((short + medium + long) * 5));
+    } else if (bearishCount === 3) {
+      trendAgreement = 'aligned_bearish';
+      agreementScore = Math.max(-100, Math.round((short + medium + long) * 5));
+    } else if (bullishCount >= 2 || bearishCount >= 2) {
+      // Parcialmente alineados pero no completamente
+      trendAgreement = bullishCount > bearishCount ? 'aligned_bullish' : bearishCount > bullishCount ? 'aligned_bearish' : 'divergent';
+      agreementScore = Math.round((short + medium + long) * 3);
+    } else if (shortDir === 0 && mediumDir === 0 && longDir === 0) {
+      trendAgreement = 'neutral';
+      agreementScore = 0;
+    } else {
+      trendAgreement = 'divergent';
+      agreementScore = Math.round((short + medium + long) * 2); // Reducido por divergencia
+    }
+
+    return { short, medium, long, signal, strength, trendAgreement, agreementScore };
   },
 
   /**

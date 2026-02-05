@@ -181,6 +181,23 @@ export interface CalculatedPrediction {
     applied: boolean;
   };
   
+  // RISK FILTER: Recomienda abstención cuando hay alta incertidumbre
+  riskFilter?: {
+    shouldAbstain: boolean;           // true = mejor no operar
+    abstentionLevel: 'none' | 'caution' | 'warning' | 'critical';  // Niveles de riesgo
+    abstentionScore: number;          // 0-100, >50 = considerar abstención
+    reasons: string[];                // Por qué se recomienda abstención
+    riskFactors: {
+      vixExtreme: boolean;            // VIX > 30
+      volatilityExtreme: boolean;     // Volatilidad del activo > 50%
+      conflictingSignals: boolean;    // Factores dan señales opuestas
+      lowDataQuality: boolean;        // Pocos factores con datos
+      trendDivergence: boolean;       // Timeframes desalineados
+      earningsNear: boolean;          // Earnings en próximos 3 días
+      marketCrash: boolean;           // Mercado en caída fuerte
+    };
+  };
+  
   // ELIMINADOS (añadían ruido sin valor):
   // - preciousMetalsAnalysis: integrado en forex para metales
   // - marketPsychology: ya capturado por VIX en sentiment
@@ -1248,6 +1265,24 @@ export const predictionCalculatorService = {
       targetVsCurrent: financials?.targetVsCurrent || 0,
     });
 
+    // --- RISK FILTER: Calcular si se recomienda abstención ---
+    const riskFilterResult = this.calculateRiskFilter({
+      vixValue: sentiment?.vix?.value || 15,
+      assetVolatility: assetVolatility,
+      factorScores: factorScores,
+      availableFactorsCount: availableFactors.length,
+      totalFactorsCount: factors.length,
+      signalSummary: signalSummary,
+      earningsDaysUntil: events.nextEarnings?.daysUntil,
+      marketCondition: marketContextInfo?.condition || 'neutral',
+      intradayChange: intradayChange,
+      trendAgreement: undefined, // TODO: integrar del trends.service cuando esté listo
+    });
+    
+    if (riskFilterResult.shouldAbstain) {
+      logger.info(`[PredictionCalc] RISK FILTER: Abstención recomendada (${riskFilterResult.abstentionLevel}) - ${riskFilterResult.reasons.join(', ')}`);
+    }
+
     return {
       asset: quote?.name || symbol,
       symbol,
@@ -1332,6 +1367,7 @@ export const predictionCalculatorService = {
       timeframe: timeframeStr,
       calculatedAt: new Date(),
       marketContext: marketContextInfo,
+      riskFilter: riskFilterResult,
       // ELIMINADOS: preciousMetalsAnalysis, marketPsychology, geopoliticalEvents
       // Razón: Añadían ruido sin valor predictivo demostrable
       audit: {
@@ -1780,6 +1816,159 @@ export const predictionCalculatorService = {
       riskLevel,
       isContrarian,
       keyFactors,
+    };
+  },
+
+  /**
+   * RISK FILTER: Calcula si se recomienda abstención basándose en múltiples indicadores de riesgo
+   * Devuelve un score de 0-100 donde >50 sugiere considerar abstención
+   */
+  calculateRiskFilter(params: {
+    vixValue: number;
+    assetVolatility: number;
+    factorScores: Record<string, number>;
+    availableFactorsCount: number;
+    totalFactorsCount: number;
+    signalSummary: string;
+    earningsDaysUntil?: number;
+    marketCondition: string;
+    intradayChange: number;
+    trendAgreement?: 'aligned_bullish' | 'aligned_bearish' | 'divergent' | 'neutral';
+  }): NonNullable<CalculatedPrediction['riskFilter']> {
+    const {
+      vixValue,
+      assetVolatility,
+      factorScores,
+      availableFactorsCount,
+      totalFactorsCount,
+      signalSummary,
+      earningsDaysUntil,
+      marketCondition,
+      intradayChange,
+      trendAgreement,
+    } = params;
+
+    const reasons: string[] = [];
+    let abstentionScore = 0;
+
+    // === FACTOR 1: VIX Extremo (miedo del mercado) ===
+    const vixExtreme = vixValue > 30;
+    if (vixExtreme) {
+      abstentionScore += 25;
+      reasons.push(`VIX elevado (${vixValue.toFixed(1)}) - mercado en modo pánico`);
+    } else if (vixValue > 25) {
+      abstentionScore += 10;
+      reasons.push(`VIX moderadamente alto (${vixValue.toFixed(1)})`);
+    }
+
+    // === FACTOR 2: Volatilidad del activo extrema ===
+    const volatilityExtreme = assetVolatility > 50;
+    if (volatilityExtreme) {
+      abstentionScore += 20;
+      reasons.push(`Volatilidad del activo extrema (${assetVolatility.toFixed(0)}%)`);
+    } else if (assetVolatility > 35) {
+      abstentionScore += 10;
+      reasons.push(`Volatilidad alta del activo (${assetVolatility.toFixed(0)}%)`);
+    }
+
+    // === FACTOR 3: Señales conflictivas entre factores ===
+    const scores = Object.values(factorScores).filter(s => s !== 0);
+    const positiveScores = scores.filter(s => s > 10).length;
+    const negativeScores = scores.filter(s => s < -10).length;
+    const conflictingSignals = positiveScores >= 2 && negativeScores >= 2;
+    if (conflictingSignals) {
+      abstentionScore += 20;
+      reasons.push(`Señales conflictivas (${positiveScores} alcistas vs ${negativeScores} bajistas)`);
+    }
+
+    // === FACTOR 4: Poca calidad de datos ===
+    const dataQualityRatio = availableFactorsCount / totalFactorsCount;
+    const lowDataQuality = dataQualityRatio < 0.5;
+    if (lowDataQuality) {
+      abstentionScore += 15;
+      reasons.push(`Pocos datos disponibles (${availableFactorsCount}/${totalFactorsCount} factores)`);
+    } else if (dataQualityRatio < 0.7) {
+      abstentionScore += 5;
+    }
+
+    // === FACTOR 5: Divergencia de tendencias (si está disponible) ===
+    const trendDivergence = trendAgreement === 'divergent';
+    if (trendDivergence) {
+      abstentionScore += 15;
+      reasons.push('Divergencia entre timeframes (corto/medio/largo no alineados)');
+    }
+
+    // === FACTOR 6: Earnings inminentes ===
+    const earningsNear = earningsDaysUntil !== undefined && earningsDaysUntil <= 3;
+    if (earningsNear) {
+      abstentionScore += 25;
+      reasons.push(`Earnings en ${earningsDaysUntil} día(s) - alta incertidumbre`);
+    } else if (earningsDaysUntil !== undefined && earningsDaysUntil <= 7) {
+      abstentionScore += 10;
+      reasons.push(`Earnings próximos (${earningsDaysUntil} días)`);
+    }
+
+    // === FACTOR 7: Mercado en crash ===
+    const marketCrash = marketCondition === 'crash' || marketCondition === 'severe_correction';
+    if (marketCrash) {
+      abstentionScore += 30;
+      reasons.push(`Mercado en ${marketCondition === 'crash' ? 'crash' : 'corrección severa'}`);
+    } else if (marketCondition === 'correction') {
+      abstentionScore += 10;
+      reasons.push('Mercado en corrección');
+    }
+
+    // === FACTOR 8: Movimiento intradía extremo ===
+    if (Math.abs(intradayChange) > 8) {
+      abstentionScore += 15;
+      reasons.push(`Movimiento intradía extremo (${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%)`);
+    } else if (Math.abs(intradayChange) > 5) {
+      abstentionScore += 5;
+    }
+
+    // === FACTOR 9: Signal summary indica datos insuficientes ===
+    if (signalSummary === 'insufficient') {
+      abstentionScore += 20;
+      reasons.push('Datos insuficientes para predicción confiable');
+    } else if (signalSummary === 'mixed') {
+      abstentionScore += 5;
+    }
+
+    // Limitar score a 100
+    abstentionScore = Math.min(100, abstentionScore);
+
+    // Determinar nivel de abstención
+    let abstentionLevel: 'none' | 'caution' | 'warning' | 'critical';
+    let shouldAbstain: boolean;
+
+    if (abstentionScore >= 60) {
+      abstentionLevel = 'critical';
+      shouldAbstain = true;
+    } else if (abstentionScore >= 40) {
+      abstentionLevel = 'warning';
+      shouldAbstain = true;
+    } else if (abstentionScore >= 20) {
+      abstentionLevel = 'caution';
+      shouldAbstain = false;
+    } else {
+      abstentionLevel = 'none';
+      shouldAbstain = false;
+    }
+
+    return {
+      shouldAbstain,
+      abstentionLevel,
+      abstentionScore,
+      reasons: reasons.length > 0 ? reasons : ['Sin factores de riesgo significativos'],
+      riskFactors: {
+        vixExtreme,
+        volatilityExtreme,
+        conflictingSignals,
+        lowDataQuality,
+        trendDivergence,
+        earningsNear,
+        marketCrash,
+      },
     };
   },
 };
