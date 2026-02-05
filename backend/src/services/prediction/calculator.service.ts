@@ -1105,6 +1105,7 @@ export const predictionCalculatorService = {
     
     // --- AJUSTE POR CONTEXTO DE MERCADO GLOBAL (NUEVO) ---
     // Detecta correcciones, crashes, burbujas y ajusta predicciones en consecuencia
+    // MEJORADO: Pasa el combinedScore para que el bias se reduzca si hay señales individuales fuertes
     let marketContextInfo: CalculatedPrediction['marketContext'];
     try {
       const marketContext = await broadMarketContextService.getCurrentContext();
@@ -1113,7 +1114,8 @@ export const predictionCalculatorService = {
         const contextAdjustment = broadMarketContextService.applyToPredicti(
           expectedChange,
           finalConfidence,
-          this.inferAssetType(symbol, type)
+          this.inferAssetType(symbol, type),
+          combinedScore // Pasar score individual para ajustar el bias
         );
         
         if (contextAdjustment.contextApplied) {

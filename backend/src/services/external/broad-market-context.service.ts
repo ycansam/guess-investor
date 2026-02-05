@@ -306,13 +306,14 @@ export const broadMarketContextService = {
       signals.push(`Corrección en curso: ${sp500.change20d.toFixed(1)}% en 20 días`);
     }
     // 4. TOMA DE BENEFICIOS / RETROCESO: Caída leve pero notable
+    // AJUSTADO: Reducir agresividad del bias (0.4 → 0.2) para no anular predicciones individuales
     else if (sp500 && (sp500.change5d < -2 || (sp500.change1d < -1.5 && vixChange5d > 15))) {
       condition = 'profit_taking';
       severity = sp500.change5d < -3 ? 'moderate' : 'mild';
       confidence = 65;
-      predictionBias = Math.min(sp500.change5d, sp500.change1d * 2) * 0.4; // Sesgo negativo
-      confidenceMultiplier = 0.85;
-      volatilityMultiplier = 1.3;
+      predictionBias = Math.min(sp500.change5d, sp500.change1d * 2) * 0.2; // Sesgo negativo REDUCIDO (era 0.4)
+      confidenceMultiplier = 0.9; // Menos penalización (era 0.85)
+      volatilityMultiplier = 1.2; // Menos volatilidad (era 1.3)
       signals.push(`Toma de beneficios: ${sp500.change5d.toFixed(1)}% en 5 días`);
       if (sp500.change1d < -1.5) {
         signals.push(`Caída diaria notable: ${sp500.change1d.toFixed(1)}% hoy`);
@@ -519,11 +520,13 @@ export const broadMarketContextService = {
 
   /**
    * Aplica el sesgo del contexto de mercado a una predicción
+   * MEJORADO: El bias se reduce si el activo tiene señales individuales fuertes
    */
   applyToPredicti(
     predictedChange: number,
     confidence: number,
-    assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'other'
+    assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'other',
+    individualScore?: number // Score combinado del activo (-100 a +100)
   ): { adjustedChange: number; adjustedConfidence: number; contextApplied: boolean; contextInfo: string } {
     const context = cachedContext;
     
@@ -554,6 +557,21 @@ export const broadMarketContextService = {
         break;
       default:
         applicationFactor = 0.8;
+    }
+
+    // NUEVO: Reducir el bias si el activo tiene señales individuales fuertes
+    // Si el score individual contradice el bias del mercado, dar más peso al individual
+    if (individualScore !== undefined) {
+      const scoreStrength = Math.abs(individualScore) / 100; // 0 a 1
+      const biasDirection = context.predictionBias > 0 ? 1 : -1;
+      const scoreDirection = individualScore > 0 ? 1 : -1;
+      
+      // Si el score individual contradice el bias del mercado Y es fuerte
+      if (biasDirection !== scoreDirection && scoreStrength > 0.1) {
+        // Reducir el factor de aplicación según la fuerza del score individual
+        // Score de 50 → reduce bias al 50%, Score de 100 → reduce bias al 25%
+        applicationFactor *= Math.max(0.25, 1 - scoreStrength * 0.75);
+      }
     }
 
     // Aplicar sesgo
