@@ -2,11 +2,15 @@ import { Request, Response, Router } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { logger } from '../middleware/logger.js';
 import { catalystCalendarService } from '../services/analysis/catalyst-calendar.service.js';
+import { cotReportsService } from '../services/analysis/cot-reports.service.js';
 import { divergenceService } from '../services/analysis/divergence.service.js';
+import { intermarketService } from '../services/analysis/intermarket.service.js';
 import { marketBreadthService } from '../services/analysis/market-breadth.service.js';
 import { optionsFlowService } from '../services/analysis/options-flow.service.js';
 import { riskRewardService } from '../services/analysis/risk-reward.service.js';
 import { shortInterestService } from '../services/analysis/short-interest.service.js';
+import { volatilityService } from '../services/analysis/volatility.service.js';
+import { volumeProfileService } from '../services/analysis/volume-profile.service.js';
 import { broadMarketContextService } from '../services/external/broad-market-context.service.js';
 import { forexService } from '../services/external/forex.service.js';
 import { macroService } from '../services/external/macro.service.js';
@@ -536,6 +540,89 @@ router.get('/market-breadth', asyncHandler(async (req: Request, res: Response) =
   res.json({
     success: true,
     data: breadth,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/cot/:symbol
+ * Obtiene datos COT (Commitment of Traders) de la CFTC
+ * Usado por: George Soros
+ */
+router.get('/cot/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting COT report for ${symbol}`);
+  const cot = await cotReportsService.getCOTReport(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: cot,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/volume-profile/:symbol
+ * Obtiene Volume Profile (POC, Value Area, HVN/LVN)
+ * Usado por: Paul Tudor Jones
+ */
+router.get('/volume-profile/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const period = (req.query.period as string) || '20d';
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting volume profile for ${symbol}`);
+  const profile = await volumeProfileService.getVolumeProfile(symbol.toUpperCase(), period);
+  
+  res.json({
+    success: true,
+    data: profile,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/intermarket
+ * Obtiene análisis intermarket (correlaciones, régimen risk-on/off)
+ * Usado por: Paul Tudor Jones, George Soros
+ */
+router.get('/intermarket', asyncHandler(async (req: Request, res: Response) => {
+  logger.info(`[Analysis] Getting intermarket analysis`);
+  const intermarket = await intermarketService.getIntermarketAnalysis();
+  
+  res.json({
+    success: true,
+    data: intermarket,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/volatility/:symbol
+ * Obtiene análisis de volatilidad (IV vs RV, percentiles)
+ * Usado por: Jim Simons
+ */
+router.get('/volatility/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting volatility analysis for ${symbol}`);
+  const volatility = await volatilityService.getVolatilityAnalysis(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: volatility,
     timestamp: new Date().toISOString(),
   });
 }));

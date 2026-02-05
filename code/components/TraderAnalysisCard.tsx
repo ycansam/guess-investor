@@ -59,6 +59,37 @@ interface Recommendation {
   warnings: string[];
 }
 
+interface VolumeProfileData {
+  hasData: boolean;
+  poc: number;
+  valueAreaHigh: number;
+  valueAreaLow: number;
+  priceLocation: 'above_va' | 'in_va' | 'below_va' | 'at_poc';
+  signal: 'bullish' | 'bearish' | 'neutral';
+  analysis: string;
+}
+
+interface IntermarketData {
+  hasData: boolean;
+  marketRegime: 'risk_on' | 'risk_off' | 'neutral';
+  regimeStrength: number;
+  flowDirection: 'into_risk' | 'into_cash' | 'mixed';
+  keyCorrelations: Array<{ pair: string; correlation: number; signal: string }>;
+  summary: string;
+}
+
+interface VolatilityData {
+  hasData: boolean;
+  impliedVolatility: number;
+  realizedVolatility: number;
+  ivRvSpread: number;
+  ivPercentile: number;
+  optionsPricing: 'cheap' | 'fair' | 'expensive';
+  regime: 'low' | 'normal' | 'high' | 'extreme';
+  expectedMove: { daily: number; weekly: number };
+  summary: string;
+}
+
 interface TraderAnalysisData {
   symbol: string;
   direction: 'long' | 'short';
@@ -66,6 +97,12 @@ interface TraderAnalysisData {
   riskReward: RiskRewardData;
   optionsFlow: OptionsFlowData;
   recommendation: Recommendation;
+}
+
+interface ExtendedAnalysisData {
+  volumeProfile: VolumeProfileData | null;
+  intermarket: IntermarketData | null;
+  volatility: VolatilityData | null;
 }
 
 // Componente para explicaciones
@@ -89,6 +126,11 @@ function InfoTooltip({ text }: { text: string }) {
 
 export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
   const [data, setData] = useState<TraderAnalysisData | null>(null);
+  const [extendedData, setExtendedData] = useState<ExtendedAnalysisData>({
+    volumeProfile: null,
+    intermarket: null,
+    volatility: null,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -98,13 +140,51 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/analysis/trader-full/${symbol}?direction=long`);
-      const json = await response.json();
-      if (json.success && json.data) {
-        setData(json.data);
+      // Fetch all data in parallel
+      const [mainRes, volumeRes, intermarketRes, volatilityRes] = await Promise.all([
+        fetch(`${API_BASE}/analysis/trader-full/${symbol}?direction=long`),
+        fetch(`${API_BASE}/analysis/volume-profile/${symbol}`).catch(() => null),
+        fetch(`${API_BASE}/analysis/intermarket`).catch(() => null),
+        fetch(`${API_BASE}/analysis/volatility/${symbol}`).catch(() => null),
+      ]);
+
+      const mainJson = await mainRes.json();
+      if (mainJson.success && mainJson.data) {
+        setData(mainJson.data);
       } else {
         setError('No se pudo obtener el análisis');
+        return;
       }
+
+      // Process extended data
+      const extended: ExtendedAnalysisData = {
+        volumeProfile: null,
+        intermarket: null,
+        volatility: null,
+      };
+
+      if (volumeRes) {
+        const volJson = await volumeRes.json();
+        if (volJson.success && volJson.data?.hasData) {
+          extended.volumeProfile = volJson.data;
+        }
+      }
+
+      if (intermarketRes) {
+        const intJson = await intermarketRes.json();
+        if (intJson.success && intJson.data?.hasData) {
+          extended.intermarket = intJson.data;
+        }
+      }
+
+      if (volatilityRes) {
+        const volJson = await volatilityRes.json();
+        if (volJson.success && volJson.data?.hasData) {
+          extended.volatility = volJson.data;
+        }
+      }
+
+      setExtendedData(extended);
     } catch (err: any) {
       setError(err.message || 'Error al cargar');
     } finally {
@@ -392,6 +472,65 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
                 </Text>
               </View>
             )}
+
+            {/* Volume Profile simplificado */}
+            {extendedData.volumeProfile && (
+              <View style={styles.signalRow}>
+                <View style={styles.signalLabelContainer}>
+                  <Text style={styles.signalLabel}>Zona de precio</Text>
+                  <InfoTooltip text="Indica si el precio está caro, barato o en zona justa según el volumen de negociación reciente" />
+                </View>
+                <Text style={[
+                  styles.signalValue,
+                  { color: extendedData.volumeProfile.signal === 'bullish' ? theme.colors.success :
+                           extendedData.volumeProfile.signal === 'bearish' ? theme.colors.danger : theme.colors.textSecondary }
+                ]}>
+                  {extendedData.volumeProfile.priceLocation === 'above_va' && '💎 Precio alto (zona cara)'}
+                  {extendedData.volumeProfile.priceLocation === 'below_va' && '🔥 Precio bajo (zona barata)'}
+                  {extendedData.volumeProfile.priceLocation === 'in_va' && '⚖️ Precio justo'}
+                  {extendedData.volumeProfile.priceLocation === 'at_poc' && '🎯 En el punto clave'}
+                </Text>
+              </View>
+            )}
+
+            {/* Volatility simplificado */}
+            {extendedData.volatility && (
+              <View style={styles.signalRow}>
+                <View style={styles.signalLabelContainer}>
+                  <Text style={styles.signalLabel}>Movimiento esperado</Text>
+                  <InfoTooltip text="Qué tan grandes se esperan los movimientos de precio según la volatilidad actual" />
+                </View>
+                <Text style={[
+                  styles.signalValue,
+                  { color: extendedData.volatility.regime === 'low' ? theme.colors.success :
+                           extendedData.volatility.regime === 'extreme' ? theme.colors.danger : theme.colors.warning }
+                ]}>
+                  {extendedData.volatility.regime === 'low' && '😌 Tranquilo (poco movimiento)'}
+                  {extendedData.volatility.regime === 'normal' && '📊 Normal'}
+                  {extendedData.volatility.regime === 'high' && '⚡ Agitado (mucho movimiento)'}
+                  {extendedData.volatility.regime === 'extreme' && '🌪️ Muy volátil (¡cuidado!)'}
+                </Text>
+              </View>
+            )}
+
+            {/* Intermarket simplificado */}
+            {extendedData.intermarket && (
+              <View style={styles.signalRow}>
+                <View style={styles.signalLabelContainer}>
+                  <Text style={styles.signalLabel}>Ambiente del mercado</Text>
+                  <InfoTooltip text="Indica si el mercado global está en modo de tomar riesgos o de protegerse" />
+                </View>
+                <Text style={[
+                  styles.signalValue,
+                  { color: extendedData.intermarket.marketRegime === 'risk_on' ? theme.colors.success :
+                           extendedData.intermarket.marketRegime === 'risk_off' ? theme.colors.danger : theme.colors.textSecondary }
+                ]}>
+                  {extendedData.intermarket.marketRegime === 'risk_on' && '🚀 Optimista (risk-on)'}
+                  {extendedData.intermarket.marketRegime === 'risk_off' && '🛡️ Cauteloso (risk-off)'}
+                  {extendedData.intermarket.marketRegime === 'neutral' && '⚖️ Sin tendencia clara'}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* BOTÓN PARA VER DETALLES TÉCNICOS */}
@@ -499,7 +638,7 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
                         { color: data.optionsFlow.overallSignal === 'bullish' ? theme.colors.success :
                                  data.optionsFlow.overallSignal === 'bearish' ? theme.colors.danger : theme.colors.textSecondary }
                       ]}>
-                        {data.optionsFlow.overallSignal.toUpperCase()}
+                        {(data.optionsFlow.overallSignal ?? 'neutral').toUpperCase()}
                       </Text>
                     </View>
                     <Text style={styles.techDescription}>{data.optionsFlow.summary}</Text>
@@ -511,6 +650,165 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
                   💡 Put/Call Ratio alto (&gt;1) = más gente apuesta a la baja. Bajo (&lt;0.7) = más alcistas. IV alta = se esperan movimientos grandes.
                 </Text>
               </View>
+
+              {/* Volume Profile Detallado */}
+              {extendedData.volumeProfile && (
+                <View style={styles.techCard}>
+                  <Text style={styles.techCardTitle}>📊 Volume Profile (Perfil de Volumen)</Text>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>POC (Point of Control):</Text>
+                    <Text style={styles.techValue}>${(extendedData.volumeProfile.poc ?? 0).toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Value Area High:</Text>
+                    <Text style={styles.techValue}>${(extendedData.volumeProfile.valueAreaHigh ?? 0).toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Value Area Low:</Text>
+                    <Text style={styles.techValue}>${(extendedData.volumeProfile.valueAreaLow ?? 0).toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Ubicación del precio:</Text>
+                    <Text style={[
+                      styles.techValue,
+                      { color: extendedData.volumeProfile.signal === 'bullish' ? theme.colors.success :
+                               extendedData.volumeProfile.signal === 'bearish' ? theme.colors.danger : theme.colors.textSecondary }
+                    ]}>
+                      {extendedData.volumeProfile.priceLocation === 'above_va' && 'Por encima del Value Area'}
+                      {extendedData.volumeProfile.priceLocation === 'below_va' && 'Por debajo del Value Area'}
+                      {extendedData.volumeProfile.priceLocation === 'in_va' && 'Dentro del Value Area'}
+                      {extendedData.volumeProfile.priceLocation === 'at_poc' && 'En el POC'}
+                    </Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Señal:</Text>
+                    <Text style={[
+                      styles.techValue,
+                      { color: extendedData.volumeProfile.signal === 'bullish' ? theme.colors.success :
+                               extendedData.volumeProfile.signal === 'bearish' ? theme.colors.danger : theme.colors.textSecondary }
+                    ]}>
+                      {(extendedData.volumeProfile.signal ?? 'neutral').toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={styles.techDescription}>{extendedData.volumeProfile.analysis ?? ''}</Text>
+                  <Text style={styles.techExplanation}>
+                    💡 El POC es el precio donde más se ha negociado. El Value Area contiene el 70% del volumen. Precios fuera del VA tienden a volver a él.
+                  </Text>
+                </View>
+              )}
+
+              {/* Volatility IV/RV Detallado */}
+              {extendedData.volatility && (
+                <View style={styles.techCard}>
+                  <Text style={styles.techCardTitle}>🌡️ Volatilidad (IV vs RV)</Text>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Volatilidad Implícita (IV):</Text>
+                    <Text style={styles.techValue}>{(extendedData.volatility.impliedVolatility ?? 0).toFixed(1)}%</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Volatilidad Realizada (RV):</Text>
+                    <Text style={styles.techValue}>{(extendedData.volatility.realizedVolatility ?? 0).toFixed(1)}%</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>IV-RV Spread:</Text>
+                    <Text style={[
+                      styles.techValue,
+                      { color: (extendedData.volatility.ivRvSpread ?? 0) > 5 ? theme.colors.success :
+                               (extendedData.volatility.ivRvSpread ?? 0) < -5 ? theme.colors.danger : theme.colors.textSecondary }
+                    ]}>
+                      {(extendedData.volatility.ivRvSpread ?? 0) > 0 ? '+' : ''}{(extendedData.volatility.ivRvSpread ?? 0).toFixed(1)}%
+                    </Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>IV Percentil:</Text>
+                    <Text style={styles.techValue}>{(extendedData.volatility.ivPercentile ?? 0).toFixed(0)}%</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Opciones:</Text>
+                    <Text style={[
+                      styles.techValue,
+                      { color: extendedData.volatility.optionsPricing === 'cheap' ? theme.colors.success :
+                               extendedData.volatility.optionsPricing === 'expensive' ? theme.colors.danger : theme.colors.textSecondary }
+                    ]}>
+                      {extendedData.volatility.optionsPricing === 'cheap' && '💰 BARATAS'}
+                      {extendedData.volatility.optionsPricing === 'fair' && '⚖️ Precio justo'}
+                      {extendedData.volatility.optionsPricing === 'expensive' && '💸 CARAS'}
+                    </Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Movimiento esperado hoy:</Text>
+                    <Text style={styles.techValue}>±{(extendedData.volatility.expectedMove?.daily ?? 0).toFixed(2)}%</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Movimiento esperado semana:</Text>
+                    <Text style={styles.techValue}>±{(extendedData.volatility.expectedMove?.weekly ?? 0).toFixed(2)}%</Text>
+                  </View>
+                  <View style={[
+                    styles.regimeBadge,
+                    { backgroundColor: extendedData.volatility.regime === 'low' ? theme.colors.success :
+                                       extendedData.volatility.regime === 'extreme' ? theme.colors.danger : theme.colors.warning }
+                  ]}>
+                    <Text style={styles.regimeBadgeText}>
+                      Régimen: {(extendedData.volatility.regime ?? 'normal').toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={styles.techDescription}>{extendedData.volatility.summary ?? ''}</Text>
+                  <Text style={styles.techExplanation}>
+                    💡 Si IV &gt; RV, las opciones están caras (bueno para vender). Si IV &lt; RV, están baratas (bueno para comprar). IV Percentil muestra si la volatilidad actual es alta o baja históricamente.
+                  </Text>
+                </View>
+              )}
+
+              {/* Intermarket Detallado */}
+              {extendedData.intermarket && (
+                <View style={styles.techCard}>
+                  <Text style={styles.techCardTitle}>🌐 Análisis Intermercado</Text>
+                  <View style={[
+                    styles.regimeBadge,
+                    { backgroundColor: extendedData.intermarket.marketRegime === 'risk_on' ? theme.colors.success :
+                                       extendedData.intermarket.marketRegime === 'risk_off' ? theme.colors.danger : theme.colors.textSecondary }
+                  ]}>
+                    <Text style={styles.regimeBadgeText}>
+                      {extendedData.intermarket.marketRegime === 'risk_on' && '🚀 RISK-ON (Modo optimista)'}
+                      {extendedData.intermarket.marketRegime === 'risk_off' && '🛡️ RISK-OFF (Modo defensivo)'}
+                      {extendedData.intermarket.marketRegime === 'neutral' && '⚖️ NEUTRAL'}
+                    </Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Fuerza del régimen:</Text>
+                    <Text style={styles.techValue}>{(extendedData.intermarket.regimeStrength ?? 0).toFixed(0)}%</Text>
+                  </View>
+                  <View style={styles.techRow}>
+                    <Text style={styles.techLabel}>Flujo de dinero:</Text>
+                    <Text style={[
+                      styles.techValue,
+                      { color: extendedData.intermarket.flowDirection === 'into_risk' ? theme.colors.success :
+                               extendedData.intermarket.flowDirection === 'into_cash' ? theme.colors.danger : theme.colors.textSecondary }
+                    ]}>
+                      {extendedData.intermarket.flowDirection === 'into_risk' && '📈 Hacia activos de riesgo'}
+                      {extendedData.intermarket.flowDirection === 'into_cash' && '💵 Hacia efectivo/refugio'}
+                      {extendedData.intermarket.flowDirection === 'mixed' && '🔄 Mixto'}
+                    </Text>
+                  </View>
+                  <Text style={styles.techSubtitle}>Correlaciones clave:</Text>
+                  {(extendedData.intermarket.keyCorrelations ?? []).slice(0, 4).map((corr, i) => (
+                    <View key={i} style={styles.correlationRow}>
+                      <Text style={styles.correlationPair}>{corr.pair ?? ''}</Text>
+                      <Text style={[
+                        styles.correlationValue,
+                        { color: (corr.correlation ?? 0) > 0 ? theme.colors.success : theme.colors.danger }
+                      ]}>
+                        {(corr.correlation ?? 0) > 0 ? '+' : ''}{(corr.correlation ?? 0).toFixed(2)}
+                      </Text>
+                      <Text style={styles.correlationSignal}>{corr.signal ?? ''}</Text>
+                    </View>
+                  ))}
+                  <Text style={styles.techDescription}>{extendedData.intermarket.summary ?? ''}</Text>
+                  <Text style={styles.techExplanation}>
+                    💡 Risk-ON: inversores buscan rendimiento (compran acciones). Risk-OFF: buscan seguridad (compran bonos, oro, USD). Correlaciones ayudan a confirmar tendencias.
+                  </Text>
+                </View>
+              )}
 
               {/* Inspiración */}
               <View style={styles.inspirationBox}>
@@ -1097,6 +1395,53 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: theme.colors.text,
+  },
+
+  // Regime badge (for volatility and intermarket)
+  regimeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 10,
+  },
+  regimeBadgeText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+
+  // Technical subtitle
+  techSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+
+  // Correlation rows for intermarket
+  correlationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    gap: 8,
+  },
+  correlationPair: {
+    fontSize: 12,
+    color: theme.colors.text,
+    flex: 1,
+  },
+  correlationValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    minWidth: 45,
+    textAlign: 'right',
+  },
+  correlationSignal: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    minWidth: 80,
   },
 
   // Inspiration box
