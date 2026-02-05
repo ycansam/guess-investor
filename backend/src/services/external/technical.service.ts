@@ -1,6 +1,7 @@
 /**
- * Technical Indicators Service
- * Calcula indicadores técnicos: SMA, EMA, RSI, MACD, Bollinger Bands
+ * Technical Indicators Service - MEJORADO
+ * Calcula indicadores técnicos: SMA, EMA, RSI, MACD, Bollinger Bands, ATR, Stochastic
+ * Incluye detección de soportes/resistencias y divergencias
  */
 
 import { logger } from '../../middleware/logger.js';
@@ -26,12 +27,14 @@ export interface TechnicalAnalysis {
   // RSI
   rsi14: number | null;
   rsiSignal: 'oversold' | 'overbought' | 'neutral';
+  rsiDivergence: 'bullish' | 'bearish' | 'none';
   
   // MACD
   macd: number | null;
   macdSignal: number | null;
   macdHistogram: number | null;
   macdTrend: 'bullish' | 'bearish' | 'neutral';
+  macdCrossover: 'bullish_cross' | 'bearish_cross' | 'none';
   
   // Bollinger Bands
   bollingerUpper: number | null;
@@ -39,6 +42,23 @@ export interface TechnicalAnalysis {
   bollingerLower: number | null;
   bollingerPosition: 'above' | 'below' | 'inside';
   bollingerWidth: number | null;
+  bollingerSqueeze: boolean;
+  
+  // Stochastic
+  stochasticK: number | null;
+  stochasticD: number | null;
+  stochasticSignal: 'oversold' | 'overbought' | 'neutral';
+  
+  // ATR - Average True Range
+  atr14: number | null;
+  atrPercent: number | null;
+  volatilityLevel: 'high' | 'medium' | 'low';
+  
+  // Soporte/Resistencia
+  nearestSupport: number | null;
+  nearestResistance: number | null;
+  distanceToSupport: number | null;
+  distanceToResistance: number | null;
   
   // Volumen
   avgVolume20: number | null;
@@ -52,6 +72,7 @@ export interface TechnicalAnalysis {
   trend: 'strong_bullish' | 'bullish' | 'neutral' | 'bearish' | 'strong_bearish';
   summary: string;
   hasData: boolean;
+  dataQuality: 'high' | 'medium' | 'low';
 }
 
 export interface TechnicalSignal {
@@ -83,7 +104,6 @@ export const technicalService = {
     try {
       logger.info(`[Technical] Analyzing ${symbol}`);
       
-      // Obtener datos históricos de 1 año
       const history = await yahooService.getHistory(symbol, '1y', '1d');
       
       if (!history || history.length < 20) {
@@ -91,9 +111,11 @@ export const technicalService = {
       }
 
       const closes = history.map(h => h.close).filter(c => c !== null) as number[];
+      const highs = history.map(h => h.high).filter(h => h !== null) as number[];
+      const lows = history.map(h => h.low).filter(l => l !== null) as number[];
       const volumes = history.map(h => h.volume).filter(v => v !== null) as number[];
       
-      const analysis = this.calculateAllIndicators(closes, volumes);
+      const analysis = this.calculateAllIndicators(closes, highs, lows, volumes);
       
       cache.set(cacheKey, { data: analysis, expiresAt: Date.now() + CACHE_TTL });
       
@@ -104,11 +126,11 @@ export const technicalService = {
     }
   },
 
-  calculateAllIndicators(closes: number[], volumes: number[]): TechnicalAnalysis {
+  calculateAllIndicators(closes: number[], highs: number[], lows: number[], volumes: number[]): TechnicalAnalysis {
     const currentPrice = closes[closes.length - 1];
     const currentVolume = volumes[volumes.length - 1] || 0;
 
-    // Calcular indicadores
+    // Calcular indicadores básicos
     const sma20 = this.calculateSMA(closes, 20);
     const sma50 = this.calculateSMA(closes, 50);
     const sma200 = this.calculateSMA(closes, 200);
@@ -120,9 +142,18 @@ export const technicalService = {
     const avgVolume20 = this.calculateSMA(volumes, 20);
     const volumeRatio = avgVolume20 ? currentVolume / avgVolume20 : null;
 
+    // Nuevos indicadores
+    const stochastic = this.calculateStochastic(closes, highs, lows, 14, 3);
+    const atr14 = this.calculateATR(closes, highs, lows, 14);
+    const atrPercent = atr14 && currentPrice > 0 ? (atr14 / currentPrice) * 100 : null;
+    const supportResistance = this.calculateSupportResistance(closes, highs, lows);
+    
     // Detectar cruces
     const goldenCross = sma50 !== null && sma200 !== null && this.detectGoldenCross(closes, 50, 200);
     const deathCross = sma50 !== null && sma200 !== null && this.detectDeathCross(closes, 50, 200);
+    const macdCrossover = this.detectMACDCrossover(closes);
+    const rsiDivergence = this.detectRSIDivergence(closes, 14);
+    const bollingerSqueeze = bollinger.width !== null && bollinger.width < 10;
     
     // Posiciones
     const priceAboveSMA200 = sma200 !== null && currentPrice > sma200;
@@ -134,6 +165,13 @@ export const technicalService = {
     if (rsi14 !== null) {
       if (rsi14 < 30) rsiSignal = 'oversold';
       else if (rsi14 > 70) rsiSignal = 'overbought';
+    }
+
+    // Stochastic signal
+    let stochasticSignal: 'oversold' | 'overbought' | 'neutral' = 'neutral';
+    if (stochastic.k !== null) {
+      if (stochastic.k < 20) stochasticSignal = 'oversold';
+      else if (stochastic.k > 80) stochasticSignal = 'overbought';
     }
 
     // MACD trend
@@ -157,15 +195,36 @@ export const technicalService = {
       else if (volumeRatio < 0.5) volumeSignal = 'low';
     }
 
+    // Volatility level
+    let volatilityLevel: 'high' | 'medium' | 'low' = 'medium';
+    if (atrPercent !== null) {
+      if (atrPercent > 4) volatilityLevel = 'high';
+      else if (atrPercent < 1.5) volatilityLevel = 'low';
+    }
+
+    // Distancia a soporte/resistencia
+    const distanceToSupport = supportResistance.support && currentPrice > 0
+      ? ((currentPrice - supportResistance.support) / currentPrice) * 100
+      : null;
+    const distanceToResistance = supportResistance.resistance && currentPrice > 0
+      ? ((supportResistance.resistance - currentPrice) / currentPrice) * 100
+      : null;
+
     // Calcular señales y score
     const signals = this.generateSignals({
-      currentPrice, sma20, sma50, sma200, rsi14, rsiSignal,
-      macdTrend, goldenCross, deathCross, bollingerPosition, volumeSignal
+      currentPrice, sma20, sma50, sma200, rsi14, rsiSignal, rsiDivergence,
+      macdTrend, macdCrossover, goldenCross, deathCross, 
+      bollingerPosition, bollingerSqueeze, volumeSignal,
+      stochasticSignal, distanceToSupport, distanceToResistance, volatilityLevel
     });
     
     const technicalScore = this.calculateScore(signals);
     const trend = this.determineTrend(technicalScore);
-    const summary = this.generateSummary(trend, signals);
+    const summary = this.generateSummary(trend, signals, volatilityLevel, rsi14, stochastic.k);
+
+    const dataQuality: 'high' | 'medium' | 'low' = 
+      closes.length >= 200 ? 'high' :
+      closes.length >= 50 ? 'medium' : 'low';
 
     return {
       currentPrice,
@@ -173,16 +232,27 @@ export const technicalService = {
       ema12, ema26,
       goldenCross, deathCross,
       priceAboveSMA200, priceAboveSMA50, priceAboveSMA20,
-      rsi14, rsiSignal,
+      rsi14, rsiSignal, rsiDivergence,
       macd: macdResult.macd,
       macdSignal: macdResult.signal,
       macdHistogram: macdResult.histogram,
-      macdTrend,
+      macdTrend, macdCrossover,
       bollingerUpper: bollinger.upper,
       bollingerMiddle: bollinger.middle,
       bollingerLower: bollinger.lower,
       bollingerPosition,
       bollingerWidth: bollinger.width,
+      bollingerSqueeze,
+      stochasticK: stochastic.k,
+      stochasticD: stochastic.d,
+      stochasticSignal,
+      atr14,
+      atrPercent,
+      volatilityLevel,
+      nearestSupport: supportResistance.support,
+      nearestResistance: supportResistance.resistance,
+      distanceToSupport,
+      distanceToResistance,
       avgVolume20,
       currentVolume,
       volumeRatio,
@@ -192,6 +262,7 @@ export const technicalService = {
       trend,
       summary,
       hasData: true,
+      dataQuality,
     };
   },
 
@@ -245,7 +316,6 @@ export const technicalService = {
     
     const macd = ema12 - ema26;
     
-    // Calcular EMA de 9 períodos del MACD (señal)
     const macdHistory: number[] = [];
     for (let i = 26; i < closes.length; i++) {
       const e12 = this.calculateEMAAt(closes, 12, i);
@@ -287,6 +357,84 @@ export const technicalService = {
     return { upper, middle, lower, width };
   },
 
+  calculateStochastic(closes: number[], highs: number[], lows: number[], period: number, smoothK: number): { k: number | null; d: number | null } {
+    if (closes.length < period || highs.length < period || lows.length < period) {
+      return { k: null, d: null };
+    }
+
+    const kValues: number[] = [];
+    for (let i = period - 1; i < closes.length; i++) {
+      const highSlice = highs.slice(i - period + 1, i + 1);
+      const lowSlice = lows.slice(i - period + 1, i + 1);
+      const highest = Math.max(...highSlice);
+      const lowest = Math.min(...lowSlice);
+      
+      if (highest === lowest) {
+        kValues.push(50);
+      } else {
+        const k = ((closes[i] - lowest) / (highest - lowest)) * 100;
+        kValues.push(k);
+      }
+    }
+
+    if (kValues.length < smoothK) {
+      return { k: kValues[kValues.length - 1] || null, d: null };
+    }
+
+    const smoothedK = this.calculateSMA(kValues, smoothK);
+    const d = kValues.length >= smoothK * 2 
+      ? this.calculateSMA(kValues.slice(-smoothK * 2), smoothK)
+      : smoothedK;
+
+    return { k: smoothedK, d };
+  },
+
+  calculateATR(closes: number[], highs: number[], lows: number[], period: number): number | null {
+    if (closes.length < period + 1) return null;
+
+    const trueRanges: number[] = [];
+    for (let i = 1; i < closes.length; i++) {
+      const high = highs[i];
+      const low = lows[i];
+      const prevClose = closes[i - 1];
+      
+      const tr = Math.max(
+        high - low,
+        Math.abs(high - prevClose),
+        Math.abs(low - prevClose)
+      );
+      trueRanges.push(tr);
+    }
+
+    return this.calculateEMA(trueRanges, period);
+  },
+
+  calculateSupportResistance(closes: number[], highs: number[], lows: number[]): { support: number | null; resistance: number | null } {
+    if (closes.length < 20) return { support: null, resistance: null };
+
+    const currentPrice = closes[closes.length - 1];
+    const recentLows = lows.slice(-60).sort((a, b) => a - b);
+    const recentHighs = highs.slice(-60).sort((a, b) => b - a);
+
+    let support: number | null = null;
+    for (const low of recentLows) {
+      if (low < currentPrice * 0.98) {
+        support = low;
+        break;
+      }
+    }
+
+    let resistance: number | null = null;
+    for (const high of recentHighs) {
+      if (high > currentPrice * 1.02) {
+        resistance = high;
+        break;
+      }
+    }
+
+    return { support, resistance };
+  },
+
   detectGoldenCross(closes: number[], shortPeriod: number, longPeriod: number): boolean {
     if (closes.length < longPeriod + 2) return false;
     
@@ -313,6 +461,53 @@ export const technicalService = {
     return prevShort >= prevLong && currentShort < currentLong;
   },
 
+  detectMACDCrossover(closes: number[]): 'bullish_cross' | 'bearish_cross' | 'none' {
+    if (closes.length < 30) return 'none';
+
+    const current = this.calculateMACD(closes);
+    const previous = this.calculateMACD(closes.slice(0, -1));
+
+    if (!current.macd || !current.signal || !previous.macd || !previous.signal) {
+      return 'none';
+    }
+
+    if (previous.macd <= previous.signal && current.macd > current.signal) {
+      return 'bullish_cross';
+    }
+    if (previous.macd >= previous.signal && current.macd < current.signal) {
+      return 'bearish_cross';
+    }
+
+    return 'none';
+  },
+
+  detectRSIDivergence(closes: number[], period: number): 'bullish' | 'bearish' | 'none' {
+    if (closes.length < period + 20) return 'none';
+
+    const recentCloses = closes.slice(-10);
+    const previousCloses = closes.slice(-20, -10);
+    
+    const recentRSI = this.calculateRSI(closes, period);
+    const previousRSI = this.calculateRSI(closes.slice(0, -10), period);
+
+    if (recentRSI === null || previousRSI === null) return 'none';
+
+    const recentLow = Math.min(...recentCloses);
+    const previousLow = Math.min(...previousCloses);
+    const recentHigh = Math.max(...recentCloses);
+    const previousHigh = Math.max(...previousCloses);
+
+    if (recentLow < previousLow && recentRSI > previousRSI) {
+      return 'bullish';
+    }
+
+    if (recentHigh > previousHigh && recentRSI < previousRSI) {
+      return 'bearish';
+    }
+
+    return 'none';
+  },
+
   generateSignals(data: any): TechnicalSignal[] {
     const signals: TechnicalSignal[] = [];
 
@@ -323,11 +518,32 @@ export const technicalService = {
       signals.push({ indicator: 'RSI', signal: 'bearish', description: 'RSI en sobrecompra (>70)', weight: 15 });
     }
 
+    // RSI Divergence
+    if (data.rsiDivergence === 'bullish') {
+      signals.push({ indicator: 'RSI', signal: 'bullish', description: 'Divergencia alcista RSI', weight: 12 });
+    } else if (data.rsiDivergence === 'bearish') {
+      signals.push({ indicator: 'RSI', signal: 'bearish', description: 'Divergencia bajista RSI', weight: 12 });
+    }
+
+    // Stochastic
+    if (data.stochasticSignal === 'oversold') {
+      signals.push({ indicator: 'Stochastic', signal: 'bullish', description: 'Stochastic en sobreventa (<20)', weight: 10 });
+    } else if (data.stochasticSignal === 'overbought') {
+      signals.push({ indicator: 'Stochastic', signal: 'bearish', description: 'Stochastic en sobrecompra (>80)', weight: 10 });
+    }
+
     // MACD
     if (data.macdTrend === 'bullish') {
-      signals.push({ indicator: 'MACD', signal: 'bullish', description: 'MACD positivo', weight: 20 });
+      signals.push({ indicator: 'MACD', signal: 'bullish', description: 'MACD positivo', weight: 15 });
     } else if (data.macdTrend === 'bearish') {
-      signals.push({ indicator: 'MACD', signal: 'bearish', description: 'MACD negativo', weight: 20 });
+      signals.push({ indicator: 'MACD', signal: 'bearish', description: 'MACD negativo', weight: 15 });
+    }
+
+    // MACD Crossover
+    if (data.macdCrossover === 'bullish_cross') {
+      signals.push({ indicator: 'MACD', signal: 'bullish', description: 'Cruce alcista MACD', weight: 18 });
+    } else if (data.macdCrossover === 'bearish_cross') {
+      signals.push({ indicator: 'MACD', signal: 'bearish', description: 'Cruce bajista MACD', weight: 18 });
     }
 
     // Golden/Death Cross
@@ -345,6 +561,11 @@ export const technicalService = {
       signals.push({ indicator: 'Bollinger', signal: 'bearish', description: 'Precio sobre banda superior', weight: 10 });
     }
 
+    // Bollinger Squeeze
+    if (data.bollingerSqueeze) {
+      signals.push({ indicator: 'Bollinger', signal: 'neutral', description: 'Squeeze: volatilidad baja', weight: 5 });
+    }
+
     // Volume
     if (data.volumeSignal === 'high') {
       signals.push({ indicator: 'Volume', signal: 'neutral', description: 'Volumen alto (confirma movimiento)', weight: 5 });
@@ -355,6 +576,19 @@ export const technicalService = {
       signals.push({ indicator: 'SMA200', signal: 'bullish', description: 'Precio por encima de SMA200', weight: 15 });
     } else if (data.sma200 !== null) {
       signals.push({ indicator: 'SMA200', signal: 'bearish', description: 'Precio por debajo de SMA200', weight: 15 });
+    }
+
+    // Soporte/Resistencia
+    if (data.distanceToSupport !== null && data.distanceToSupport < 3) {
+      signals.push({ indicator: 'Support', signal: 'bullish', description: `Cerca de soporte (${data.distanceToSupport.toFixed(1)}%)`, weight: 8 });
+    }
+    if (data.distanceToResistance !== null && data.distanceToResistance < 3) {
+      signals.push({ indicator: 'Resistance', signal: 'bearish', description: `Cerca de resistencia (${data.distanceToResistance.toFixed(1)}%)`, weight: 8 });
+    }
+
+    // Volatilidad
+    if (data.volatilityLevel === 'high') {
+      signals.push({ indicator: 'ATR', signal: 'neutral', description: 'Alta volatilidad - mayor riesgo', weight: 3 });
     }
 
     return signals;
@@ -377,19 +611,42 @@ export const technicalService = {
     return 'neutral';
   },
 
-  generateSummary(trend: string, signals: TechnicalSignal[]): string {
+  generateSummary(trend: string, signals: TechnicalSignal[], volatility: string, rsi: number | null, stochK: number | null): string {
     const bullish = signals.filter(s => s.signal === 'bullish').length;
     const bearish = signals.filter(s => s.signal === 'bearish').length;
     
-    const trendText = {
-      'strong_bullish': 'Tendencia fuertemente alcista',
-      'bullish': 'Tendencia alcista',
-      'neutral': 'Tendencia neutral',
-      'bearish': 'Tendencia bajista',
-      'strong_bearish': 'Tendencia fuertemente bajista',
-    }[trend] || 'Tendencia indefinida';
+    const trendEmoji: Record<string, string> = {
+      'strong_bullish': '🚀',
+      'bullish': '📈',
+      'neutral': '➡️',
+      'bearish': '📉',
+      'strong_bearish': '🔻',
+    };
     
-    return `${trendText}. ${bullish} señales alcistas, ${bearish} bajistas.`;
+    const trendText: Record<string, string> = {
+      'strong_bullish': 'Fuertemente alcista',
+      'bullish': 'Alcista',
+      'neutral': 'Neutral',
+      'bearish': 'Bajista',
+      'strong_bearish': 'Fuertemente bajista',
+    };
+    
+    let summary = `${trendEmoji[trend] || ''} ${trendText[trend] || 'Indefinido'}. `;
+    summary += `${bullish} señales alcistas, ${bearish} bajistas.`;
+    
+    if (rsi !== null && (rsi < 30 || rsi > 70)) {
+      summary += ` RSI: ${rsi.toFixed(0)}${rsi < 30 ? ' (sobreventa)' : ' (sobrecompra)'}.`;
+    }
+    
+    if (stochK !== null && (stochK < 20 || stochK > 80)) {
+      summary += ` Stoch: ${stochK.toFixed(0)}${stochK < 20 ? ' (sobreventa)' : ' (sobrecompra)'}.`;
+    }
+    
+    if (volatility === 'high') {
+      summary += ' ⚠️ Alta volatilidad.';
+    }
+    
+    return summary;
   },
 
   createEmptyAnalysis(): TechnicalAnalysis {
@@ -399,16 +656,21 @@ export const technicalService = {
       ema12: null, ema26: null,
       goldenCross: false, deathCross: false,
       priceAboveSMA200: false, priceAboveSMA50: false, priceAboveSMA20: false,
-      rsi14: null, rsiSignal: 'neutral',
-      macd: null, macdSignal: null, macdHistogram: null, macdTrend: 'neutral',
+      rsi14: null, rsiSignal: 'neutral', rsiDivergence: 'none',
+      macd: null, macdSignal: null, macdHistogram: null, macdTrend: 'neutral', macdCrossover: 'none',
       bollingerUpper: null, bollingerMiddle: null, bollingerLower: null,
-      bollingerPosition: 'inside', bollingerWidth: null,
+      bollingerPosition: 'inside', bollingerWidth: null, bollingerSqueeze: false,
+      stochasticK: null, stochasticD: null, stochasticSignal: 'neutral',
+      atr14: null, atrPercent: null, volatilityLevel: 'medium',
+      nearestSupport: null, nearestResistance: null,
+      distanceToSupport: null, distanceToResistance: null,
       avgVolume20: null, currentVolume: null, volumeRatio: null, volumeSignal: 'normal',
       technicalScore: 0,
       signals: [],
       trend: 'neutral',
-      summary: 'Sin datos suficientes para análisis técnico',
+      summary: '❓ Sin datos suficientes para análisis técnico',
       hasData: false,
+      dataQuality: 'low',
     };
   },
 };

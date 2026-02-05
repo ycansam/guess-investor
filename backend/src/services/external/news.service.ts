@@ -85,64 +85,91 @@ const POSITIVE_KEYWORDS: Record<string, number> = {
   'beats': 30, 'beat estimates': 35, 'exceeds': 30, 'exceeded expectations': 35,
   'record revenue': 40, 'record profit': 40, 'record earnings': 40,
   'raises guidance': 35, 'guidance raise': 35, 'outlook positive': 30,
+  'strong quarter': 30, 'blowout quarter': 35, 'smashes estimates': 40,
   
   // Analyst actions
   'upgrade': 25, 'upgraded': 25, 'buy rating': 20, 'outperform': 20,
-  'price target raise': 25, 'bullish': 15,
+  'price target raise': 25, 'bullish': 15, 'overweight': 20,
+  'strong buy': 30, 'top pick': 25,
   
   // Growth
   'growth': 15, 'expansion': 15, 'expands': 15, 'growing': 12,
   'strong': 12, 'positive': 10, 'gains': 12, 'rises': 10, 'soars': 20,
+  'surges': 25, 'jumps': 18, 'rallies': 20, 'spikes': 15,
   
   // M&A positivo
   'acquisition': 15, 'acquires': 15, 'merger': 12, 'partnership': 12,
-  'deal': 10, 'agreement': 8,
+  'deal': 10, 'agreement': 8, 'alliance': 10,
   
   // Productos/Innovación
   'launch': 12, 'launches': 12, 'innovation': 15, 'breakthrough': 25,
-  'patent': 12, 'fda approval': 35, 'approval': 15,
+  'patent': 12, 'fda approval': 35, 'approval': 15, 'approved': 18,
+  'new product': 15, 'ai': 12, 'artificial intelligence': 15,
   
   // Shareholder value
   'dividend': 12, 'buyback': 12, 'share repurchase': 12,
+  'increases dividend': 20, 'special dividend': 25,
   
-  // Spanish
-  'supera': 25, 'récord': 30, 'crecimiento': 15, 'sube': 10, 'positivo': 10,
+  // ESPAÑOL - MEJORADO
+  'supera': 25, 'supera expectativas': 35, 'récord': 30, 'récord histórico': 40,
+  'crecimiento': 15, 'sube': 10, 'positivo': 10, 'ganancias': 15,
+  'aumenta': 12, 'beneficio': 15, 'mejora': 12, 'avanza': 10,
+  'dispara': 25, 'despega': 20, 'impulsa': 15, 'lidera': 12,
+  'compra': 10, 'adquisición': 15, 'fusión': 12, 'alianza': 10,
+  'dividendo': 12, 'recompra': 12, 'máximos': 20, 'máximo histórico': 35,
+  'bate estimaciones': 35, 'mejor de lo esperado': 30,
+  'sorprende positivamente': 30, 'acelera': 15,
 };
 
 // Palabras negativas con peso (generalmente pesan más que las positivas)
 const NEGATIVE_KEYWORDS: Record<string, number> = {
   // Earnings (muy alto impacto negativo)
   'misses': -35, 'miss estimates': -40, 'disappoints': -30,
-  'below expectations': -35, 'weak': -20,
+  'below expectations': -35, 'weak': -20, 'weak quarter': -30,
   'cuts guidance': -40, 'guidance cut': -40, 'lowers outlook': -35,
-  'profit warning': -40, 'revenue miss': -35,
+  'profit warning': -40, 'revenue miss': -35, 'shortfall': -30,
+  'worse than expected': -35, 'disappointing results': -35,
   
   // Analyst actions
   'downgrade': -30, 'downgraded': -30, 'sell rating': -25, 'underperform': -25,
-  'price target cut': -25, 'bearish': -15,
+  'price target cut': -25, 'bearish': -15, 'underweight': -20,
+  'reduce': -15, 'caution': -12,
   
   // Legal/Regulatory (alto impacto)
   'lawsuit': -25, 'sued': -25, 'investigation': -30, 'sec investigation': -40,
   'fine': -20, 'fined': -20, 'penalty': -20, 'settlement': -15,
-  'fraud': -45, 'scandal': -35, 'violation': -25,
+  'fraud': -45, 'scandal': -35, 'violation': -25, 'subpoena': -30,
   'antitrust': -25, 'blocked': -20, 'ban': -20, 'banned': -25,
+  'regulatory': -12, 'compliance': -10, 'indicted': -45,
   
   // Operational
   'recall': -30, 'recalls': -30, 'data breach': -35, 'hack': -30, 'hacked': -35,
   'layoffs': -20, 'layoff': -20, 'cuts jobs': -25, 'job cuts': -25,
-  'restructuring': -15, 'cost cutting': -12,
+  'restructuring': -15, 'cost cutting': -12, 'downsizing': -18,
   'ceo resigns': -30, 'ceo fired': -35, 'executive leaves': -20,
+  'supply chain': -12, 'shortage': -15, 'delays': -12,
   
   // Financial distress
   'bankruptcy': -50, 'default': -45, 'debt crisis': -40,
-  'loss': -15, 'losses': -18, 'deficit': -15,
+  'loss': -15, 'losses': -18, 'deficit': -15, 'insolvency': -45,
+  'credit downgrade': -30, 'junk': -25, 'liquidity': -15,
   
   // Market action
   'decline': -15, 'declines': -15, 'falls': -15, 'drops': -18,
   'plunges': -30, 'crash': -35, 'tumbles': -25, 'sinks': -20,
+  'collapses': -40, 'tanks': -25, 'slides': -18, 'plummets': -30,
   
-  // Spanish
+  // ESPAÑOL - MEJORADO
   'quiebra': -50, 'despidos': -25, 'pérdida': -20, 'multa': -20, 'baja': -15,
+  'cae': -15, 'caída': -18, 'desploma': -35, 'hunde': -30,
+  'demanda': -25, 'investigación': -30, 'fraude': -45, 'escándalo': -35,
+  'recorta': -20, 'reduce plantilla': -25, 'cierra': -20, 'cierre': -18,
+  'pierde': -18, 'déficit': -15, 'deuda': -12, 'crisis': -25,
+  'sanción': -25, 'penalización': -20, 'incumple': -25,
+  'peor de lo esperado': -35, 'decepciona': -30, 'decepcionante': -28,
+  'alerta': -15, 'riesgo': -12, 'advertencia': -15,
+  'retira': -20, 'suspende': -20, 'cancela': -18,
+  'mínimos': -18, 'mínimo histórico': -30,
 };
 
 // Fuentes con credibilidad (0-100)
