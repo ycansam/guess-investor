@@ -18,7 +18,7 @@ import { logger } from '../../middleware/logger.js';
 
 export type FactorName = 
   | 'trend' | 'technical' | 'sentiment' | 'news' | 'macro'
-  | 'forex' | 'institutional' | 'seasonality'
+  | 'forex' | 'institutional'
   | 'financials' | 'expectations';
 
 interface FactorScore {
@@ -79,7 +79,7 @@ const FACTOR_GROUPS = {
   fundamental: ['financials', 'expectations'] as FactorName[],
   sentiment: ['sentiment', 'news'] as FactorName[],
   flow: ['institutional', 'forex'] as FactorName[],
-  external: ['macro', 'seasonality'] as FactorName[],
+  external: ['macro'] as FactorName[],
 };
 
 const DIVERGENCE_THRESHOLD = 30; // Diferencia mínima para divergencia

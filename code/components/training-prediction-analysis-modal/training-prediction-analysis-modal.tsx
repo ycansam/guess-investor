@@ -185,7 +185,6 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
                   {renderFactorScore('Competidores', '🏭', 'competitors')}
                   {renderFactorScore('Forex', '💱', 'forex')}
                   {renderFactorScore('Institucionales', '🏛️', 'institutional')}
-                  {renderFactorScore('Estacionalidad', '📅', 'seasonality')}
                   {renderFactorScore('Financieros', '💰', 'financials')}
                   {renderFactorScore('Expectativas', '🎯', 'expectations')}
                 </View>
@@ -342,32 +341,6 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
                   )}
                   {analysis.forex.summary && (
                     <Text style={styles.forexSummary}>{analysis.forex.summary}</Text>
-                  )}
-                </View>
-              </View>
-            )}
-
-            {/* Estacionalidad */}
-            {analysis?.seasonality && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>📅 Estacionalidad</Text>
-                <View style={styles.seasonalityBox}>
-                  <Text style={styles.seasonalitySector}>{analysis.seasonality.sector}</Text>
-                  <Text style={styles.seasonalityScore}>
-                    {analysis.seasonality.score > 20 ? '📈 Favorable' : analysis.seasonality.score < -20 ? '📉 Desfavorable' : '➖ Neutral'}
-                  </Text>
-                  {analysis.seasonality.region && (
-                    <Text style={styles.seasonalityCountry}>🌍 {analysis.seasonality.region}</Text>
-                  )}
-                  {analysis.seasonality.events && analysis.seasonality.events.length > 0 && (
-                    <View style={styles.seasonalityEvents}>
-                      {analysis.seasonality.events.map((event, idx) => (
-                        <Text key={idx} style={styles.seasonalityEvent}>🎯 {event}</Text>
-                      ))}
-                    </View>
-                  )}
-                  {analysis.seasonality.summary && (
-                    <Text style={styles.seasonalitySummary}>{analysis.seasonality.summary}</Text>
                   )}
                 </View>
               </View>

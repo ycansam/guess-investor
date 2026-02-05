@@ -41,7 +41,7 @@ const COLORS = {
 
 // Tipos de factor
 export type FactorType = 'technical' | 'macro' | 'sentiment' | 'news' | 'trend' | 
-                         'competitors' | 'forex' | 'institutional' | 'seasonality' | 
+                         'competitors' | 'forex' | 'institutional' | 
                          'financials' | 'expectations';
 
 interface Props {
@@ -93,11 +93,6 @@ const FACTOR_CONFIG: Record<FactorType, { title: string; icon: string; descripti
     title: 'Institucionales',
     icon: '🏛️',
     description: 'Movimientos de fondos institucionales y grandes inversores',
-  },
-  seasonality: {
-    title: 'Estacionalidad',
-    icon: '📅',
-    description: 'Patrones estacionales históricos del activo',
   },
   financials: {
     title: 'Financieros',
@@ -1347,9 +1342,6 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
         case 'forex':
           response = await apiClient.getForexImpact(symbol);
           break;
-        case 'seasonality':
-          response = await apiClient.getSeasonality(symbol);
-          break;
         default:
           // Para otros factores, obtener análisis completo
           const full = await apiClient.getFullAnalysis(symbol, assetType);
@@ -1402,8 +1394,6 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
         return <NewsDetail data={data} />;
       case 'trend':
         return <TrendDetail data={data} />;
-      case 'seasonality':
-        return <SeasonalityDetail data={data} />;
       default:
         return <GenericDetail data={data} factorType={factorType} />;
     }

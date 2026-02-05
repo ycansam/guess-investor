@@ -19,10 +19,10 @@ import { logger } from '../../middleware/logger.js';
 import { trainingRepository } from '../../repositories/training.repository.js';
 import { pythonMlService, type AssetProfile } from '../ml/python-ml.service.js';
 
-// Factores de análisis (9 factores - competitors y expectations eliminados)
+// Factores de análisis (8 factores - competitors, expectations y seasonality eliminados)
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'forex', 'institutional', 'seasonality', 'financials'
+  'forex', 'institutional', 'financials'
 ] as const;
 
 type Factor = typeof FACTORS[number];
@@ -45,7 +45,6 @@ export interface DataAvailability {
   macro: boolean;
   forex: boolean;
   institutional: boolean;
-  seasonality: boolean;
   financials: boolean;
 }
 
@@ -98,18 +97,18 @@ export type MarketRegime = 'trending_up' | 'trending_down' | 'high_volatility' |
  * Pesos fijos para modelo Momentum (prioriza tendencia)
  */
 const MOMENTUM_WEIGHTS: WeightsMap = {
-  trend: 0.33, technical: 0.31, sentiment: 0.16, news: 0.10,
+  trend: 0.34, technical: 0.32, sentiment: 0.16, news: 0.10,
   macro: 0.02, forex: 0.02, institutional: 0.04,
-  seasonality: 0.01, financials: 0.01
+  financials: 0.00
 };
 
 /**
  * Pesos fijos para modelo Mean Reversion (contrarian)
  */
 const MEAN_REVERSION_WEIGHTS: WeightsMap = {
-  trend: 0.05, technical: 0.37, sentiment: 0.12, news: 0.06,
+  trend: 0.05, technical: 0.40, sentiment: 0.12, news: 0.06,
   macro: 0.12, forex: 0.05, institutional: 0.13,
-  seasonality: 0.03, financials: 0.07
+  financials: 0.07
 };
 
 /**
@@ -118,17 +117,17 @@ const MEAN_REVERSION_WEIGHTS: WeightsMap = {
  */
 const FUNDAMENTAL_WEIGHTS: WeightsMap = {
   trend: 0.05, technical: 0.05, sentiment: 0.05, news: 0.15,
-  macro: 0.22, forex: 0.08, institutional: 0.12,
-  seasonality: 0.03, financials: 0.25
+  macro: 0.25, forex: 0.08, institutional: 0.12,
+  financials: 0.25
 };
 
 /**
  * Pesos fijos para modelo Sentiment-Driven (prioriza sentiment y news)
  */
 const SENTIMENT_DRIVEN_WEIGHTS: WeightsMap = {
-  trend: 0.10, technical: 0.10, sentiment: 0.33, news: 0.30,
+  trend: 0.10, technical: 0.10, sentiment: 0.34, news: 0.31,
   macro: 0.05, forex: 0.03, institutional: 0.05,
-  seasonality: 0.01, financials: 0.03
+  financials: 0.02
 };
 
 /**
@@ -138,17 +137,17 @@ const DEFAULT_GLOBAL_WEIGHTS: Record<Timeframe, WeightsMap> = {
   intraday: {
     trend: 0.23, technical: 0.28, sentiment: 0.17, news: 0.19,
     macro: 0.04, forex: 0.04, institutional: 0.05,
-    seasonality: 0.00, financials: 0.00 // seasonality/financials no relevantes intraday
+    financials: 0.00
   },
   swing: {
-    trend: 0.14, technical: 0.21, sentiment: 0.12, news: 0.18,
+    trend: 0.14, technical: 0.23, sentiment: 0.12, news: 0.18,
     macro: 0.09, forex: 0.06, institutional: 0.11,
-    seasonality: 0.02, financials: 0.07
+    financials: 0.07
   },
   long: {
     trend: 0.06, technical: 0.09, sentiment: 0.05, news: 0.12,
     macro: 0.16, forex: 0.08, institutional: 0.14,
-    seasonality: 0.04, financials: 0.26
+    financials: 0.30
   }
 };
 

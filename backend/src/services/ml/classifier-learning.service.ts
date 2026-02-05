@@ -14,7 +14,7 @@
 import { prisma } from '../../config/database.js';
 import { logger } from '../../middleware/logger.js';
 
-// Tipo para los multiplicadores de un clasificador (10 factores - competitors eliminado)
+// Tipo para los multiplicadores de un clasificador (9 factores - competitors y seasonality eliminados)
 interface ClassifierMultipliers {
   trend: number;
   technical: number;
@@ -23,7 +23,6 @@ interface ClassifierMultipliers {
   macro: number;
   forex: number;
   institutional: number;
-  seasonality: number;
   financials: number;
   expectations: number;
 }
@@ -51,7 +50,6 @@ const BASE_MULTIPLIERS: ClassifierMultipliers = {
   macro: 1.0,
   forex: 1.0,
   institutional: 1.0,
-  seasonality: 1.0,
   financials: 1.0,
   expectations: 1.0,
 };
@@ -96,7 +94,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
   commodity: {
     macro: 1.5,
     forex: 2.0,
-    seasonality: 1.5,
     sentiment: 0.7,
     financials: 0.1,
     expectations: 0.3,

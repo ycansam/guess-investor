@@ -112,18 +112,17 @@ model Favorite {
 model LearnedWeights {
   id          String   @id @default(uuid())
   
-  // Pesos por factor (0-1)
-  trend       Float    @default(0.091)
-  technical   Float    @default(0.091)
-  sentiment   Float    @default(0.091)
-  news        Float    @default(0.091)
-  macro       Float    @default(0.091)
-  competitors Float    @default(0.091)
-  forex       Float    @default(0.091)
-  institutional Float  @default(0.091)
-  seasonality Float    @default(0.091)
-  financials  Float    @default(0.091)
-  expectations Float   @default(0.091)
+  // Pesos por factor (0-1) - 8 factores activos
+  trend       Float    @default(0.111)
+  technical   Float    @default(0.111)
+  sentiment   Float    @default(0.111)
+  news        Float    @default(0.111)
+  macro       Float    @default(0.111)
+  competitors Float    @default(0.111)
+  forex       Float    @default(0.111)
+  institutional Float  @default(0.111)
+  financials  Float    @default(0.111)
+  expectations Float   @default(0.000)  // deprecated
   
   // Metadata
   version     Int      @default(1)
