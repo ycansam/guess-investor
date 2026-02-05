@@ -130,6 +130,7 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
   const [longData, setLongData] = useState<TraderAnalysisData | null>(null);
   const [shortData, setShortData] = useState<TraderAnalysisData | null>(null);
   const [direction, setDirection] = useState<Direction>('long');
+  const [leverage, setLeverage] = useState<number>(1);
   const [extendedData, setExtendedData] = useState<ExtendedAnalysisData>({
     volumeProfile: null,
     intermarket: null,
@@ -139,6 +140,9 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [showTechnical, setShowTechnical] = useState(false);
+
+  // Leverage options
+  const leverageOptions = [1, 2, 3, 5, 10, 20, 50, 100];
 
   // Current data based on selected direction
   const data = direction === 'long' ? longData : shortData;
@@ -424,6 +428,48 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
             </TouchableOpacity>
           </View>
 
+          {/* SELECTOR DE APALANCAMIENTO */}
+          <View style={styles.leverageSection}>
+            <View style={styles.leverageHeader}>
+              <Text style={styles.leverageTitle}>⚡ Apalancamiento</Text>
+              <Text style={styles.leverageValue}>{leverage}x</Text>
+            </View>
+            <View style={styles.leverageOptions}>
+              {leverageOptions.map((lev) => (
+                <TouchableOpacity
+                  key={lev}
+                  style={[
+                    styles.leverageButton,
+                    leverage === lev && styles.leverageButtonActive,
+                    leverage === lev && lev >= 20 && { backgroundColor: theme.colors.danger },
+                    leverage === lev && lev >= 5 && lev < 20 && { backgroundColor: theme.colors.warning },
+                    leverage === lev && lev < 5 && { backgroundColor: theme.colors.success },
+                  ]}
+                  onPress={() => setLeverage(lev)}
+                >
+                  <Text style={[
+                    styles.leverageButtonText,
+                    leverage === lev && styles.leverageButtonTextActive
+                  ]}>
+                    {lev}x
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {leverage >= 10 && (
+              <View style={styles.leverageWarning}>
+                <Ionicons name="warning" size={14} color={theme.colors.danger} />
+                <Text style={styles.leverageWarningText}>
+                  {leverage >= 50 
+                    ? '🔥 Apalancamiento extremo. Riesgo de liquidación muy alto.'
+                    : leverage >= 20 
+                      ? '⚠️ Apalancamiento alto. Pequeños movimientos pueden liquidarte.'
+                      : '💡 Apalancamiento moderado-alto. Ten cuidado con la gestión de riesgo.'}
+                </Text>
+              </View>
+            )}
+          </View>
+
           {/* SUGERENCIA DE DIRECCIÓN */}
           {(() => {
             const bestDir = getBestDirection();
@@ -513,24 +559,62 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
             </View>
           </View>
 
-          {/* CUÁNTO INVERTIR - MUY SIMPLIFICADO */}
+          {/* CUÁNTO INVERTIR - AJUSTADO POR APALANCAMIENTO */}
           <View style={styles.investCard}>
             <Text style={styles.investTitle}>💰 ¿Cuánto debería invertir?</Text>
             
             <View style={styles.investRecommendation}>
-              <Text style={styles.investLabel}>Recomendación:</Text>
-              <Text style={[
-                styles.investValue,
-                { color: data.riskReward.suggestedPositionSize === 'small' ? theme.colors.warning :
-                         data.riskReward.suggestedPositionSize === 'medium' ? theme.colors.success :
-                         data.riskReward.suggestedPositionSize === 'max' ? theme.colors.primary : theme.colors.textSecondary }
-              ]}>
-                {data.riskReward.suggestedPositionSize === 'small' && '🤏 Poco (máx 5% de tu dinero)'}
-                {data.riskReward.suggestedPositionSize === 'medium' && '✋ Moderado (5-10% de tu dinero)'}
-                {data.riskReward.suggestedPositionSize === 'max' && '💪 Puedes invertir más (10-15%)'}
-                {data.riskReward.suggestedPositionSize === 'none' && '🚫 No invertir ahora'}
-              </Text>
+              <Text style={styles.investLabel}>Recomendación {leverage > 1 ? `(con ${leverage}x):` : ':'}</Text>
+              {(() => {
+                // Ajustar recomendación según apalancamiento
+                let adjustedSize = data.riskReward.suggestedPositionSize;
+                let maxPercent = 15;
+                
+                if (leverage >= 50) {
+                  adjustedSize = 'tiny';
+                  maxPercent = 1;
+                } else if (leverage >= 20) {
+                  adjustedSize = 'tiny';
+                  maxPercent = 2;
+                } else if (leverage >= 10) {
+                  adjustedSize = 'small';
+                  maxPercent = 3;
+                } else if (leverage >= 5) {
+                  if (data.riskReward.suggestedPositionSize === 'max') adjustedSize = 'medium';
+                  else if (data.riskReward.suggestedPositionSize === 'medium') adjustedSize = 'small';
+                  maxPercent = 5;
+                } else if (leverage >= 3) {
+                  if (data.riskReward.suggestedPositionSize === 'max') adjustedSize = 'medium';
+                  maxPercent = 8;
+                }
+                
+                return (
+                  <Text style={[
+                    styles.investValue,
+                    { color: adjustedSize === 'tiny' ? theme.colors.danger :
+                             adjustedSize === 'small' ? theme.colors.warning :
+                             adjustedSize === 'medium' ? theme.colors.success :
+                             adjustedSize === 'max' ? theme.colors.primary : theme.colors.textSecondary }
+                  ]}>
+                    {adjustedSize === 'tiny' && `🎯 Muy poco (máx ${maxPercent}% de tu dinero)`}
+                    {adjustedSize === 'small' && `🤏 Poco (máx ${maxPercent}% de tu dinero)`}
+                    {adjustedSize === 'medium' && `✋ Moderado (máx ${maxPercent}% de tu dinero)`}
+                    {adjustedSize === 'max' && `💪 Puedes invertir más (hasta ${maxPercent}%)`}
+                    {adjustedSize === 'none' && '🚫 No invertir ahora'}
+                  </Text>
+                );
+              })()}
             </View>
+
+            {leverage > 1 && (
+              <View style={[styles.investExplanation, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                <Ionicons name="flash" size={16} color={theme.colors.warning} />
+                <Text style={styles.investExplanationText}>
+                  Con {leverage}x, si inviertes 100€ controlas {100 * leverage}€. 
+                  Un movimiento del {(100/leverage).toFixed(1)}% te liquida.
+                </Text>
+              </View>
+            )}
 
             <View style={styles.investExplanation}>
               <Ionicons name="information-circle" size={16} color={theme.colors.textSecondary} />
@@ -558,14 +642,18 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
                     <Text style={styles.priceLabel}>🛑 Si baja a...</Text>
                     <Text style={styles.priceValueDanger}>{formatMoney(data.riskReward.stopLoss)}</Text>
                     <Text style={styles.priceHint}>Cierra para no perder más</Text>
-                    <Text style={styles.priceLoss}>(-{data.riskReward.riskPercent.toFixed(1)}%)</Text>
+                    <Text style={styles.priceLoss}>
+                      {leverage > 1 ? `${(data.riskReward.riskPercent * leverage).toFixed(0)}%` : `${data.riskReward.riskPercent.toFixed(1)}%`} pérdida
+                    </Text>
                   </View>
                   
                   <View style={[styles.priceBox, styles.priceBoxSuccess]}>
                     <Text style={styles.priceLabel}>🎉 Si sube a...</Text>
                     <Text style={styles.priceValueSuccess}>{formatMoney(data.riskReward.takeProfit)}</Text>
                     <Text style={styles.priceHint}>Cierra para asegurar ganancia</Text>
-                    <Text style={styles.priceGain}>(+{data.riskReward.rewardPercent.toFixed(1)}%)</Text>
+                    <Text style={styles.priceGain}>
+                      +{leverage > 1 ? `${(data.riskReward.rewardPercent * leverage).toFixed(0)}%` : `${data.riskReward.rewardPercent.toFixed(1)}%`} ganancia
+                    </Text>
                   </View>
                 </>
               ) : (
@@ -574,26 +662,52 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
                     <Text style={styles.priceLabel}>🛑 Si sube a...</Text>
                     <Text style={styles.priceValueDanger}>{formatMoney(data.riskReward.stopLoss)}</Text>
                     <Text style={styles.priceHint}>Cierra para no perder más</Text>
-                    <Text style={styles.priceLoss}>(-{data.riskReward.riskPercent.toFixed(1)}%)</Text>
+                    <Text style={styles.priceLoss}>
+                      {leverage > 1 ? `${(data.riskReward.riskPercent * leverage).toFixed(0)}%` : `${data.riskReward.riskPercent.toFixed(1)}%`} pérdida
+                    </Text>
                   </View>
                   
                   <View style={[styles.priceBox, styles.priceBoxSuccess]}>
                     <Text style={styles.priceLabel}>🎉 Si baja a...</Text>
                     <Text style={styles.priceValueSuccess}>{formatMoney(data.riskReward.takeProfit)}</Text>
                     <Text style={styles.priceHint}>Cierra para asegurar ganancia</Text>
-                    <Text style={styles.priceGain}>(+{data.riskReward.rewardPercent.toFixed(1)}%)</Text>
+                    <Text style={styles.priceGain}>
+                      +{leverage > 1 ? `${(data.riskReward.rewardPercent * leverage).toFixed(0)}%` : `${data.riskReward.rewardPercent.toFixed(1)}%`} ganancia
+                    </Text>
                   </View>
                 </>
               )}
             </View>
 
+            {/* PRECIO DE LIQUIDACIÓN con apalancamiento */}
+            {leverage > 1 && (
+              <View style={styles.liquidationBox}>
+                <View style={styles.liquidationHeader}>
+                  <Ionicons name="skull-outline" size={16} color={theme.colors.danger} />
+                  <Text style={styles.liquidationTitle}>Precio de liquidación aprox.</Text>
+                </View>
+                <Text style={styles.liquidationPrice}>
+                  {formatMoney(
+                    direction === 'long'
+                      ? data.riskReward.entryPrice * (1 - (0.9 / leverage))
+                      : data.riskReward.entryPrice * (1 + (0.9 / leverage))
+                  )}
+                </Text>
+                <Text style={styles.liquidationHint}>
+                  Si el precio {direction === 'long' ? 'baja' : 'sube'} ~{(90 / leverage).toFixed(1)}%, pierdes todo
+                </Text>
+              </View>
+            )}
+
             <View style={styles.rrExplanation}>
               <Text style={styles.rrExplanationText}>
-                {data.riskReward.riskRewardRatio >= 2 
-                  ? `✅ Por cada euro que arriesgas, puedes ganar ${data.riskReward.riskRewardRatio.toFixed(1)} euros`
-                  : data.riskReward.riskRewardRatio >= 1
-                    ? `⚠️ Por cada euro que arriesgas, puedes ganar ${data.riskReward.riskRewardRatio.toFixed(1)} euros (regular)`
-                    : `❌ Arriesgas más de lo que puedes ganar (${data.riskReward.riskRewardRatio.toFixed(1)}:1)`
+                {leverage > 1 
+                  ? `⚡ Con ${leverage}x: Ganas ${(data.riskReward.riskRewardRatio * leverage).toFixed(0)}€ por cada 1€ arriesgado (R/R ${data.riskReward.riskRewardRatio.toFixed(1)}:1 × ${leverage})`
+                  : data.riskReward.riskRewardRatio >= 2 
+                    ? `✅ Por cada euro que arriesgas, puedes ganar ${data.riskReward.riskRewardRatio.toFixed(1)} euros`
+                    : data.riskReward.riskRewardRatio >= 1
+                      ? `⚠️ Por cada euro que arriesgas, puedes ganar ${data.riskReward.riskRewardRatio.toFixed(1)} euros (regular)`
+                      : `❌ Arriesgas más de lo que puedes ganar (${data.riskReward.riskRewardRatio.toFixed(1)}:1)`
                 }
               </Text>
             </View>
@@ -1670,5 +1784,102 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: theme.colors.text,
+  },
+
+  // Leverage selector
+  leverageSection: {
+    backgroundColor: theme.colors.background,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  leverageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  leverageTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  leverageValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  leverageOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  leverageButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    minWidth: 45,
+    alignItems: 'center',
+  },
+  leverageButtonActive: {
+    borderColor: 'transparent',
+  },
+  leverageButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  leverageButtonTextActive: {
+    color: '#fff',
+  },
+  leverageWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 10,
+    padding: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: 8,
+  },
+  leverageWarningText: {
+    flex: 1,
+    fontSize: 11,
+    color: theme.colors.danger,
+    lineHeight: 15,
+  },
+
+  // Liquidation box
+  liquidationBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    alignItems: 'center',
+  },
+  liquidationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  liquidationTitle: {
+    fontSize: 12,
+    color: theme.colors.danger,
+    fontWeight: '600',
+  },
+  liquidationPrice: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.colors.danger,
+  },
+  liquidationHint: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    marginTop: 4,
   },
 });
