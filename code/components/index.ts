@@ -11,4 +11,4 @@ export { PredictionsList } from './predictions-list';
 export { QuickActions } from './quick-actions';
 export { TopTrendsModal } from './top-trends';
 export { TrendsModal } from './trends-modal';
-
+export { TraderAnalysisCard } from './TraderAnalysisCard';

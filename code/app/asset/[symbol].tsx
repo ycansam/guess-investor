@@ -20,6 +20,7 @@ import { LineChart } from 'react-native-gifted-charts';
 import { InvestorInfoCard } from '../../components/investor-info-card';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
 import { PredictionHistoryCard } from '../../components/prediction-history';
+import { TraderAnalysisCard } from '../../components/TraderAnalysisCard';
 import { apiClient, CalculatedPrediction } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
 import { getMarketHours } from '../../services/market-hours-service';
@@ -2044,6 +2045,13 @@ export default function AssetDetailScreen() {
           <WeightsDropdown factorBreakdown={fullPrediction.analysisData.factorBreakdown} />
         )}
 
+        {/* Análisis Trader Pro (Divergencias, R/R, Options Flow) */}
+        {symbol && (
+          <View style={styles.traderAnalysisContainer}>
+            <TraderAnalysisCard symbol={symbol} />
+          </View>
+        )}
+
         {/* Información para Inversores (earnings, dividendos, valoración) */}
         {investorInfoLoading ? (
           <View style={styles.investorInfoLoading}>
@@ -2285,6 +2293,9 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   analysisContainer: {
+    marginTop: 16,
+  },
+  traderAnalysisContainer: {
     marginTop: 16,
   },
   investorInfoContainer: {
