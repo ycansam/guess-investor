@@ -22,6 +22,34 @@ FACTORS = [
     'forex', 'institutional', 'seasonality', 'financials'
 ]
 
+# Factores relevantes por grupo de activo
+# CRÍTICO: Cada grupo solo usa los factores que tienen sentido para ese tipo de activo
+ASSET_GROUP_FACTORS = {
+    'large_cap_stock': ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'seasonality', 'financials'],
+    'small_cap_stock': ['trend', 'technical', 'news', 'seasonality', 'financials'],
+    'crypto_major': ['trend', 'technical', 'sentiment', 'news', 'macro'],
+    'crypto_alt': ['trend', 'technical', 'sentiment'],
+    'etf_index': ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    'commodity': ['trend', 'technical', 'macro', 'forex'],  # SIN seasonality - no es fiable para commodities
+    'reit': ['trend', 'technical', 'macro', 'financials', 'seasonality'],
+    'forex': ['trend', 'technical', 'macro', 'news'],
+    'adr': ['trend', 'technical', 'news', 'forex', 'macro', 'financials'],
+    'default': ['trend', 'technical', 'sentiment', 'news'],
+}
+
+
+def get_relevant_factors(asset_group: str) -> list:
+    """
+    Obtiene los factores relevantes para un grupo de activo.
+    
+    Args:
+        asset_group: Tipo de activo (large_cap_stock, commodity, crypto_major, etc.)
+    
+    Returns:
+        Lista de factores relevantes para ese grupo
+    """
+    return ASSET_GROUP_FACTORS.get(asset_group, ASSET_GROUP_FACTORS['default'])
+
 # Pesos por defecto por timeframe (9 factores)
 DEFAULT_WEIGHTS = {
     'intraday': {

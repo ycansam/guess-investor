@@ -46,9 +46,23 @@ except ImportError:
 
 FACTORS = [
     'trend', 'technical', 'sentiment', 'news', 'macro',
-    'forex', 'institutional', 'seasonality',
-    'financials', 'expectations'
+    'forex', 'institutional', 'seasonality', 'financials'
 ]
+
+# Factores relevantes por grupo de activo
+# CRÍTICO: Cada grupo solo usa los factores que tienen sentido para ese tipo de activo
+ASSET_GROUP_FACTORS = {
+    'large_cap_stock': ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'seasonality', 'financials'],
+    'small_cap_stock': ['trend', 'technical', 'news', 'seasonality', 'financials'],
+    'crypto_major': ['trend', 'technical', 'sentiment', 'news', 'macro'],
+    'crypto_alt': ['trend', 'technical', 'sentiment'],
+    'etf_index': ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    'commodity': ['trend', 'technical', 'macro', 'forex'],  # SIN seasonality - no es fiable para commodities
+    'reit': ['trend', 'technical', 'macro', 'financials', 'seasonality'],
+    'forex': ['trend', 'technical', 'macro', 'news'],
+    'adr': ['trend', 'technical', 'news', 'forex', 'macro', 'financials'],
+    'default': ['trend', 'technical', 'sentiment', 'news'],
+}
 
 MIN_SAMPLES = 100  # Mínimo para entrenar (500 recomendado)
 RECOMMENDED_SAMPLES = 500

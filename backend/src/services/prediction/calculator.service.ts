@@ -251,7 +251,7 @@ const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
     description: 'ETFs e índices',
   },
   commodity: {
-    relevantFactors: ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    relevantFactors: ['trend', 'technical', 'macro', 'forex'], // Estacionalidad eliminada - no fiable para commodities
     minFactorsForHighConfidence: 3,
     description: 'Materias primas',
   },
@@ -793,7 +793,7 @@ export const predictionCalculatorService = {
     // Definir los 9 factores (competitors y expectations eliminados)
     // NOTA: seasonality usa effectiveHasSeasonality que considera la fiabilidad de datos
     // NOTA: seasonality tiene peso reducido (bias suave), forex es condicional por grupo de activo
-    const factors = [
+    const allFactors = [
       { name: 'trend', score: trendScore, hasData: hasHistoricalData, weight: weights.trend },
       { name: 'technical', score: technicalScore, hasData: hasTechnicalData, weight: weights.technical },
       { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, weight: weights.sentiment },
@@ -804,6 +804,13 @@ export const predictionCalculatorService = {
       { name: 'seasonality', score: seasonalityScore, hasData: effectiveHasSeasonality, weight: weights.seasonality },
       { name: 'financials', score: financialsScore, hasData: hasFinancialsData, weight: weights.financials },
     ];
+
+    // FILTRAR factores por los relevantes para este grupo de activo
+    // Esto es CRÍTICO: commodities no deben usar seasonality, crypto no debe usar financials, etc.
+    const groupConfig = ASSET_GROUP_CONFIGS[assetGroup];
+    const factors = allFactors.filter(f => groupConfig.relevantFactors.includes(f.name));
+    
+    logger.info(`[PredictionCalc] Factors for ${assetGroup}: ${factors.map(f => f.name).join(', ')} (filtered from ${allFactors.length})`);
 
     const availableFactors = factors.filter(f => f.hasData);
     
@@ -846,8 +853,7 @@ export const predictionCalculatorService = {
     if (combinedScore > 5) direction = 'up';
     else if (combinedScore < -5) direction = 'down';
 
-    // Calcular confianza (assetGroup ya detectado arriba)
-    const groupConfig = ASSET_GROUP_CONFIGS[assetGroup];
+    // Calcular confianza (assetGroup y groupConfig ya definidos arriba)
     const { confidence, signalSummary, confidenceExplanation } = this.calculateConfidence(
       factors, availableFactors, groupConfig
     );
@@ -1562,9 +1568,12 @@ export const predictionCalculatorService = {
     }
 
     // Calcular coherencia de señales
-    const positiveFactors = availableFactors.filter(f => f.score > 15);
-    const negativeFactors = availableFactors.filter(f => f.score < -15);
-    const neutralFactors = availableFactors.filter(f => f.score >= -15 && f.score <= 15);
+    // UMBRALES AJUSTADOS: ±10 para capturar señales moderadas (antes ±15)
+    // Un técnico de -14 DEBE contar como bajista, no neutral
+    const SIGNAL_THRESHOLD = 10;
+    const positiveFactors = availableFactors.filter(f => f.score > SIGNAL_THRESHOLD);
+    const negativeFactors = availableFactors.filter(f => f.score < -SIGNAL_THRESHOLD);
+    const neutralFactors = availableFactors.filter(f => f.score >= -SIGNAL_THRESHOLD && f.score <= SIGNAL_THRESHOLD);
     
     // Factores con señal clara (no neutrales)
     const signalFactors = positiveFactors.length + negativeFactors.length;
