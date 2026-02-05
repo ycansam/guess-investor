@@ -105,6 +105,8 @@ interface ExtendedAnalysisData {
   volatility: VolatilityData | null;
 }
 
+type Direction = 'long' | 'short';
+
 // Componente para explicaciones
 function InfoTooltip({ text }: { text: string }) {
   const [visible, setVisible] = useState(false);
@@ -125,7 +127,9 @@ function InfoTooltip({ text }: { text: string }) {
 }
 
 export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
-  const [data, setData] = useState<TraderAnalysisData | null>(null);
+  const [longData, setLongData] = useState<TraderAnalysisData | null>(null);
+  const [shortData, setShortData] = useState<TraderAnalysisData | null>(null);
+  const [direction, setDirection] = useState<Direction>('long');
   const [extendedData, setExtendedData] = useState<ExtendedAnalysisData>({
     volumeProfile: null,
     intermarket: null,
@@ -136,22 +140,88 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
   const [expanded, setExpanded] = useState(false);
   const [showTechnical, setShowTechnical] = useState(false);
 
+  // Current data based on selected direction
+  const data = direction === 'long' ? longData : shortData;
+
+  // Determine which direction is better based on market context
+  const getBestDirection = (): { direction: Direction; reason: string } => {
+    const intermarket = extendedData.intermarket;
+    const volumeProfile = extendedData.volumeProfile;
+    
+    let longScore = 0;
+    let shortScore = 0;
+    let reasons: string[] = [];
+
+    // Intermarket analysis
+    if (intermarket) {
+      if (intermarket.marketRegime === 'risk_on') {
+        longScore += 2;
+        reasons.push('Mercado en modo risk-on');
+      } else if (intermarket.marketRegime === 'risk_off') {
+        shortScore += 2;
+        reasons.push('Mercado en modo risk-off');
+      }
+      
+      if (intermarket.flowDirection === 'into_risk') {
+        longScore += 1;
+      } else if (intermarket.flowDirection === 'into_cash') {
+        shortScore += 1;
+      }
+    }
+
+    // Volume Profile
+    if (volumeProfile) {
+      if (volumeProfile.priceLocation === 'above_va') {
+        shortScore += 1; // Price is high, might come down
+        reasons.push('Precio en zona alta');
+      } else if (volumeProfile.priceLocation === 'below_va') {
+        longScore += 1; // Price is low, might go up
+        reasons.push('Precio en zona baja');
+      }
+    }
+
+    // Compare recommendations if both loaded
+    if (longData && shortData) {
+      const longQuality = longData.riskReward.qualityScore || 0;
+      const shortQuality = shortData.riskReward.qualityScore || 0;
+      
+      if (shortQuality > longQuality + 10) {
+        shortScore += 1;
+      } else if (longQuality > shortQuality + 10) {
+        longScore += 1;
+      }
+    }
+
+    if (shortScore > longScore) {
+      return { direction: 'short', reason: reasons.join(' • ') || 'Mejor oportunidad en cortos' };
+    }
+    return { direction: 'long', reason: reasons.join(' • ') || 'Mejor oportunidad en largos' };
+  };
+
   const fetchAnalysis = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all data in parallel
-      const [mainRes, volumeRes, intermarketRes, volatilityRes] = await Promise.all([
+      // Fetch BOTH directions and extended data in parallel
+      const [longRes, shortRes, volumeRes, intermarketRes, volatilityRes] = await Promise.all([
         fetch(`${API_BASE}/analysis/trader-full/${symbol}?direction=long`),
+        fetch(`${API_BASE}/analysis/trader-full/${symbol}?direction=short`),
         fetch(`${API_BASE}/analysis/volume-profile/${symbol}`).catch(() => null),
         fetch(`${API_BASE}/analysis/intermarket`).catch(() => null),
         fetch(`${API_BASE}/analysis/volatility/${symbol}`).catch(() => null),
       ]);
 
-      const mainJson = await mainRes.json();
-      if (mainJson.success && mainJson.data) {
-        setData(mainJson.data);
-      } else {
+      const longJson = await longRes.json();
+      const shortJson = await shortRes.json();
+      
+      if (longJson.success && longJson.data) {
+        setLongData(longJson.data);
+      }
+      if (shortJson.success && shortJson.data) {
+        setShortData(shortJson.data);
+      }
+      
+      if (!longJson.success && !shortJson.success) {
         setError('No se pudo obtener el análisis');
         return;
       }
@@ -185,6 +255,11 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
       }
 
       setExtendedData(extended);
+      
+      // Auto-select best direction based on market context
+      if (extended.intermarket?.marketRegime === 'risk_off') {
+        setDirection('short');
+      }
     } catch (err: any) {
       setError(err.message || 'Error al cargar');
     } finally {
@@ -304,6 +379,77 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
         </View>
       ) : data ? (
         <>
+          {/* SELECTOR DE DIRECCIÓN */}
+          <View style={styles.directionSelector}>
+            <TouchableOpacity
+              style={[
+                styles.directionButton,
+                direction === 'long' && styles.directionButtonActive,
+                direction === 'long' && { backgroundColor: theme.colors.success }
+              ]}
+              onPress={() => setDirection('long')}
+            >
+              <Ionicons 
+                name="trending-up" 
+                size={18} 
+                color={direction === 'long' ? '#fff' : theme.colors.success} 
+              />
+              <Text style={[
+                styles.directionButtonText,
+                direction === 'long' && styles.directionButtonTextActive
+              ]}>
+                LONG (Comprar)
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.directionButton,
+                direction === 'short' && styles.directionButtonActive,
+                direction === 'short' && { backgroundColor: theme.colors.danger }
+              ]}
+              onPress={() => setDirection('short')}
+            >
+              <Ionicons 
+                name="trending-down" 
+                size={18} 
+                color={direction === 'short' ? '#fff' : theme.colors.danger} 
+              />
+              <Text style={[
+                styles.directionButtonText,
+                direction === 'short' && styles.directionButtonTextActive
+              ]}>
+                SHORT (Vender)
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* SUGERENCIA DE DIRECCIÓN */}
+          {(() => {
+            const bestDir = getBestDirection();
+            if (bestDir.direction !== direction) {
+              return (
+                <TouchableOpacity 
+                  style={[
+                    styles.directionHint,
+                    { borderColor: bestDir.direction === 'long' ? theme.colors.success : theme.colors.danger }
+                  ]}
+                  onPress={() => setDirection(bestDir.direction)}
+                >
+                  <Ionicons 
+                    name={bestDir.direction === 'long' ? 'trending-up' : 'trending-down'} 
+                    size={16} 
+                    color={bestDir.direction === 'long' ? theme.colors.success : theme.colors.danger} 
+                  />
+                  <Text style={styles.directionHintText}>
+                    💡 El mercado sugiere {bestDir.direction === 'long' ? 'LONG' : 'SHORT'}: {bestDir.reason}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }
+            return null;
+          })()}
+
           {/* VEREDICTO PRINCIPAL */}
           {(() => {
             const verdict = getSimpleVerdict(data.recommendation.action);
@@ -311,7 +457,9 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
               <View style={[styles.verdictBanner, { backgroundColor: verdict.color }]}>
                 <Text style={styles.verdictEmoji}>{verdict.emoji}</Text>
                 <View style={styles.verdictContent}>
-                  <Text style={styles.verdictText}>{verdict.text}</Text>
+                  <Text style={styles.verdictText}>
+                    {direction === 'long' ? '📈 LONG: ' : '📉 SHORT: '}{verdict.text}
+                  </Text>
                   <Text style={styles.verdictExplanation}>{verdict.explanation}</Text>
                 </View>
               </View>
@@ -394,7 +542,7 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
 
           {/* PRECIOS CLAVE */}
           <View style={styles.pricesCard}>
-            <Text style={styles.pricesTitle}>🎯 Precios importantes</Text>
+            <Text style={styles.pricesTitle}>🎯 Precios importantes {direction === 'short' ? '(SHORT)' : '(LONG)'}</Text>
             
             <View style={styles.priceRow}>
               <View style={styles.priceBox}>
@@ -404,19 +552,39 @@ export function TraderAnalysisCard({ symbol, onClose }: TraderAnalysisProps) {
             </View>
 
             <View style={styles.priceRow}>
-              <View style={[styles.priceBox, styles.priceBoxDanger]}>
-                <Text style={styles.priceLabel}>🛑 Si baja a...</Text>
-                <Text style={styles.priceValueDanger}>{formatMoney(data.riskReward.stopLoss)}</Text>
-                <Text style={styles.priceHint}>Vende para no perder más</Text>
-                <Text style={styles.priceLoss}>(-{data.riskReward.riskPercent.toFixed(1)}%)</Text>
-              </View>
-              
-              <View style={[styles.priceBox, styles.priceBoxSuccess]}>
-                <Text style={styles.priceLabel}>🎉 Si sube a...</Text>
-                <Text style={styles.priceValueSuccess}>{formatMoney(data.riskReward.takeProfit)}</Text>
-                <Text style={styles.priceHint}>Vende para asegurar ganancia</Text>
-                <Text style={styles.priceGain}>(+{data.riskReward.rewardPercent.toFixed(1)}%)</Text>
-              </View>
+              {direction === 'long' ? (
+                <>
+                  <View style={[styles.priceBox, styles.priceBoxDanger]}>
+                    <Text style={styles.priceLabel}>🛑 Si baja a...</Text>
+                    <Text style={styles.priceValueDanger}>{formatMoney(data.riskReward.stopLoss)}</Text>
+                    <Text style={styles.priceHint}>Cierra para no perder más</Text>
+                    <Text style={styles.priceLoss}>(-{data.riskReward.riskPercent.toFixed(1)}%)</Text>
+                  </View>
+                  
+                  <View style={[styles.priceBox, styles.priceBoxSuccess]}>
+                    <Text style={styles.priceLabel}>🎉 Si sube a...</Text>
+                    <Text style={styles.priceValueSuccess}>{formatMoney(data.riskReward.takeProfit)}</Text>
+                    <Text style={styles.priceHint}>Cierra para asegurar ganancia</Text>
+                    <Text style={styles.priceGain}>(+{data.riskReward.rewardPercent.toFixed(1)}%)</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={[styles.priceBox, styles.priceBoxDanger]}>
+                    <Text style={styles.priceLabel}>🛑 Si sube a...</Text>
+                    <Text style={styles.priceValueDanger}>{formatMoney(data.riskReward.stopLoss)}</Text>
+                    <Text style={styles.priceHint}>Cierra para no perder más</Text>
+                    <Text style={styles.priceLoss}>(-{data.riskReward.riskPercent.toFixed(1)}%)</Text>
+                  </View>
+                  
+                  <View style={[styles.priceBox, styles.priceBoxSuccess]}>
+                    <Text style={styles.priceLabel}>🎉 Si baja a...</Text>
+                    <Text style={styles.priceValueSuccess}>{formatMoney(data.riskReward.takeProfit)}</Text>
+                    <Text style={styles.priceHint}>Cierra para asegurar ganancia</Text>
+                    <Text style={styles.priceGain}>(+{data.riskReward.rewardPercent.toFixed(1)}%)</Text>
+                  </View>
+                </>
+              )}
             </View>
 
             <View style={styles.rrExplanation}>
@@ -1455,5 +1623,52 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 16,
+  },
+
+  // Direction selector
+  directionSelector: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  directionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  directionButtonActive: {
+    borderColor: 'transparent',
+  },
+  directionButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  directionButtonTextActive: {
+    color: '#fff',
+  },
+  directionHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    marginBottom: 12,
+    backgroundColor: theme.colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  directionHintText: {
+    flex: 1,
+    fontSize: 12,
+    color: theme.colors.text,
   },
 });
