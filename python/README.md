@@ -1,7 +1,7 @@
 # 🧠 Sistema de Aprendizaje Automático - Guess Investor
 
-**Última actualización:** 22 de enero de 2026  
-**Versión:** 1.5.0
+**Última actualización:** 5 de febrero de 2026  
+**Versión:** 2.0.0
 
 Este sistema permite que la app aprenda de sus errores y mejore las predicciones con el tiempo.
 El proceso es **completamente automático** - el backend sincroniza predicciones y entrena sin intervención del usuario.
@@ -12,7 +12,7 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         BACKEND Node.js (Puerto 3001)               │
 ├─────────────────────────────────────────────────────────────────────┤
-│  1. Hace predicción con 11 factores + ensemble de 7 modelos        │
+│  1. Hace predicción con 9 factores + ensemble de 7 modelos         │
 │  2. Registra predicción en base de datos (Prisma/SQLite)            │
 │  3. Verifica predicciones cuando pasa fecha objetivo                │
 │  4. Sincroniza datos verificados con Python server                  │
@@ -38,7 +38,7 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 │  │   ├── data_models.py    - Dataclasses                            │
 │  │   ├── loss_function.py  - Función de pérdida                     │
 │  │   ├── optimizer.py      - Optimizador con momentum               │
-│  │   └── asset_classifier.py - Clasificador de activos NEW          │
+│  │   └── asset_classifier.py - Clasificador de activos              │
 │  └── utils/file_io.py      - Lectura/escritura de archivos          │
 │                                                                     │
 │  main.py - Entry point con CLI                                      │
@@ -53,6 +53,22 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 │  Los usa en próximas predicciones                                   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+## Los 9 Factores
+
+| Factor | Descripción |
+|--------|-------------|
+| **trend** | Tendencia histórica de precios (30d, 90d) con mean reversion |
+| **technical** | Indicadores técnicos (RSI, MACD, SMA, Bollinger, ATR, Volume) |
+| **sentiment** | Sentimiento de mercado (VIX, Fear & Greed Index) |
+| **news** | Impacto de noticias (200+ keywords EN/ES, urgencia, credibilidad) |
+| **macro** | Indicadores macroeconómicos (PIB, inflación, tipos interés) |
+| **forex** | Impacto de divisas (50+ exchanges, risk-on/risk-off) |
+| **institutional** | Movimientos de inversores institucionales |
+| **seasonality** | Patrones estacionales con detección de cambios |
+| **financials** | Datos financieros fundamentales (P/E, Revenue, Target price) |
+
+> **Nota**: Los factores `competitors` y `expectations` fueron eliminados por añadir ruido sin valor predictivo demostrable.
 
 ## Clasificador de Activos
 
@@ -74,15 +90,6 @@ El sistema incluye un **clasificador de activos** que analiza la volatilidad par
 | Alta volatilidad | Momentum, Sentiment, Regime |
 | Media volatilidad | Global, Symbol, Momentum |
 | Baja volatilidad | Fundamental, Mean Reversion, Symbol |
-
-### Endpoints de Clasificación
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `/classify/{symbol}` | GET | Clasificar un activo (usa cache/perfil conocido) |
-| `/profiles` | GET | Listar todos los perfiles de activos |
-| `/classify` | POST | Clasificar con datos históricos |
-| `/classify-batch` | POST | Clasificar múltiples activos |
 
 ## Instalación
 
@@ -175,28 +182,28 @@ Los pesos se guardan automáticamente en:
 - `data/learned_weights.json` (para la app)
 - `data/training_history.json` (historial de entrenamientos)
 
-## Los 11 Factores
+## Los 9 Factores
 
 | Factor | Descripción |
 |--------|-------------|
-| trend | Tendencia histórica de precios (30d, 90d) |
-| technical | Indicadores técnicos (RSI, MACD, SMA, Bollinger) |
-| sentiment | Sentimiento de mercado (VIX, Put/Call ratio) |
-| news | Impacto de noticias recientes |
-| macro | Indicadores macroeconómicos (PIB, inflación) |
-| competitors | Análisis vs competidores del sector |
-| forex | Impacto de tipos de cambio |
-| institutional | Movimientos de inversores institucionales |
-| seasonality | Patrones estacionales y festivos |
-| financials | Datos financieros fundamentales |
-| expectations | Expectativas de earnings y sorpresas |
+| **trend** | Tendencia histórica de precios (30d, 90d) con mean reversion |
+| **technical** | Indicadores técnicos (RSI, MACD, SMA, Bollinger, ATR, Volume) |
+| **sentiment** | Sentimiento de mercado (VIX, Fear & Greed Index) |
+| **news** | Impacto de noticias (200+ keywords EN/ES, urgencia, credibilidad) |
+| **macro** | Indicadores macroeconómicos (PIB, inflación, tipos interés) |
+| **forex** | Impacto de divisas (50+ exchanges, risk-on/risk-off) |
+| **institutional** | Movimientos de inversores institucionales |
+| **seasonality** | Patrones estacionales con detección de cambios |
+| **financials** | Datos financieros fundamentales (P/E, Revenue, Target price) |
+
+> **Nota**: Los factores `competitors` y `expectations` fueron eliminados por añadir ruido sin valor predictivo demostrable.
 
 ## Pesos por Timeframe
 
 Los pesos varían según el horizonte temporal:
 
 ### Intradía (≤1 día)
-Dominan: `technical` (25%), `trend` (20%), `news` (18%), `sentiment` (15%)
+Dominan: `technical` (27%), `trend` (22%), `news` (19%), `sentiment` (16%)
 
 ### Swing (2-7 días)  
 Balance: `technical` (18%), `news` (15%), `trend` (12%), `institutional` (10%)

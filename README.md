@@ -1,7 +1,7 @@
 # 🎯 Guess Investor
 
-**Última actualización:** 22 de enero de 2026  
-**Versión:** 1.5.0
+**Última actualización:** 5 de febrero de 2026  
+**Versión:** 2.0.0
 
 **Aplicación de predicción de inversiones con IA híbrida** que combina análisis cuantitativo en tiempo real con machine learning para generar predicciones de precios de activos financieros.
 
@@ -9,11 +9,11 @@
 ![Node.js](https://img.shields.io/badge/Node.js-Backend-green?logo=node.js)
 ![Python](https://img.shields.io/badge/Python-ML_Server-green?logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Version](https://img.shields.io/badge/version-1.5.0-brightgreen)
+![Version](https://img.shields.io/badge/version-2.0.0-brightgreen)
 
 ---
 
-## � Quick Start
+## 🚀 Quick Start
 
 ```
 Ctrl+Shift+B
@@ -22,35 +22,156 @@ Ctrl+Shift+B
 Esto inicia los 3 servicios en terminales divididas:
 | Servicio | Puerto | Descripción |
 |----------|--------|-------------|
-| **Backend** | `localhost:3000` | API Node.js |
+| **Backend** | `localhost:3001` | API Node.js |
 | **Frontend** | Expo DevTools | App React Native |
-| **Python ML** | `localhost:5000` | Servicio ML |
+| **Python ML** | `localhost:8765` | Servicio ML |
 
 > También puedes usar `.\start-all.bat` o `.\start-all.ps1` desde el explorador.
 
 ---
 
-## �📋 Descripción
+## 📋 Descripción
 
-Guess Investor analiza **11 factores** diferentes para cada activo financiero y genera predicciones de precio con niveles de confianza. La aplicación aprende de sus propios errores mediante un sistema de machine learning que ajusta los pesos de cada factor basándose en el historial de predicciones verificadas.
+Guess Investor analiza **9 factores** diferentes para cada activo financiero y genera predicciones de precio con niveles de confianza. La aplicación aprende de sus propios errores mediante un sistema de machine learning que ajusta los pesos de cada factor basándose en el historial de predicciones verificadas.
 
 ### ✨ Características principales
 
-- 📊 **11 Factores de análisis**: Tendencia, Técnico, Sentimiento, Noticias, Macro, Competidores, Forex, Institucional, Estacionalidad, Financieros, Expectativas
-- 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo + **Red Neuronal con Gradient Descent**
+- 📊 **9 Factores de análisis**: Trend, Technical, Sentiment, News, Macro, Forex, Institutional, Seasonality, Financials
+- 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo + Red Neuronal con Gradient Descent
 - 🎯 **Ensemble de 7 Modelos**: Global, Symbol, Regime, Momentum, Mean Reversion, Fundamental, Sentiment
 - 🔄 **Selección Dinámica**: Activa/desactiva modelos según datos disponibles
+- ⚠️ **Risk Filter**: Sistema de abstención para condiciones de alta incertidumbre
 - 🐍 **Clasificador Python**: Clasifica activos por volatilidad para recomendar timeframe óptimo
-- 🖥️ **Backend completo**: API REST con Express + Prisma + SQLite/PostgreSQL
-- 🧠 **ML Avanzado**: 7 servicios ML (Reinforcement Learning, Meta-Learning, Probabilistic, etc.)
-- 📈 **Datos en tiempo real**: Yahoo Finance, Finviz, Dark Pools, COT Report, ETF Flows
-- 📉 **Gráficos interactivos**: Históricos + predicción visual con react-native-gifted-charts
-- 💶 **Precios en EUR**: Conversión automática a euros con tipos de cambio en tiempo real
-- 🎯 **Tracking de predicciones**: Verificación automática con **sistema de accuracy scoring**
-- ⭐ **Sistema de favoritos**: Guarda tus activos preferidos para acceso rápido
-- 🔍 **Buscador dinámico**: +120 activos organizados por categorías
-- 🧠 **Auto-aprendizaje**: El sistema mejora basándose en sus errores
-- 🌍 **Mercados globales**: NYSE, NASDAQ, Europa, Crypto, Commodities
+- 🖥️ **Backend completo**: API REST con Express + Prisma + SQLite
+- 🧠 **ML Avanzado**: 9 servicios ML (Reinforcement Learning, Meta-Learning, Probabilistic, etc.)
+- 📈 **Datos en tiempo real**: Yahoo Finance, VIX, Fear & Greed Index
+- 📉 **Gráficos interactivos**: Históricos + predicción visual
+- 🎯 **Tracking de predicciones**: Verificación automática con sistema de accuracy scoring
+- 🌍 **50+ Exchanges**: NYSE, NASDAQ, LSE, Xetra, Euronext, BME, etc.
+
+---
+
+## 🏗️ Arquitectura del Sistema de Predicción
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          FLUJO DE PREDICCIÓN                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. RECOLECCIÓN DE DATOS (paralelo)                                         │
+│     ┌──────────┬──────────┬──────────┬──────────┬──────────┐               │
+│     │ Yahoo    │ VIX      │ News     │ Macro    │ Institu- │               │
+│     │ Finance  │ Fear&    │ Headlines│ Indicators│ tional  │               │
+│     │          │ Greed    │          │          │          │               │
+│     └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬─────┘               │
+│          │          │          │          │          │                      │
+│  2. CÁLCULO DE 9 FACTORES                                                   │
+│     ┌────▼─────┬────▼─────┬────▼─────┬────▼─────┬────▼─────┐               │
+│     │ Trend    │ Technical│ Sentiment│ News     │ Macro    │               │
+│     │ Score    │ Score    │ Score    │ Score    │ Score    │               │
+│     └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬─────┘               │
+│          │          │          │          │          │                      │
+│     ┌────▼─────┬────▼─────┬────▼─────┬────▼─────┐                          │
+│     │ Forex    │ Institu- │ Season-  │ Finan-   │                          │
+│     │ Score    │ tional   │ ality    │ cials    │                          │
+│     └────┬─────┴────┬─────┴────┬─────┴────┬─────┘                          │
+│          │          │          │          │                                 │
+│  3. PONDERACIÓN DINÁMICA                                                    │
+│     ┌────▼──────────▼──────────▼──────────▼─────┐                          │
+│     │  • Pesos por Timeframe (intraday/swing/long)                         │
+│     │  • Ajuste por Grupo de Activo (10 grupos)                            │
+│     │  • Ajuste por Volatilidad del Activo                                 │
+│     │  • Pesos Aprendidos (ML) si disponibles                              │
+│     └────────────────────┬──────────────────────┘                          │
+│                          │                                                  │
+│  4. ENSEMBLE DE MODELOS                                                     │
+│     ┌────────────────────▼──────────────────────┐                          │
+│     │  7 Modelos Dinámicos:                     │                          │
+│     │  • Global, Symbol, Regime                 │                          │
+│     │  • Momentum, Mean Reversion               │                          │
+│     │  • Fundamental, Sentiment                 │                          │
+│     └────────────────────┬──────────────────────┘                          │
+│                          │                                                  │
+│  5. AJUSTES POST-PREDICCIÓN                                                 │
+│     ┌────────────────────▼──────────────────────┐                          │
+│     │  • Track Record del símbolo               │                          │
+│     │  • Ajuste por dirección (UP/DOWN/NEUTRAL) │                          │
+│     │  • Volatilidad extrema penalty            │                          │
+│     │  • Caída intradía extrema                 │                          │
+│     │  • Mean Reversion (si VIX>25)             │                          │
+│     │  • Momentum intradía (si >3%)             │                          │
+│     │  • Correlación de factores                │                          │
+│     │  • Contexto de mercado global             │                          │
+│     │  • Commodity correlation                  │                          │
+│     └────────────────────┬──────────────────────┘                          │
+│                          │                                                  │
+│  6. RISK FILTER                                                             │
+│     ┌────────────────────▼──────────────────────┐                          │
+│     │  Evalúa si recomendar ABSTENCIÓN:         │                          │
+│     │  • VIX > 30 (pánico)                      │                          │
+│     │  • Volatilidad activo > 50%               │                          │
+│     │  • Señales conflictivas                   │                          │
+│     │  • Pocos datos disponibles                │                          │
+│     │  • Earnings en próximos 3 días            │                          │
+│     │  • Mercado en crash                       │                          │
+│     └────────────────────┬──────────────────────┘                          │
+│                          │                                                  │
+│  7. OUTPUT FINAL                                                            │
+│     ┌────────────────────▼──────────────────────┐                          │
+│     │  • Dirección: UP / DOWN / NEUTRAL         │                          │
+│     │  • Cambio esperado: -X% a +X%             │                          │
+│     │  • Confianza: 0-100%                      │                          │
+│     │  • Recomendación inteligente              │                          │
+│     │  • Intervalos de confianza (50/80/95%)    │                          │
+│     │  • Risk Filter (abstención)               │                          │
+│     └───────────────────────────────────────────┘                          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📊 Los 9 Factores de Análisis
+
+| # | Factor | Fuente | Score Range | Descripción |
+|---|--------|--------|-------------|-------------|
+| 1 | **Trend** | Yahoo Finance | -100 a +100 | Cambio 30d/90d con amplificación y mean reversion |
+| 2 | **Technical** | Cálculo interno | -100 a +100 | RSI, MACD, Bollinger, SMA, Stochastic, ATR, Volumen |
+| 3 | **Sentiment** | VIX + Fear&Greed | -100 a +100 | Sentimiento del mercado global |
+| 4 | **News** | Yahoo Finance | -100 a +100 | 200+ keywords EN/ES, urgencia, credibilidad fuentes |
+| 5 | **Macro** | Trading Economics | -100 a +100 | GDP, Inflación, Desempleo, Tipos de interés |
+| 6 | **Forex** | Yahoo Finance | -100 a +100 | 50+ exchanges, VIX, risk-on/risk-off, commodities |
+| 7 | **Institutional** | SEC/Finviz | -100 a +100 | Insider trading, institutional ownership |
+| 8 | **Seasonality** | Histórico | -100 a +100 | Patrones estacionales con detección de cambios |
+| 9 | **Financials** | Yahoo Finance | -100 a +100 | P/E, Revenue growth, Target price analistas |
+
+---
+
+## ⏱️ Timeframes Soportados
+
+| Timeframe | Días | Pesos Dominantes | Límite Cambio |
+|-----------|------|------------------|---------------|
+| **Intraday** | ≤1 | Technical (27%), Trend (22%), News (19%) | ±8% |
+| **Swing** | 2-7 | Technical (20%), News (20%), Trend (14%) | ±15% |
+| **Long** | >7 | Financials (26%), Macro (15%), Institutional (14%) | ±15% |
+
+---
+
+## 🏢 Grupos de Activos (10 tipos)
+
+El sistema detecta automáticamente el tipo de activo y ajusta los pesos:
+
+| Grupo | Ejemplos | Factores Prioritarios |
+|-------|----------|----------------------|
+| Large Cap | AAPL, MSFT, GOOGL | Institutional, Financials, News |
+| Small Cap | - | Technical, Trend, News |
+| Crypto Major | BTC, ETH | Sentiment, Technical, Trend |
+| Crypto Alt | SOL, ADA, DOGE | Sentiment, Technical |
+| ETF/Index | SPY, QQQ, ^GSPC | Macro, Institutional, Forex |
+| Commodity | GC=F, GLD, SI=F | Macro, Forex, Seasonality |
+| REIT | O, AMT, VNQ | Macro, Financials |
+| Forex | EURUSD=X | Macro, Technical |
+| ADR | BABA, TSM | Forex, News, Financials |
 
 ---
 
@@ -60,35 +181,31 @@ Guess Investor analiza **11 factores** diferentes para cada activo financiero y 
 guess-investor/
 ├── code/                    # App React Native (Expo)
 │   ├── app/                 # Pantallas (file-based routing)
-│   ├── components/          # Componentes React organizados por feature
-│   ├── services/            # Servicios (API, AI, tracking, market data)
+│   ├── components/          # Componentes React
+│   ├── services/            # API client, AI service
 │   ├── store/               # Estado global (Zustand)
-│   ├── types/               # Tipos TypeScript
-│   └── config/              # Configuración y pesos aprendidos
+│   └── config/              # Configuración
 ├── backend/                 # API REST (Express + Prisma)
 │   ├── src/
 │   │   ├── controllers/     # Handlers de endpoints
 │   │   ├── services/
-│   │   │   ├── external/    # APIs externas (20+ servicios)
-│   │   │   ├── prediction/  # Cálculo y predicciones (7 servicios)
-│   │   │   └── ml/          # Machine Learning avanzado (9 servicios)
+│   │   │   ├── external/    # 30+ servicios de datos externos
+│   │   │   ├── prediction/  # 9 servicios de predicción
+│   │   │   └── ml/          # 9 servicios ML avanzado
 │   │   ├── routes/          # Definición de rutas
 │   │   └── repositories/    # Acceso a datos (Prisma)
 │   ├── prisma/              # Schema de base de datos
-│   └── scripts/             # Scripts de mantenimiento y diagnóstico
-├── python/                  # Servidor ML (Gradient Descent + Clasificador)
-│   ├── src/
-│   │   ├── config/          # Configuración
-│   │   ├── models/          # Optimizador, pérdida y clasificador de activos
-│   │   └── utils/           # Utilidades
-│   ├── server.py            # Servidor HTTP (puerto 8765)
-│   └── main.py              # CLI de entrenamiento
-└── CHANGELOG.md             # Historial de cambios
+│   └── scripts/             # Scripts de mantenimiento
+└── python/                  # Servidor ML (Gradient Descent)
+    ├── src/
+    │   ├── models/          # Optimizador, clasificador
+    │   └── utils/           # Utilidades
+    └── server.py            # Servidor HTTP (puerto 8765)
 ```
 
 ---
 
-## 🚀 Inicio Rápido
+## 🚀 Instalación
 
 ### Requisitos previos
 
@@ -96,7 +213,80 @@ guess-investor/
 - Python 3.10+
 - npm o yarn
 
-### Instalación
+### Backend
+
+```bash
+cd backend
+npm install
+npm run db:generate
+npm run db:push
+npm run dev  # Puerto 3001
+```
+
+### Frontend
+
+```bash
+cd code
+npm install
+npm start  # Expo DevTools
+```
+
+### Python ML (Opcional)
+
+```bash
+cd python
+python server.py  # Puerto 8765
+```
+
+---
+
+## 📈 Novedades v2.0.0
+
+### Mejoras en Factores
+
+- **Forex v2.0**: 50+ exchanges, VIX integration, risk-on/risk-off, commodity currencies
+- **News v2.0**: 200+ keywords (EN/ES), urgencia, amplificadores, 40+ fuentes con credibilidad
+- **Technical v2.0**: Volumen direccional (+12/-12 puntos según confirma/contradice)
+- **Trends**: Trend Agreement (alineación corto/medio/largo plazo)
+
+### Risk Filter (Nuevo)
+
+Sistema de abstención que detecta condiciones de alta incertidumbre:
+- VIX > 30 (pánico de mercado)
+- Volatilidad del activo > 50%
+- Señales conflictivas entre factores
+- Pocos datos disponibles (<50%)
+- Earnings en próximos 3 días
+- Mercado en crash/corrección
+
+### Otras Mejoras
+
+- Commodity Correlation: ETFs siguen dirección del futuro base
+- 10 grupos de activos con pesos específicos
+- Track Record por símbolo
+- Intervalos de confianza (50/80/95%)
+
+---
+
+## 📊 Servicios ML (9)
+
+| Servicio | Función |
+|----------|---------|
+| Ensemble | Selección dinámica de modelos |
+| Probabilistic | Distribución de probabilidad |
+| Reinforcement Learning | Política de trading adaptativa |
+| Factor Correlation | Detecta double-counting |
+| Meta-Learning | Aprende de errores |
+| Track Record | Historial por símbolo |
+| Asset Adjustment | Correcciones por activo |
+| Confidence Calibration | Calibra confianza |
+| Classifier Learning | Aprende multiplicadores |
+
+---
+
+## 📝 Licencia
+
+MIT License - Ver [LICENSE](LICENSE) para más detalles.
 
 ```bash
 # Clonar repositorio
