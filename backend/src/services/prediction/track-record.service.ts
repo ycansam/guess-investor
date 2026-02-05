@@ -22,7 +22,7 @@ export interface SymbolTrackRecord {
     poor: number;
     failed: number;
   };
-  confidenceAdjustment: number; // -20 a +20
+  confidenceAdjustment: number; // -10 a +10 (antes -20 a +20)
   isReliable: boolean;
   lastUpdated: Date;
 }
@@ -40,9 +40,10 @@ const trackRecordCache = new Map<string, { data: SymbolTrackRecord; timestamp: n
 let globalCache: { data: GlobalTrackRecord; timestamp: number } | null = null;
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
-// Mínimo de predicciones verificadas para considerar track record confiable
-const MIN_VERIFIED_FOR_ADJUSTMENT = 5;
-const MIN_VERIFIED_FOR_RELIABLE = 10;
+// SIMPLIFICADO: Mínimo de 30 predicciones para aplicar ajuste (antes era 5)
+// Razón: Con pocas muestras el ajuste es ruido, no señal
+const MIN_VERIFIED_FOR_ADJUSTMENT = 30;
+const MIN_VERIFIED_FOR_RELIABLE = 30;
 
 export const trackRecordService = {
   /**
@@ -192,11 +193,12 @@ export const trackRecordService = {
     }
 
     // Escalar según cantidad de datos (más datos = más confianza en el ajuste)
-    const dataConfidence = Math.min(verifiedCount / 20, 1); // Máximo efecto con 20+ predicciones
+    const dataConfidence = Math.min(verifiedCount / 50, 1); // Máximo efecto con 50+ predicciones (antes 20)
     adjustment = Math.round(adjustment * dataConfidence);
 
-    // Limitar rango
-    return Math.max(-20, Math.min(20, adjustment));
+    // SIMPLIFICADO: Limitar rango a ±10% (antes ±20%)
+    // Razón: Ajustes mayores añaden ruido sin mejorar precisión
+    return Math.max(-10, Math.min(10, adjustment));
   },
 
   /**

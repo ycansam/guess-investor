@@ -13,24 +13,29 @@
  * - CORE: trend, technical, sentiment, news, institutional, financials, macro
  * - CONDICIONALES: seasonality (bias suave ×0.5), forex (solo si exposición internacional)
  * - ELIMINADOS: competitors (ruido), expectations (redundante con news)
+ * 
+ * AJUSTES ELIMINADOS (añadían ruido):
+ * - Market Psychology: ya capturado por VIX en sentiment
+ * - Geopolitical Events: imposible de cuantificar bien
+ * - Streak Adjustment: falacia del jugador + doble conteo con trend
  */
 
 import { logger } from '../../middleware/logger.js';
 import { predictionRepository, PredictionType } from '../../repositories/prediction.repository.js';
 import { weightsRepository } from '../../repositories/weights.repository.js';
 import { broadMarketContextService } from '../external/broad-market-context.service.js';
-// Calendar Effects eliminado - el efecto lunes es casi mito
-// Competitors eliminado - no añade señal limpia, mejor usar ETF sectorial o momentum relativo
-// Expectations eliminado - redundante con news (analyst actions ya incluidas en news)
+// ELIMINADOS:
+// - Calendar Effects: el efecto lunes es casi mito
+// - Competitors: no añade señal limpia
+// - Expectations: redundante con news (analyst actions ya incluidas en news)
+// - Market Psychology: ya capturado por VIX/Fear&Greed en sentiment
+// - Geopolitical Events: imposible de cuantificar direccionalmente
 import { AssetEvents, eventsService } from '../external/events.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
 import { ForexImpact, forexService } from '../external/forex.service.js';
-import { GeopoliticalAnalysis, geopoliticalEventsService } from '../external/geopolitical-events.service.js';
 import { InstitutionalData, institutionalService } from '../external/institutional.service.js';
 import { MacroIndicators, macroService } from '../external/macro.service.js';
-import { MarketPsychologyAnalysis, marketPsychologyService } from '../external/market-psychology.service.js';
 import { newsService, NewsSummary } from '../external/news.service.js';
-import { PreciousMetalsAnalysis, preciousMetalsUSDService } from '../external/precious-metals-usd.service.js';
 import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality.service.js';
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
@@ -176,47 +181,10 @@ export interface CalculatedPrediction {
     applied: boolean;
   };
   
-  // Análisis de correlación USD para metales preciosos
-  preciousMetalsAnalysis?: {
-    metalType: 'gold' | 'silver' | 'platinum' | 'palladium' | 'other' | null;
-    usdTrend: 'strengthening' | 'weakening' | 'stable';
-    usdSeverity: 'extreme' | 'strong' | 'moderate' | 'mild';
-    dxyChange5d: number;
-    impactScore: number;
-    predictionBias: number;
-    signals: string[];
-    reasoning: string;
-  };
-  
-  // Calendar Effects eliminado - el efecto lunes es casi mito
-  
-  // Psicología del mercado
-  marketPsychology?: {
-    state: string;
-    stateIntensity: number;
-    emoji: string;
-    title: string;
-    description: string;
-    advice: string;
-    fearGreedIndex: number | null;
-    vix: number | null;
-    biasesDetected: string[];
-    contrarianSignal: boolean;
-    signals: string[];
-  };
-  
-  // Eventos geopolíticos (aranceles, Fed, tensiones internacionales)
-  geopoliticalEvents?: {
-    hasActiveEvents: boolean;
-    overallRisk: string;
-    marketDirection: string;
-    marketMagnitude: number;
-    volatilityMultiplier: number;
-    events: { type: string; title: string; severity: string }[];
-    signals: string[];
-    reasoning: string;
-    applied: boolean;
-  };
+  // ELIMINADOS (añadían ruido sin valor):
+  // - preciousMetalsAnalysis: integrado en forex para metales
+  // - marketPsychology: ya capturado por VIX en sentiment
+  // - geopoliticalEvents: imposible de cuantificar direccionalmente
   
   audit: {
     dataSources: { name: string; url: string; fetchedAt: Date }[];
@@ -968,138 +936,91 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Significant intraday drop (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
     }
     
-    // --- AJUSTE POR MEAN REVERSION DESPUÉS DE CAÍDA RECIENTE (NUEVO) ---
-    // Si el activo cayó fuerte ayer/días recientes pero HOY está rebotando o lateral,
-    // aumentar probabilidad de subida (mean reversion / rebote técnico)
-    // Esto corrige el sesgo de seguir prediciendo caída después de una corrección
+    // --- AJUSTE POR MEAN REVERSION DESPUÉS DE CAÍDA FUERTE (SIMPLIFICADO) ---
+    // Solo aplicar si: caída >5% reciente + VIX >25 (mercado en estrés real)
+    // Elimina falsos positivos de correcciones menores
     let recentDropReboundInfo: { recentDrop: number; todayRecovery: number; adjustment: number } | undefined;
+    const vixLevel = sentiment?.vix?.value || 15; // VIX por defecto 15 si no hay datos
+    
     try {
       const trendData = await trendsService.analyzeTrend(symbol);
       if (trendData?.stats && trendData.currentStreak) {
         const worstDayRecent = trendData.stats.worst_day_30d?.change || 0;
-        const avgDownMove = trendData.stats.avg_down_move || 0;
         const streak = trendData.currentStreak;
         
-        // Detectar si hubo caída fuerte reciente (últimos 1-3 días)
-        // Una racha de bajada que acaba de terminar o está terminando
-        const recentlyDropped = (
-          // Racha de bajada corta (1-3 días) que indica corrección reciente
-          (streak.direction === 'down' && streak.days >= 1 && streak.days <= 3 && streak.totalChange < -2) ||
-          // El peor día fue muy negativo y aún no ha pasado mucho tiempo
-          (worstDayRecent < -3 && avgDownMove < -1.5)
-        );
+        // CONDICIÓN ESTRICTA: Solo aplicar si hay estrés real del mercado
+        const severeDropRecent = streak.direction === 'down' && (streak.totalChange || 0) < -5;
+        const marketStressed = vixLevel > 25;
         
-        // Si cayó recientemente Y hoy está lateral o rebotando ligeramente
-        if (recentlyDropped && intradayChange > -1 && intradayChange < 3) {
-          // Calcular ajuste por mean reversion
-          const dropIntensity = Math.abs(streak.totalChange || avgDownMove);
-          let reboundAdjustment = 0;
+        if (severeDropRecent && marketStressed && intradayChange > -1 && intradayChange < 3) {
+          const dropIntensity = Math.abs(streak.totalChange || 0);
+          let reboundAdjustment = 0.15; // +15% ajuste fijo por mean reversion
           
-          // Cuanto más fuerte fue la caída, más probable el rebote
-          if (dropIntensity > 5) {
-            reboundAdjustment = 0.20; // +20% hacia arriba si caída fue >5%
-          } else if (dropIntensity > 3) {
-            reboundAdjustment = 0.15; // +15% hacia arriba si caída fue >3%
-          } else if (dropIntensity > 2) {
-            reboundAdjustment = 0.10; // +10% hacia arriba si caída fue >2%
+          // Si hoy ya está rebotando, confirma el movimiento
+          if (intradayChange > 0.5) {
+            reboundAdjustment += 0.10;
+            logger.info(`[PredictionCalc] Rebound confirmed: +${intradayChange.toFixed(1)}% today after drop`);
           }
           
-          // Si hoy ya está rebotando (intradayChange > 0), aumentar confianza del rebote
-          if (intradayChange > 0) {
-            reboundAdjustment += 0.10; // Confirma el rebote
-            logger.info(`[PredictionCalc] Rebound in progress: today +${intradayChange.toFixed(1)}% after recent drop`);
-          }
-          
-          // Aplicar ajuste hacia arriba (mean reversion)
-          if (reboundAdjustment > 0) {
-            const oldChange = expectedChange;
-            // Si predicción era bajista, ajustar hacia cero o positivo
-            if (expectedChange < 0) {
-              expectedChange = expectedChange * (1 - reboundAdjustment) + (reboundAdjustment * Math.abs(expectedChange) * 0.5);
-            } else {
-              // Si ya era alcista, potenciar
-              expectedChange = expectedChange * (1 + reboundAdjustment * 0.5);
-            }
-            
-            recentDropReboundInfo = {
-              recentDrop: streak.totalChange || avgDownMove,
-              todayRecovery: intradayChange,
-              adjustment: Math.round((expectedChange - oldChange) * 100) / 100,
-            };
-            
-            logger.info(`[PredictionCalc] Mean reversion adjustment: recent drop ${streak.totalChange?.toFixed(1) || avgDownMove.toFixed(1)}%, ` +
-                       `today ${intradayChange.toFixed(1)}%, adjustment: ${reboundAdjustment * 100}% → change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%`);
-          }
-        }
-        // Caso opuesto: si subió mucho recientemente y hoy lateral, posible pullback
-        else if (streak.direction === 'up' && streak.days >= 3 && streak.totalChange > 5 && intradayChange < 1 && intradayChange > -3) {
-          // Después de subida fuerte, es normal un pequeño retroceso
+          // Aplicar ajuste hacia arriba
           const oldChange = expectedChange;
-          if (expectedChange > 0) {
-            expectedChange = expectedChange * 0.85; // Reducir optimismo por posible pullback
-            logger.info(`[PredictionCalc] Extended rally (${streak.totalChange.toFixed(1)}% in ${streak.days}d), reducing bullish prediction by 15%`);
+          if (expectedChange < 0) {
+            expectedChange = expectedChange * (1 - reboundAdjustment) + (reboundAdjustment * Math.abs(expectedChange) * 0.5);
+          } else {
+            expectedChange = expectedChange * (1 + reboundAdjustment * 0.5);
           }
+          
+          recentDropReboundInfo = {
+            recentDrop: streak.totalChange || worstDayRecent,
+            todayRecovery: intradayChange,
+            adjustment: Math.round((expectedChange - oldChange) * 100) / 100,
+          };
+          
+          logger.info(`[PredictionCalc] Mean reversion (VIX=${vixLevel.toFixed(0)}, drop=${dropIntensity.toFixed(1)}%): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%`);
         }
       }
     } catch (e) {
-      logger.debug(`[PredictionCalc] Could not analyze recent drop rebound: ${(e as Error).message}`);
+      logger.debug(`[PredictionCalc] Could not analyze mean reversion: ${(e as Error).message}`);
     }
     
-    // --- AJUSTE POR MOMENTUM INTRADÍA (NUEVO) ---
-    // Si el activo está subiendo/bajando fuerte HOY (desde apertura hasta ahora),
-    // proyectar ese momentum hacia el cierre y día siguiente.
-    // Ej: Si abrió a 1€ y ahora está a 2€, es probable que siga subiendo hacia 2.5€
-    // Esto captura el momentum intradía que no está en datos históricos (que solo tienen cierre)
+    // --- AJUSTE POR MOMENTUM INTRADÍA (SIMPLIFICADO) ---
+    // Solo aplicar si movimiento >3% (movimientos menores son ruido)
+    // Los movimientos pequeños (<3%) no tienen persistencia estadística
     let intradayMomentumInfo: { currentChange: number; projectedContinuation: number; adjustment: number; confidenceBoost: number } | undefined;
-    if (Math.abs(intradayChange) >= 1.0) { // Umbral más bajo: movimiento >1%
+    if (Math.abs(intradayChange) >= 3.0) { // Umbral aumentado a 3%
       let momentumMultiplier = 0;
       let confidenceBoost = 0;
       
-      // Movimientos muy fuertes intradía tienden a continuar hacia el cierre
-      // Multiplicadores aumentados para dar más peso al momentum actual
+      // Solo 3 niveles simples
       if (Math.abs(intradayChange) >= 8) {
-        // Movimiento extremo (>8%): momentum muy fuerte pero posible agotamiento
-        momentumMultiplier = 0.20;
-        confidenceBoost = 8; // +8% confianza si alineado
+        // Movimiento extremo: posible agotamiento
+        momentumMultiplier = 0.15;
+        confidenceBoost = 5;
       } else if (Math.abs(intradayChange) >= 5) {
-        // Movimiento muy fuerte (5-8%): momentum alto
-        momentumMultiplier = 0.35;
-        confidenceBoost = 12; // +12% confianza si alineado
-      } else if (Math.abs(intradayChange) >= 3) {
-        // Movimiento fuerte (3-5%): momentum moderado-alto
-        momentumMultiplier = 0.30;
-        confidenceBoost = 10; // +10% confianza si alineado
-      } else if (Math.abs(intradayChange) >= 2) {
-        // Movimiento moderado (2-3%): momentum moderado
+        // Movimiento fuerte
         momentumMultiplier = 0.25;
-        confidenceBoost = 8; // +8% confianza si alineado
-      } else if (Math.abs(intradayChange) >= 1) {
-        // Movimiento leve (1-2%): momentum leve
+        confidenceBoost = 8;
+      } else { // 3-5%
+        // Movimiento moderado-fuerte
         momentumMultiplier = 0.20;
-        confidenceBoost = 5; // +5% confianza si alineado
+        confidenceBoost = 6;
       }
       
-      // Calcular continuación proyectada
       const projectedContinuation = intradayChange * momentumMultiplier;
-      
-      // Ajustar la predicción en la dirección del momentum intradía
       const oldChange = expectedChange;
       const oldConfidence = finalConfidence;
       
-      // Si predicción y momentum van en la misma dirección, potenciar AMBOS
+      // Si momentum confirma predicción
       if ((expectedChange > 0 && intradayChange > 0) || (expectedChange < 0 && intradayChange < 0)) {
-        // Momentum confirma predicción: boost significativo
-        expectedChange = expectedChange + projectedContinuation * 0.7;
-        finalConfidence = Math.min(95, finalConfidence + confidenceBoost);
-        logger.info(`[PredictionCalc] Intraday momentum CONFIRMS prediction: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}% today, conf +${confidenceBoost}%`);
+        expectedChange = expectedChange + projectedContinuation * 0.5;
+        finalConfidence = Math.min(90, finalConfidence + confidenceBoost);
+        logger.info(`[PredictionCalc] Intraday momentum confirms: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%`);
       }
-      // Si van en direcciones opuestas, el momentum intradía es información más fresca
+      // Si conflicto, dar más peso al momentum actual
       else {
-        // Conflicto: dar más peso al momentum actual (es información más reciente)
-        expectedChange = expectedChange * 0.4 + projectedContinuation * 1.2;
-        // Reducir confianza por conflicto de señales
-        finalConfidence = Math.max(25, finalConfidence - Math.round(confidenceBoost * 0.5));
-        logger.info(`[PredictionCalc] Intraday momentum CONFLICTS: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}% today vs predicted ${oldChange > 0 ? '+' : ''}${oldChange.toFixed(2)}%, adjusting toward momentum`);
+        expectedChange = expectedChange * 0.5 + projectedContinuation;
+        finalConfidence = Math.max(30, finalConfidence - confidenceBoost);
+        logger.info(`[PredictionCalc] Intraday momentum conflicts: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%`);
       }
       
       intradayMomentumInfo = {
@@ -1108,10 +1029,6 @@ export const predictionCalculatorService = {
         adjustment: Math.round((expectedChange - oldChange) * 100) / 100,
         confidenceBoost: finalConfidence - oldConfidence,
       };
-      
-      logger.info(`[PredictionCalc] Intraday momentum: today ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%, ` +
-                 `projected ${projectedContinuation > 0 ? '+' : ''}${projectedContinuation.toFixed(2)}%, ` +
-                 `change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, conf ${oldConfidence}% → ${finalConfidence}%`);
     }
     
     // --- AJUSTE POR CORRELACIÓN DE FACTORES (ML) ---
@@ -1125,77 +1042,24 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Factor correlation adjustment: ${diff > 0 ? '+' : ''}${diff}% (${correlationAdjustment.reasons.join(', ')})`);
     }
     
-    // --- AJUSTE POR RACHA (MEAN REVERSION) ---
-    // Si hay racha larga (≥5 días), aumentar probabilidad de reversión
-    // Si hay pullback corto (2-3 días) contra tendencia fuerte, ajustar hacia continuación
+    // --- STREAK INFO (SOLO INFORMATIVO, NO MODIFICA PREDICCIÓN) ---
+    // Razón: Las rachas no tienen valor predictivo estadístico demostrable
+    // Se mantiene solo para mostrar contexto al usuario
     let streakAdjustmentInfo: { days: number; direction: string; adjustment: number } | undefined;
     try {
       const trendAnalysis = await trendsService.analyzeTrend(symbol);
       if (trendAnalysis?.currentStreak) {
         const streak = trendAnalysis.currentStreak;
-        const momentum = trendAnalysis.momentum;
-        
-        // Mostrar racha si hay ≥2 días consecutivos
         if (streak.days >= 2 && streak.direction !== 'sideways') {
-          let streakAdj = 0;
-          
-          // Racha larga (≥5 días) → probable reversión
-          if (streak.days >= 5) {
-            // Si predicción sigue la racha, reducir confianza (posible agotamiento)
-            if ((streak.direction === 'up' && expectedChange > 0) ||
-                (streak.direction === 'down' && expectedChange < 0)) {
-              streakAdj = -0.15 * Math.min(streak.days - 4, 3); // -15% a -45% del cambio
-              logger.info(`[PredictionCalc] Streak adjustment: ${streak.days}d ${streak.direction} streak, reducing ${direction} prediction by ${Math.abs(streakAdj * 100).toFixed(0)}%`);
-            }
-            // Si predicción va contra racha larga, aumentar confianza (reversión probable)
-            else if ((streak.direction === 'up' && expectedChange < 0) ||
-                     (streak.direction === 'down' && expectedChange > 0)) {
-              streakAdj = 0.10 * Math.min(streak.days - 4, 2); // +10% a +20% del cambio
-              logger.info(`[PredictionCalc] Streak adjustment: ${streak.days}d ${streak.direction} streak supports reversal prediction`);
-            }
-          }
-          // Racha media (3-4 días) con momentum alineado → probable continuación
-          else if (streak.days >= 3 && streak.days < 5 && momentum) {
-            if ((streak.direction === 'up' && momentum.signal === 'bullish' && expectedChange > 0) ||
-                (streak.direction === 'down' && momentum.signal === 'bearish' && expectedChange < 0)) {
-              streakAdj = 0.08; // +8% del cambio
-              logger.info(`[PredictionCalc] Streak adjustment: ${streak.days}d ${streak.direction} streak with aligned momentum, boosting prediction`);
-            }
-            // Pullback corto contra tendencia fuerte → ajustar hacia continuación
-            else if ((streak.direction === 'down' && momentum.signal === 'bullish') ||
-                     (streak.direction === 'up' && momentum.signal === 'bearish')) {
-              // El pullback va contra el momentum general
-              if (momentum.strength === 'strong' || momentum.strength === 'moderate') {
-                const pullbackAdj = streak.direction === 'down' ? 0.05 : -0.05;
-                streakAdj = pullbackAdj;
-                logger.info(`[PredictionCalc] Pullback detected: ${streak.days}d ${streak.direction} against ${momentum.signal} momentum`);
-              }
-            }
-          }
-          
-          // Aplicar ajuste si hay
-          if (streakAdj !== 0) {
-            const oldChange = expectedChange;
-            expectedChange = expectedChange * (1 + streakAdj);
-            streakAdjustmentInfo = {
-              days: streak.days,
-              direction: streak.direction,
-              adjustment: Math.round((expectedChange - oldChange) / Math.abs(oldChange) * 100),
-            };
-          } else {
-            // Mostrar racha sin ajuste (informativo)
-            streakAdjustmentInfo = {
-              days: streak.days,
-              direction: streak.direction,
-              adjustment: 0,
-            };
-          }
-          
-          logger.info(`[PredictionCalc] Current streak: ${streak.days}d ${streak.direction}, adjustment: ${streakAdjustmentInfo.adjustment}%`);
+          streakAdjustmentInfo = {
+            days: streak.days,
+            direction: streak.direction,
+            adjustment: 0, // No se aplica ajuste, solo info
+          };
+          logger.debug(`[PredictionCalc] Current streak (info only): ${streak.days}d ${streak.direction}`);
         }
       }
     } catch (e) {
-      // Si falla el análisis de tendencia, continuar sin ajuste
       logger.debug(`[PredictionCalc] Could not get streak data: ${(e as Error).message}`);
     }
     
@@ -1261,93 +1125,10 @@ export const predictionCalculatorService = {
       };
     }
     
-    // --- CORRELACIÓN USD ↔ METALES PRECIOSOS ---
-    // Si es oro, plata, platino, paladio: aplicar correlación inversa con USD
-    let preciousMetalsInfo: PreciousMetalsAnalysis | undefined;
-    try {
-      const pmAnalysis = await preciousMetalsUSDService.analyze(symbol, quote?.name);
-      
-      if (pmAnalysis.isPreciousMetal && pmAnalysis.hasData) {
-        const pmAdjustment = preciousMetalsUSDService.applyToPrediction(
-          { change: expectedChange, confidence: finalConfidence },
-          pmAnalysis
-        );
-        
-        if (pmAdjustment.applied) {
-          const oldChange = expectedChange;
-          const oldConfidence = finalConfidence;
-          
-          expectedChange = pmAdjustment.adjustedChange;
-          finalConfidence = pmAdjustment.adjustedConfidence;
-          
-          logger.info(`[PredictionCalc] Precious metals USD correlation (${pmAnalysis.metalType}, USD ${pmAnalysis.usdStrength.trend}): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
-        }
-        
-        preciousMetalsInfo = pmAnalysis;
-      }
-    } catch (e) {
-      logger.warn(`[PredictionCalc] Could not analyze precious metals correlation: ${(e as Error).message}`);
-    }
-    
-    // Calendar Effects eliminado - el efecto lunes es casi mito
-    
-    // --- PSICOLOGÍA DEL MERCADO ---
-    // Detecta estados emocionales: euforia, miedo, pánico, complacencia, etc.
-    let marketPsychologyInfo: MarketPsychologyAnalysis | undefined;
-    try {
-      const psychologyAdjustment = await marketPsychologyService.applyToPrediction(
-        { change: expectedChange, confidence: finalConfidence },
-        this.inferAssetType(symbol, type)
-      );
-      
-      if (psychologyAdjustment.applied && psychologyAdjustment.psychologyInfo) {
-        const oldChange = expectedChange;
-        const oldConfidence = finalConfidence;
-        
-        expectedChange = psychologyAdjustment.adjustedChange;
-        finalConfidence = psychologyAdjustment.adjustedConfidence;
-        
-        marketPsychologyInfo = psychologyAdjustment.psychologyInfo;
-        
-        logger.info(`[PredictionCalc] Market psychology (${marketPsychologyInfo.currentState}, ${marketPsychologyInfo.stateIntensity}/100): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
-      }
-    } catch (e) {
-      logger.warn(`[PredictionCalc] Could not analyze market psychology: ${(e as Error).message}`);
-    }
-    
-    // --- SHOCK DETECTION (antes Geopolitical Events) ---
-    // NUEVO ENFOQUE: Solo reduce confianza, NO modifica el cambio predicho
-    // Los shocks son imposibles de cuantificar direccionalmente
-    let geopoliticalInfo: GeopoliticalAnalysis | undefined;
-    let geopoliticalApplied = false;
-    try {
-      const shockAdjustment = await geopoliticalEventsService.applyToPrediction(
-        { change: expectedChange, confidence: finalConfidence },
-        symbol,
-        quote?.name,
-        this.inferAssetType(symbol, type)
-      );
-      
-      if (shockAdjustment.applied && shockAdjustment.geopoliticalInfo) {
-        const oldConfidence = finalConfidence;
-        
-        // IMPORTANTE: Solo ajustamos confianza, NO el cambio predicho
-        finalConfidence = shockAdjustment.adjustedConfidence;
-        geopoliticalInfo = shockAdjustment.geopoliticalInfo;
-        geopoliticalApplied = true;
-        
-        logger.info(`[PredictionCalc] Shock Detection (${geopoliticalInfo.overallRisk}, ${geopoliticalInfo.events.length} shocks): confidence ${oldConfidence}% → ${finalConfidence}% (cambio sin modificar)`);
-        
-        if (shockAdjustment.appliedEvents?.length) {
-          logger.info(`[PredictionCalc] Active shocks: ${shockAdjustment.appliedEvents.slice(0, 3).join(', ')}`);
-        }
-      } else if (shockAdjustment.geopoliticalInfo?.hasActiveEvents) {
-        // Hay shocks pero no afectan directamente a este activo
-        geopoliticalInfo = shockAdjustment.geopoliticalInfo;
-      }
-    } catch (e) {
-      logger.warn(`[PredictionCalc] Shock detection error: ${(e as Error).message}`);
-    }
+    // NOTA: Servicios eliminados por añadir ruido sin valor predictivo demostrable:
+    // - preciousMetalsUSDService → Lógica integrada en forexService
+    // - marketPsychologyService → Redundante con sentiment y technical
+    // - geopoliticalEventsService → Shocks impredecibles, efecto ya reflejado en precio
     
     // --- MODELO PROBABILÍSTICO ---
     // Genera distribución de probabilidad e intervalos de confianza
@@ -1451,7 +1232,7 @@ export const predictionCalculatorService = {
                         `${Math.round(timeframeDays / 7)} semanas`;
 
     // --- GENERAR RECOMENDACIÓN INTELIGENTE ---
-    // Considera: predicción + psicología + tendencia largo plazo + fundamental
+    // Considera: predicción + tendencia largo plazo + técnico + fundamental
     const recommendation = this.generateSmartRecommendation({
       direction,
       predictedChange: expectedChange,
@@ -1462,12 +1243,8 @@ export const predictionCalculatorService = {
       intradayChange: intradayChange || 0,
       calendarRiskScore: 0, // Calendar Effects eliminado
       calendarDangerousCombination: false,
-      psychologyState: marketPsychologyInfo?.currentState || 'neutral',
-      psychologyIntensity: marketPsychologyInfo?.stateIntensity || 50,
-      contrarianSignal: marketPsychologyInfo?.predictionImpact.contrarianSignal || false,
-      isPreciousMetal: preciousMetalsInfo?.isPreciousMetal || false,
       technicalScore: technical?.technicalScore || 0,
-      fundamentalScore: financials?.fundamentalScore || 0,
+      fundamentalScore: financials?.financialsScore || 0, // financialsScore es el nombre real
       targetVsCurrent: financials?.targetVsCurrent || 0,
     });
 
@@ -1555,47 +1332,8 @@ export const predictionCalculatorService = {
       timeframe: timeframeStr,
       calculatedAt: new Date(),
       marketContext: marketContextInfo,
-      preciousMetalsAnalysis: preciousMetalsInfo ? {
-        metalType: preciousMetalsInfo.metalType,
-        usdTrend: preciousMetalsInfo.usdStrength.trend,
-        usdSeverity: preciousMetalsInfo.usdStrength.severity,
-        dxyChange5d: preciousMetalsInfo.usdStrength.dxyChange5d,
-        impactScore: preciousMetalsInfo.usdImpact.score,
-        predictionBias: preciousMetalsInfo.usdImpact.predictionBias,
-        signals: preciousMetalsInfo.signals,
-        reasoning: preciousMetalsInfo.reasoning,
-      } : undefined,
-      // Calendar Effects eliminado - el efecto lunes es casi mito
-      marketPsychology: marketPsychologyInfo ? {
-        state: marketPsychologyInfo.currentState,
-        stateIntensity: marketPsychologyInfo.stateIntensity,
-        emoji: marketPsychologyInfo.humanReadable.emoji,
-        title: marketPsychologyInfo.humanReadable.title,
-        description: marketPsychologyInfo.humanReadable.description,
-        advice: marketPsychologyInfo.humanReadable.advice,
-        fearGreedIndex: marketPsychologyInfo.indicators.fearGreedIndex,
-        vix: marketPsychologyInfo.indicators.vix,
-        biasesDetected: Object.entries(marketPsychologyInfo.biasesDetected)
-          .filter(([_, detected]) => detected)
-          .map(([bias, _]) => bias),
-        contrarianSignal: marketPsychologyInfo.predictionImpact.contrarianSignal,
-        signals: marketPsychologyInfo.signals,
-      } : undefined,
-      geopoliticalEvents: geopoliticalInfo ? {
-        hasActiveEvents: geopoliticalInfo.hasActiveEvents,
-        overallRisk: geopoliticalInfo.overallRisk,
-        marketDirection: geopoliticalInfo.marketImpact.direction,
-        marketMagnitude: geopoliticalInfo.marketImpact.magnitude,
-        volatilityMultiplier: geopoliticalInfo.marketImpact.volatilityMultiplier,
-        events: geopoliticalInfo.events.map(e => ({
-          type: e.type,
-          title: e.title,
-          severity: e.severity,
-        })),
-        signals: geopoliticalInfo.signals,
-        reasoning: geopoliticalInfo.reasoning,
-        applied: geopoliticalApplied,
-      } : undefined,
+      // ELIMINADOS: preciousMetalsAnalysis, marketPsychology, geopoliticalEvents
+      // Razón: Añadían ruido sin valor predictivo demostrable
       audit: {
         dataSources: [
           ...(hasHistoricalData ? [{ name: 'Yahoo Finance (Historical)', url: `https://finance.yahoo.com/quote/${symbol}/history`, fetchedAt: new Date() }] : []),
@@ -1893,7 +1631,7 @@ export const predictionCalculatorService = {
 
   /**
    * Genera una recomendación inteligente basada en múltiples factores
-   * NO solo mira la predicción a corto plazo, sino el contexto completo
+   * SIMPLIFICADO: Eliminados psychology, precious metals, calendar effects
    */
   generateSmartRecommendation(params: {
     direction: 'up' | 'down' | 'neutral';
@@ -1905,18 +1643,13 @@ export const predictionCalculatorService = {
     intradayChange: number;
     calendarRiskScore: number;
     calendarDangerousCombination: boolean;
-    psychologyState: string;
-    psychologyIntensity: number;
-    contrarianSignal: boolean;
-    isPreciousMetal: boolean;
     technicalScore: number;
     fundamentalScore: number;
     targetVsCurrent: number;
   }): CalculatedPrediction['recommendation'] {
     const {
       direction, predictedChange, confidence, change30d, change90d,
-      volatility, intradayChange, calendarRiskScore, calendarDangerousCombination,
-      psychologyState, psychologyIntensity, contrarianSignal, isPreciousMetal,
+      volatility, intradayChange,
       technicalScore, fundamentalScore, targetVsCurrent,
     } = params;
 
@@ -1927,92 +1660,22 @@ export const predictionCalculatorService = {
     let isContrarian = false;
     const keyFactors: string[] = [];
 
-    // === CASO 1: CAÍDA POR PÁNICO/CAPITULACIÓN ===
-    // Si el mercado está en pánico pero el activo tiene buenos fundamentales → OPORTUNIDAD
-    if (['panic', 'capitulation', 'fear'].includes(psychologyState) && psychologyIntensity > 60) {
-      keyFactors.push(`Mercado en ${psychologyState} (${psychologyIntensity}/100)`);
+    // === CASO 1: CAÍDA FUERTE CON BUENOS FUNDAMENTALES === 
+    // Oportunidad contrarian si el activo tiene buenos fundamentales
+    if (intradayChange < -5 && (fundamentalScore > 20 || targetVsCurrent > 10)) {
+      keyFactors.push(`Caída fuerte hoy (${intradayChange.toFixed(1)}%)`);
       
-      // Si tiene buenos fundamentales o target de analistas positivo
-      if (fundamentalScore > 20 || targetVsCurrent > 10) {
-        action = 'buy';
-        isContrarian = true;
-        reasoning = `El mercado está en ${psychologyState === 'panic' ? 'pánico' : psychologyState === 'capitulation' ? 'capitulación' : 'miedo'}, pero los fundamentales son sólidos. `;
-        reasoning += `Históricamente, comprar en pánico con buenos fundamentales da buenos resultados a medio/largo plazo.`;
-        timeHorizon = 'long';
-        riskLevel = 'high';
-        keyFactors.push('Buenos fundamentales');
-        if (targetVsCurrent > 10) keyFactors.push(`Target analistas +${targetVsCurrent.toFixed(0)}%`);
-      } else if (change90d > 20 && intradayChange < -5) {
-        // Activo que venía subiendo y cae fuerte por pánico general
-        action = 'hold';
-        reasoning = `Caída fuerte (-${Math.abs(intradayChange).toFixed(1)}% hoy) en contexto de pánico general. `;
-        reasoning += `Si la tesis original sigue válida, no vender en pánico. El pánico suele ser mal consejero.`;
-        timeHorizon = 'medium';
-        riskLevel = 'high';
-        keyFactors.push('No vender en pánico');
-      } else {
-        action = 'wait';
-        reasoning = `Mercado en ${psychologyState}, pero sin señales claras de valor. Esperar a que se estabilice.`;
-        timeHorizon = 'short';
-        riskLevel = 'extreme';
-        keyFactors.push('Alta incertidumbre');
-      }
+      action = 'buy';
+      isContrarian = true;
+      reasoning = `Caída significativa pero los fundamentales son sólidos. `;
+      reasoning += `Históricamente, comprar en caídas con buenos fundamentales da buenos resultados a medio/largo plazo.`;
+      timeHorizon = 'long';
+      riskLevel = 'high';
+      keyFactors.push('Buenos fundamentales');
+      if (targetVsCurrent > 10) keyFactors.push(`Target analistas +${targetVsCurrent.toFixed(0)}%`);
     }
     
-    // === CASO 2: CAÍDA POR CALENDARIO (FIN DE MES, VIERNES) ===
-    // Estas caídas suelen ser temporales
-    else if (calendarDangerousCombination && intradayChange < -3) {
-      keyFactors.push('Caída por efectos de calendario');
-      
-      if (change90d > 30 && fundamentalScore >= 0) {
-        // Activo que venía muy bien, cae por rebalanceos de fin de mes
-        action = 'hold';
-        isContrarian = false;
-        reasoning = `Caída probablemente por rebalanceos de fin de mes/viernes, no por problemas del activo. `;
-        reasoning += `Si tu tesis sigue válida, mantener. Estas caídas suelen recuperarse en días siguientes.`;
-        timeHorizon = 'short';
-        riskLevel = 'medium';
-        keyFactors.push('Tendencia previa alcista');
-      } else if (change90d > 30 && change30d < -10) {
-        // Venía bien pero ya corrigió mucho
-        action = 'buy';
-        isContrarian = true;
-        reasoning = `Corrección significativa (-${Math.abs(change30d).toFixed(1)}% en 30d) en activo con buena tendencia de largo plazo. `;
-        reasoning += `Los efectos de calendario pueden estar amplificando la caída. Posible oportunidad de entrada.`;
-        timeHorizon = 'medium';
-        riskLevel = 'high';
-        keyFactors.push('Corrección sobre tendencia alcista');
-      } else {
-        action = 'wait';
-        reasoning = `Día de alto riesgo por calendario. Mejor esperar a que pase la tormenta antes de actuar.`;
-        timeHorizon = 'short';
-        riskLevel = 'high';
-        keyFactors.push('Esperar fin de efectos calendario');
-      }
-    }
-    
-    // === CASO 3: EUFORIA / COMPLACENCIA ===
-    // Precaución aunque la predicción sea alcista
-    else if (['euphoria', 'complacency'].includes(psychologyState) && psychologyIntensity > 60) {
-      keyFactors.push(`Mercado en ${psychologyState === 'euphoria' ? 'euforia' : 'complacencia'}`);
-      
-      if (direction === 'up' && predictedChange > 2) {
-        action = 'reduce';
-        isContrarian = true;
-        reasoning = `El mercado está en ${psychologyState === 'euphoria' ? 'euforia' : 'complacencia'}, históricamente peligroso. `;
-        reasoning += `Aunque la predicción es alcista, considera tomar beneficios parciales. La euforia precede correcciones.`;
-        timeHorizon = 'short';
-        riskLevel = 'high';
-        keyFactors.push('Señal contrarian: reducir');
-      } else {
-        action = 'hold';
-        reasoning = `Mercado complaciente. No es momento de aumentar posiciones significativamente.`;
-        timeHorizon = 'medium';
-        riskLevel = 'medium';
-      }
-    }
-    
-    // === CASO 4: PREDICCIÓN ALCISTA CON ALTA CONFIANZA ===
+    // === CASO 2: PREDICCIÓN ALCISTA CON ALTA CONFIANZA ===
     else if (direction === 'up' && confidence >= 65 && predictedChange > 1) {
       keyFactors.push(`Predicción alcista +${predictedChange.toFixed(1)}%`);
       keyFactors.push(`Confianza ${confidence}%`);
@@ -2085,12 +1748,6 @@ export const predictionCalculatorService = {
       reasoning = `Condiciones mixtas. Mantener estrategia actual y revisar si cambian las condiciones.`;
       timeHorizon = 'medium';
       riskLevel = 'medium';
-    }
-
-    // Ajustes para metales preciosos
-    if (isPreciousMetal && action === 'sell') {
-      reasoning += ` Nota: Los metales preciosos son activos refugio a largo plazo. Considera si la venta se alinea con tu estrategia de diversificación.`;
-      keyFactors.push('Activo refugio');
     }
 
     // Determinar emoji
