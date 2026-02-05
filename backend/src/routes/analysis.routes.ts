@@ -1,9 +1,12 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { logger } from '../middleware/logger.js';
+import { catalystCalendarService } from '../services/analysis/catalyst-calendar.service.js';
 import { divergenceService } from '../services/analysis/divergence.service.js';
+import { marketBreadthService } from '../services/analysis/market-breadth.service.js';
 import { optionsFlowService } from '../services/analysis/options-flow.service.js';
 import { riskRewardService } from '../services/analysis/risk-reward.service.js';
+import { shortInterestService } from '../services/analysis/short-interest.service.js';
 import { broadMarketContextService } from '../services/external/broad-market-context.service.js';
 import { forexService } from '../services/external/forex.service.js';
 import { macroService } from '../services/external/macro.service.js';
@@ -320,15 +323,15 @@ router.get('/options-flow/:symbol', asyncHandler(async (req: Request, res: Respo
   logger.info(`[Analysis] Getting options flow for ${symbol}`);
   
   // Si no tenemos precio, intentamos obtenerlo
-  let price = currentPrice;
-  if (!price) {
+  let price = currentPrice || 100;
+  if (!currentPrice) {
     try {
       const quoteUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
       const quoteRes = await fetch(quoteUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0' },
         signal: AbortSignal.timeout(5000),
       });
-      const quoteJson = await quoteRes.json();
+      const quoteJson = await quoteRes.json() as any;
       price = quoteJson.chart?.result?.[0]?.meta?.regularMarketPrice || 100;
     } catch {
       price = 100;
@@ -476,5 +479,65 @@ function generateConsolidatedRecommendation(
     warnings,
   };
 }
+
+/**
+ * GET /api/analysis/short-interest/:symbol
+ * Obtiene datos de short interest (% en cortos)
+ * Usado por: Steve Cohen
+ */
+router.get('/short-interest/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting short interest for ${symbol}`);
+  const shortInterest = await shortInterestService.getShortInterest(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: shortInterest,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/catalysts/:symbol
+ * Obtiene calendario de catalizadores (earnings, dividendos, etc.)
+ * Usado por: Steve Cohen, George Soros
+ */
+router.get('/catalysts/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting catalysts for ${symbol}`);
+  const catalysts = await catalystCalendarService.getCatalysts(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: catalysts,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/market-breadth
+ * Obtiene datos de market breadth (% subiendo vs bajando)
+ * Usado por: Paul Tudor Jones, George Soros
+ */
+router.get('/market-breadth', asyncHandler(async (req: Request, res: Response) => {
+  logger.info(`[Analysis] Getting market breadth`);
+  const breadth = await marketBreadthService.getMarketBreadth();
+  
+  res.json({
+    success: true,
+    data: breadth,
+    timestamp: new Date().toISOString(),
+  });
+}));
 
 export const analysisRoutes = router;
