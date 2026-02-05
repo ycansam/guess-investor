@@ -36,14 +36,14 @@ interface PredictionCardAnalysisProps {
 }
 
 // Factores esenciales por tipo de activo (9 factores - competitors y expectations eliminados)
-// Seasonality: solo para activos cíclicos (commodity, retail)
+// Seasonality: solo para activos cíclicos (retail, etc.) - NO para commodities
 // Forex: solo para activos con exposición internacional
 const ESSENTIAL_FACTORS: Record<string, string[]> = {
   stock: ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'financials'],
   crypto: ['trend', 'technical', 'sentiment', 'news', 'macro'],
   etf: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
   index: ['trend', 'technical', 'macro', 'sentiment'],
-  commodity: ['trend', 'technical', 'macro', 'forex', 'seasonality'], // commodities SÍ tienen seasonality
+  commodity: ['trend', 'technical', 'macro', 'forex'], // SIN seasonality - no es fiable para commodities
 };
 
 // Detectar tipo de activo y devolver factores esenciales
@@ -53,9 +53,17 @@ function getEssentialFactors(symbol: string): string[] {
   if (upperSymbol.includes('-USD') || ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'].some(c => upperSymbol.startsWith(c))) {
     return ESSENTIAL_FACTORS.crypto;
   }
-  // Commodities (oro, petróleo, etc.)
-  if (['GC=F', 'CL=F', 'SI=F', 'NG=F', 'GLD', 'SLV', 'USO'].includes(upperSymbol) || 
-      upperSymbol.includes('GOLD') || upperSymbol.includes('SILVER') || upperSymbol.includes('OIL')) {
+  // Commodities - Futuros y ETFs de materias primas
+  const commoditySymbols = [
+    'GC=F', 'CL=F', 'SI=F', 'NG=F', 'HG=F', 'PL=F', 'PA=F', // Futuros
+    'GLD', 'SLV', 'USO', 'UNG', 'IAU', 'PPLT', 'PALL',      // ETFs USA
+    'PHAG.MI', 'PHAU.MI', 'NGAS.MI', 'CRUD.MI', 'OILB.MI',  // ETCs Italia
+    'PHAG.L', 'PHAU.L', 'SSLN.L', 'ISLN.L', 'EGLN.L', 'IGLN.L', 'SGLN.L', // ETCs Londres
+  ];
+  if (commoditySymbols.includes(upperSymbol) || 
+      upperSymbol.includes('GOLD') || upperSymbol.includes('SILVER') || 
+      upperSymbol.includes('OIL') || upperSymbol.includes('PHAG') ||
+      upperSymbol.includes('PHAU') || upperSymbol.endsWith('=F')) {
     return ESSENTIAL_FACTORS.commodity;
   }
   if (['SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO'].includes(upperSymbol)) {
