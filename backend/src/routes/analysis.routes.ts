@@ -12,12 +12,14 @@ import { shortInterestService } from '../services/analysis/short-interest.servic
 import { volatilityService } from '../services/analysis/volatility.service.js';
 import { volumeProfileService } from '../services/analysis/volume-profile.service.js';
 import { broadMarketContextService } from '../services/external/broad-market-context.service.js';
+import { financialsService } from '../services/external/financials.service.js';
 import { forexService } from '../services/external/forex.service.js';
 import { macroService } from '../services/external/macro.service.js';
 import { newsService } from '../services/external/news.service.js';
 import { sentimentService } from '../services/external/sentiment.service.js';
 import { technicalService } from '../services/external/technical.service.js';
 import { trendsService } from '../services/external/trends.service.js';
+import { yahooService } from '../services/external/yahoo.service.js';
 
 const router = Router();
 
@@ -101,6 +103,37 @@ router.get('/macro/:symbol', asyncHandler(async (req: Request, res: Response) =>
 }));
 
 /**
+ * GET /api/analysis/financials/:symbol
+ * Datos financieros fundamentales
+ */
+router.get('/financials/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const symbolUpper = symbol.toUpperCase();
+  
+  // Obtener precio actual primero
+  const quote = await yahooService.getQuote(symbolUpper);
+  if (!quote) {
+    res.json({
+      success: false,
+      error: 'No se pudo obtener datos del activo',
+    });
+    return;
+  }
+
+  const financials = await financialsService.getFinancials(symbolUpper, quote.price);
+
+  res.json({
+    success: true,
+    data: financials || { hasData: false },
+  });
+}));
+
+/**
  * GET /api/analysis/full/:symbol
  * Análisis completo (todos los datos de una vez)
  */
@@ -115,12 +148,17 @@ router.get('/full/:symbol', asyncHandler(async (req: Request, res: Response) => 
   const symbolUpper = symbol.toUpperCase();
   const assetType = type as 'stock' | 'crypto';
 
+  // Obtener precio para financials
+  const quote = await yahooService.getQuote(symbolUpper);
+  const currentPrice = quote?.price || 100;
+
   // Obtener todos los datos en paralelo
-  const [technical, news, sentiment, macro] = await Promise.all([
+  const [technical, news, sentiment, macro, financials] = await Promise.all([
     technicalService.analyze(symbolUpper),
     newsService.getNews(symbolUpper, assetType),
     sentimentService.getSentiment(symbolUpper, assetType),
     macroService.getIndicators(symbolUpper, assetType),
+    financialsService.getFinancials(symbolUpper, currentPrice),
   ]);
 
   res.json({
@@ -132,6 +170,7 @@ router.get('/full/:symbol', asyncHandler(async (req: Request, res: Response) => 
       news,
       sentiment,
       macro,
+      financials: financials || { hasData: false },
       analyzedAt: new Date().toISOString(),
     },
   });

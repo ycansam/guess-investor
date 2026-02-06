@@ -1166,6 +1166,248 @@ const SeasonalityDetail = ({ data }: { data: any }) => {
   );
 };
 
+// Financials Detail
+const FinancialsDetail = ({ data }: { data: any }) => {
+  if (!data || !data.hasData) {
+    return (
+      <View style={styles.detailContent}>
+        <Text style={styles.noData}>Sin datos financieros disponibles</Text>
+        <Text style={styles.noDataSubtext}>Este activo puede ser una crypto u otro tipo de activo sin fundamentales tradicionales</Text>
+      </View>
+    );
+  }
+
+  const getScoreColor = (score: number) => {
+    if (score >= 30) return COLORS.green;
+    if (score >= 10) return '#90EE90';
+    if (score <= -30) return COLORS.red;
+    if (score <= -10) return COLORS.orange;
+    return COLORS.yellow;
+  };
+
+  const getRecommendationText = (mean: number | null) => {
+    if (mean === null) return 'N/A';
+    if (mean <= 1.5) return '🚀 Compra Fuerte';
+    if (mean <= 2.3) return '📈 Comprar';
+    if (mean <= 3) return '➡️ Mantener';
+    if (mean <= 4) return '📉 Inferior';
+    return '⬇️ Vender';
+  };
+
+  const formatValue = (value: number | null, suffix: string = '', decimals: number = 1) => {
+    if (value === null) return 'N/A';
+    return value.toFixed(decimals) + suffix;
+  };
+
+  return (
+    <View style={styles.detailContent}>
+      {/* Score general */}
+      <View style={styles.scoreCard}>
+        <Text style={styles.scoreEmoji}>💰</Text>
+        <Text style={[styles.scoreValue, { color: getScoreColor(data.financialsScore) }]}>
+          {data.financialsScore >= 0 ? '+' : ''}{data.financialsScore}
+        </Text>
+        <Text style={styles.scoreLabel}>Score Financiero</Text>
+        <Text style={[styles.dataQualityBadge, { 
+          backgroundColor: data.dataQuality === 'high' ? COLORS.green + '33' : 
+                          data.dataQuality === 'medium' ? COLORS.yellow + '33' : COLORS.red + '33'
+        }]}>
+          {data.dataQuality === 'high' ? '✅ Datos completos' : 
+           data.dataQuality === 'medium' ? '⚠️ Datos parciales' : '❌ Pocos datos'}
+        </Text>
+      </View>
+
+      {/* Sub-scores */}
+      <View style={styles.indicatorSection}>
+        <Text style={styles.indicatorTitle}>📊 Desglose del Score</Text>
+        <View style={styles.dataGrid}>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Valoración</Text>
+            <Text style={[styles.dataValue, { color: getScoreColor(data.valuationScore) }]}>
+              {data.valuationScore >= 0 ? '+' : ''}{data.valuationScore}
+            </Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Calidad</Text>
+            <Text style={[styles.dataValue, { color: getScoreColor(data.qualityScore) }]}>
+              {data.qualityScore >= 0 ? '+' : ''}{data.qualityScore}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Summary */}
+      {data.summary && (
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryText}>{data.summary}</Text>
+        </View>
+      )}
+
+      {/* Valoración */}
+      <View style={styles.indicatorSection}>
+        <Text style={styles.indicatorTitle}>📈 Valoración</Text>
+        <View style={styles.dataGrid}>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>P/E Ratio</Text>
+            <Text style={styles.dataValue}>{formatValue(data.peRatio)}</Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Forward P/E</Text>
+            <Text style={styles.dataValue}>{formatValue(data.forwardPE)}</Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>PEG Ratio</Text>
+            <Text style={styles.dataValue}>{formatValue(data.pegRatio, '', 2)}</Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>EV/EBITDA</Text>
+            <Text style={styles.dataValue}>{formatValue(data.evToEbitda)}</Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Price/Book</Text>
+            <Text style={styles.dataValue}>{formatValue(data.priceToBook, '', 2)}</Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>FCF Yield</Text>
+            <Text style={[styles.dataValue, data.fcfYield !== null && { 
+              color: data.fcfYield > 6 ? COLORS.green : data.fcfYield < 0 ? COLORS.red : COLORS.text 
+            }]}>
+              {formatValue(data.fcfYield, '%')}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Rentabilidad */}
+      <View style={styles.indicatorSection}>
+        <Text style={styles.indicatorTitle}>💵 Rentabilidad</Text>
+        <View style={styles.dataGrid}>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Margen Neto</Text>
+            <Text style={[styles.dataValue, data.profitMargin !== null && { 
+              color: data.profitMargin > 15 ? COLORS.green : data.profitMargin < 5 ? COLORS.red : COLORS.text 
+            }]}>
+              {formatValue(data.profitMargin, '%')}
+            </Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Margen Bruto</Text>
+            <Text style={styles.dataValue}>{formatValue(data.grossMargin, '%')}</Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>ROE</Text>
+            <Text style={[styles.dataValue, data.returnOnEquity !== null && { 
+              color: data.returnOnEquity > 18 ? COLORS.green : data.returnOnEquity < 8 ? COLORS.red : COLORS.text 
+            }]}>
+              {formatValue(data.returnOnEquity, '%')}
+            </Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>ROA</Text>
+            <Text style={styles.dataValue}>{formatValue(data.returnOnAssets, '%')}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Crecimiento */}
+      <View style={styles.indicatorSection}>
+        <Text style={styles.indicatorTitle}>🚀 Crecimiento</Text>
+        <View style={styles.dataGrid}>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Ingresos (YoY)</Text>
+            <Text style={[styles.dataValue, data.revenueGrowth !== null && { 
+              color: data.revenueGrowth > 10 ? COLORS.green : data.revenueGrowth < 0 ? COLORS.red : COLORS.text 
+            }]}>
+              {formatValue(data.revenueGrowth, '%')}
+            </Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Beneficios (YoY)</Text>
+            <Text style={[styles.dataValue, data.earningsGrowth !== null && { 
+              color: data.earningsGrowth > 10 ? COLORS.green : data.earningsGrowth < 0 ? COLORS.red : COLORS.text 
+            }]}>
+              {formatValue(data.earningsGrowth, '%')}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Deuda y Liquidez */}
+      <View style={styles.indicatorSection}>
+        <Text style={styles.indicatorTitle}>🏦 Salud Financiera</Text>
+        <View style={styles.dataGrid}>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Deuda/Equity</Text>
+            <Text style={[styles.dataValue, data.debtToEquity !== null && { 
+              color: data.debtToEquity < 0.7 ? COLORS.green : data.debtToEquity > 2 ? COLORS.red : COLORS.text 
+            }]}>
+              {formatValue(data.debtToEquity, '', 2)}
+            </Text>
+          </View>
+          <View style={styles.dataItem}>
+            <Text style={styles.dataLabel}>Current Ratio</Text>
+            <Text style={[styles.dataValue, data.currentRatio !== null && { 
+              color: data.currentRatio > 1.5 ? COLORS.green : data.currentRatio < 1 ? COLORS.red : COLORS.text 
+            }]}>
+              {formatValue(data.currentRatio, '', 2)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Analistas */}
+      {(data.targetPrice || data.recommendationMean) && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>🎯 Analistas</Text>
+          <View style={styles.dataGrid}>
+            {data.targetVsCurrent !== null && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Target vs Actual</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.targetVsCurrent > 15 ? COLORS.green : data.targetVsCurrent < -10 ? COLORS.red : COLORS.text 
+                }]}>
+                  {data.targetVsCurrent >= 0 ? '+' : ''}{data.targetVsCurrent.toFixed(0)}%
+                </Text>
+              </View>
+            )}
+            {data.recommendationMean !== null && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Consenso ({data.numberOfAnalysts || '?'} analistas)</Text>
+                <Text style={styles.dataValue}>{getRecommendationText(data.recommendationMean)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Dividendos */}
+      {data.dividendYield !== null && data.dividendYield > 0 && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>💰 Dividendos</Text>
+          <View style={styles.dataGrid}>
+            <View style={styles.dataItem}>
+              <Text style={styles.dataLabel}>Yield</Text>
+              <Text style={[styles.dataValue, { color: COLORS.green }]}>
+                {formatValue(data.dividendYield, '%')}
+              </Text>
+            </View>
+            {data.payoutRatio !== null && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Payout Ratio</Text>
+                <Text style={[styles.dataValue, data.payoutRatio !== null && { 
+                  color: data.payoutRatio < 60 ? COLORS.green : data.payoutRatio > 90 ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {formatValue(data.payoutRatio, '%')}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+};
+
 // Generic Detail (para otros factores)
 const GenericDetail = ({ data, factorType }: { data: any; factorType: FactorType }) => {
   const config = FACTOR_CONFIG[factorType];
@@ -1342,6 +1584,9 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
         case 'forex':
           response = await apiClient.getForexImpact(symbol);
           break;
+        case 'financials':
+          response = await apiClient.getFinancials(symbol);
+          break;
         default:
           // Para otros factores, obtener análisis completo
           const full = await apiClient.getFullAnalysis(symbol, assetType);
@@ -1394,6 +1639,8 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
         return <NewsDetail data={data} />;
       case 'trend':
         return <TrendDetail data={data} />;
+      case 'financials':
+        return <FinancialsDetail data={data} />;
       default:
         return <GenericDetail data={data} factorType={factorType} />;
     }
@@ -1580,6 +1827,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textSecondary,
     marginTop: 4,
+  },
+  dataQualityBadge: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontSize: 11,
+    color: COLORS.text,
+    overflow: 'hidden',
   },
 
   // Indicator Section

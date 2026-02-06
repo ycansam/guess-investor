@@ -267,6 +267,39 @@ export interface ForexImpact {
   summary: string;
 }
 
+export interface FinancialsData {
+  peRatio: number | null;
+  forwardPE: number | null;
+  pegRatio: number | null;
+  priceToBook: number | null;
+  priceToSales: number | null;
+  evToEbitda: number | null;
+  evToRevenue: number | null;
+  fcfYield: number | null;
+  profitMargin: number | null;
+  operatingMargin: number | null;
+  grossMargin: number | null;
+  returnOnEquity: number | null;
+  returnOnAssets: number | null;
+  revenueGrowth: number | null;
+  earningsGrowth: number | null;
+  dividendYield: number | null;
+  payoutRatio: number | null;
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  quickRatio: number | null;
+  targetPrice: number | null;
+  targetVsCurrent: number | null;
+  recommendationMean: number | null;
+  numberOfAnalysts: number | null;
+  financialsScore: number;
+  valuationScore: number;
+  qualityScore: number;
+  hasData: boolean;
+  dataQuality: 'high' | 'medium' | 'low';
+  summary: string;
+}
+
 export interface TrendStreak {
   direction: 'up' | 'down' | 'sideways';
   days: number;
@@ -529,6 +562,13 @@ export const apiClient = {
   getForexImpact: (symbol: string, assetName?: string): Promise<ForexImpact> => {
     const params = assetName ? `?name=${encodeURIComponent(assetName)}` : '';
     return get(`/analysis/forex/${encodeURIComponent(symbol)}${params}`);
+  },
+
+  /**
+   * Obtener datos financieros fundamentales
+   */
+  getFinancials: (symbol: string): Promise<FinancialsData> => {
+    return get(`/analysis/financials/${encodeURIComponent(symbol)}`);
   },
 
   /**
