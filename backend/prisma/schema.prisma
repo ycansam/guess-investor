@@ -112,15 +112,15 @@ model Favorite {
 model LearnedWeights {
   id          String   @id @default(uuid())
   
-  // Pesos por factor (0-1) - 8 factores activos
+  // Pesos por factor (0-1) - 9 factores activos
   trend       Float    @default(0.111)
   technical   Float    @default(0.111)
   sentiment   Float    @default(0.111)
   news        Float    @default(0.111)
   macro       Float    @default(0.111)
-  competitors Float    @default(0.111)
   forex       Float    @default(0.111)
   institutional Float  @default(0.111)
+  seasonality Float    @default(0.02)   // Solo para activos cíclicos
   financials  Float    @default(0.111)
   expectations Float   @default(0.000)  // deprecated
   
@@ -316,4 +316,45 @@ model InvestmentNote {
   updatedAt DateTime @updatedAt
   
   @@index([symbol])
+}
+
+// ============================================================================
+// PORTFOLIO POSITIONS - Posiciones del portfolio
+// ============================================================================
+
+model PortfolioPosition {
+  id          String   @id @default(uuid())
+  symbol      String   @unique
+  name        String
+  assetType   String   // "stock" | "crypto" | "etf" | "commodity"
+  shares      Float
+  avgCost     Float
+  currency    String   @default("EUR")
+  notes       String?
+  targetPrice Float?
+  stopLoss    Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([symbol])
+}
+
+// ============================================================================
+// PORTFOLIO TRANSACTIONS - Historial de transacciones
+// ============================================================================
+
+model PortfolioTransaction {
+  id          String   @id @default(uuid())
+  symbol      String
+  type        String   // "buy" | "sell"
+  shares      Float
+  price       Float
+  totalAmount Float
+  currency    String   @default("EUR")
+  commission  Float?
+  notes       String?
+  executedAt  DateTime @default(now())
+  
+  @@index([symbol])
+  @@index([executedAt])
 }

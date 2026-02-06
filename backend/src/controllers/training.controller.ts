@@ -220,16 +220,16 @@ export const trainingController = {
   resetWeights: asyncHandler(async (_req: Request, res: Response) => {
     // Guardar pesos por defecto con el formato correcto
     const defaultWeights = {
-      trend: 0.11,
-      technical: 0.16,
-      sentiment: 0.13,
-      news: 0.11,
-      macro: 0.11,
-      competitors: 0.09,
+      trend: 0.14,
+      technical: 0.20,
+      sentiment: 0.12,
+      news: 0.16,
+      macro: 0.10,
       forex: 0.06,
-      institutional: 0.09,
-      financials: 0.11,
-      expectations: 0.03,
+      institutional: 0.10,
+      seasonality: 0.02,
+      financials: 0.10,
+      expectations: 0.00,
       sampleCount: 0,
       accuracy: 0,
     };
@@ -692,16 +692,16 @@ export const trainingController = {
     // 4. Resetear pesos aprendidos a valores por defecto (no uniformes)
     // Estos son los pesos por defecto para swing (balance entre corto y largo plazo)
     const defaultWeights = {
-      trend: 0.13,
-      technical: 0.19,
-      sentiment: 0.11,
+      trend: 0.14,
+      technical: 0.20,
+      sentiment: 0.12,
       news: 0.16,
-      macro: 0.09,
-      competitors: 0.08,
+      macro: 0.10,
       forex: 0.06,
-      institutional: 0.11,
-      financials: 0.06,
-      expectations: 0.01,
+      institutional: 0.10,
+      seasonality: 0.02,
+      financials: 0.10,
+      expectations: 0.00,
       sampleCount: 0,
       accuracy: 0,
     };

@@ -76,7 +76,6 @@ const EXCHANGE_TO_CURRENCY: Record<string, string> = {
   '.ST': 'SEK', // Suecia (Estocolmo)
   '.OL': 'NOK', // Noruega (Oslo)
   '.CO': 'DKK', // Dinamarca (Copenhague)
-  '.HE': 'EUR', // Finlandia
   '.IC': 'ISK', // Islandia
   // Europa del Este
   '.WA': 'PLN', // Polonia (Varsovia)
@@ -113,7 +112,8 @@ const EXCHANGE_TO_CURRENCY: Record<string, string> = {
   '.TA': 'ILS', // Israel (Tel Aviv)
   '.CA': 'EGP', // Egipto (Cairo)
   '.QA': 'QAR', // Qatar
-  '.DU': 'AED', '.AD': 'AED', // Emiratos
+  '.DFM': 'AED', // Dubai Financial Market
+  '.ADX': 'AED', // Abu Dhabi Exchange  
   '.SR': 'SAR', // Arabia Saudita
   '': 'USD', // USA por defecto
 };

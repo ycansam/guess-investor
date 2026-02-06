@@ -163,7 +163,7 @@ const POSITIVE_KEYWORDS: Record<string, number> = {
   'positive catalyst': 22, 'upside potential': 20,
   
   // ========== GROWTH & PERFORMANCE ==========
-  'growth': 15, 'growing': 12, 'grows': 12, 'expansion': 15, 'expands': 15,
+  'growth': 15, 'growing': 12, 'grows': 12, 'expands': 15,
   'strong': 12, 'strength': 10, 'strengthen': 12, 'strengthens': 12,
   'positive': 10, 'gains': 12, 'gain': 10, 'winning': 12,
   'rises': 12, 'rising': 10, 'rise': 8, 'climbs': 12, 'climbing': 10,
@@ -192,7 +192,7 @@ const POSITIVE_KEYWORDS: Record<string, number> = {
   'clears fda': 35, 'regulatory approval': 25,
   'ai': 15, 'artificial intelligence': 18, 'machine learning': 15,
   'cloud': 12, 'digital transformation': 15, 'automation': 12,
-  'expansion': 15, 'enters market': 15, 'market entry': 12,
+  'expansion': 15, 'enters market': 15, 'market entry': 12, 'global expansion': 18,
   
   // ========== SHAREHOLDER VALUE ==========
   'dividend': 15, 'dividends': 15, 'dividend increase': 25, 'raises dividend': 28,
@@ -237,18 +237,17 @@ const POSITIVE_KEYWORDS: Record<string, number> = {
   'dispara': 28, 'se dispara': 30, 'despega': 22, 'despegue': 20,
   'impulsa': 15, 'impulso': 12, 'repunta': 18, 'rebota': 20,
   'lidera': 15, 'liderazgo': 12, 'líder': 10,
-  'acelera': 18, 'aceleración': 15, 'momentum': 15,
+  'acelera': 18, 'aceleración': 15, 'impulso positivo': 15,
   'recupera': 18, 'recuperación': 15, 'remonta': 20,
   
   // M&A español
   'compra': 12, 'adquisición': 18, 'adquiere': 18, 'fusión': 15,
   'alianza': 12, 'alianza estratégica': 18, 'acuerdo': 10,
-  'contrato': 12, 'gana contrato': 22, 'adjudicación': 18,
   
   // Productos español
   'lanza': 15, 'lanzamiento': 15, 'innovación': 18, 'innovador': 15,
   'patente': 15, 'aprobación': 18, 'aprobado': 15,
-  'expansión': 15, 'entra en mercado': 15,
+  'entra en mercado': 15, 'nuevo mercado': 15,
   
   // Dividendos español
   'dividendo': 15, 'aumenta dividendo': 28, 'sube dividendo': 28,
@@ -355,7 +354,7 @@ const NEGATIVE_KEYWORDS: Record<string, number> = {
   'rebaja previsiones': -35, 'recorta previsiones': -38,
   'empeora perspectivas': -32, 'baja guidance': -35,
   'revisa a la baja': -32, 'perspectivas negativas': -28,
-  'alerta de beneficios': -40, 'profit warning': -40,
+  'alerta de beneficios': -40, 'aviso de beneficios': -38,
   
   // Legal español
   'demanda': -28, 'demandado': -28, 'demandan': -25,

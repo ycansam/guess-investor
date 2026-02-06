@@ -244,7 +244,37 @@ export const eventsService = {
         return {};
       }
 
-      const data = await response.json();
+      const data = await response.json() as {
+        quoteSummary?: {
+          result?: Array<{
+            calendarEvents?: {
+              earnings?: {
+                earningsDate?: Array<{ raw?: number }>;
+                isEstimate?: boolean;
+                earningsAverage?: { raw?: number };
+                revenueAverage?: { raw?: number };
+              };
+              exDividendDate?: { raw?: number };
+              dividendDate?: { raw?: number };
+            };
+            earningsHistory?: {
+              history?: Array<{
+                quarterDate?: string;
+                epsActual?: { raw?: number };
+                epsEstimate?: { raw?: number };
+                epsDifference?: { raw?: number };
+                surprisePercent?: { raw?: number };
+              }>;
+            };
+            defaultKeyStatistics?: {
+              exDividendDate?: { raw?: number };
+              dividendYield?: { raw?: number };
+              dividendRate?: { raw?: number };
+              payoutRatio?: { raw?: number };
+            };
+          }>;
+        };
+      };
       const result = data?.quoteSummary?.result?.[0];
       
       if (!result) return {};
@@ -279,7 +309,7 @@ export const eventsService = {
         output.dividend = {
           exDate: calendar?.exDividendDate?.raw ? new Date(calendar.exDividendDate.raw * 1000) : undefined,
           amount: keyStats?.dividendRate?.raw,
-          frequency: keyStats?.dividendYield?.raw > 0 ? 'quarterly' : undefined,
+          frequency: (keyStats?.dividendYield?.raw ?? 0) > 0 ? 'quarterly' : undefined,
         };
       }
 

@@ -226,7 +226,7 @@ export const commodityCorrelationService = {
           logger.info(`[CommodityCorr] ${symbol}: Obteniendo dirección de ${baseFuture}...`);
           const quote = await yahooService.getQuote(baseFuture);
           if (quote) {
-            const futureChange = quote.regularMarketChangePercent || 0;
+            const futureChange = quote.regularMarketChangePercent ?? quote.changePercent ?? 0;
             const futureDirection: 'up' | 'down' | 'neutral' = 
               futureChange > 0.3 ? 'up' : futureChange < -0.3 ? 'down' : 'neutral';
             

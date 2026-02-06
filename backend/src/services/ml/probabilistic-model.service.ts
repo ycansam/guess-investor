@@ -598,7 +598,7 @@ export const probabilisticModelService = {
    */
   async reset(): Promise<void> {
     calibrationState = this.createEmptyState();
-    stateLoaded = true;
+    calibrationLoaded = true;
     logger.info('[ProbabilisticModel] Model reset to initial state');
   },
 };

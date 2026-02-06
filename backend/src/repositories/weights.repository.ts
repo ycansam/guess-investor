@@ -24,18 +24,17 @@ interface LearnedWeightsJson {
   };
 }
 
-// Pesos por defecto (10 factores - competitors eliminado)
+// Pesos por defecto (9 factores activos)
 const DEFAULT_WEIGHTS: Weights = {
-  trend: 0.10,
-  technical: 0.10,
-  sentiment: 0.10,
-  news: 0.10,
-  macro: 0.10,
-  forex: 0.10,
-  institutional: 0.10,
-  seasonality: 0.10,
-  financials: 0.10,
-  expectations: 0.10,
+  trend: 0.11,
+  technical: 0.11,
+  sentiment: 0.11,
+  news: 0.11,
+  macro: 0.11,
+  forex: 0.11,
+  institutional: 0.11,
+  seasonality: 0.11,
+  financials: 0.12,
 };
 
 // Pesos por defecto por timeframe (usados si no hay archivo)
@@ -43,17 +42,17 @@ const DEFAULT_TIMEFRAME_WEIGHTS = {
   intraday: {
     trend: 0.22, technical: 0.27, sentiment: 0.16, news: 0.18, macro: 0.04,
     forex: 0.04, institutional: 0.05, seasonality: 0.02,
-    financials: 0.01, expectations: 0.01
+    financials: 0.02
   },
   swing: {
     trend: 0.14, technical: 0.20, sentiment: 0.11, news: 0.15, macro: 0.09,
-    forex: 0.06, institutional: 0.11, seasonality: 0.04,
-    financials: 0.05, expectations: 0.05
+    forex: 0.06, institutional: 0.11, seasonality: 0.06,
+    financials: 0.08
   },
   long: {
     trend: 0.06, technical: 0.09, sentiment: 0.05, news: 0.09, macro: 0.14,
-    forex: 0.09, institutional: 0.14, seasonality: 0.08,
-    financials: 0.14, expectations: 0.12
+    forex: 0.09, institutional: 0.14, seasonality: 0.14,
+    financials: 0.20
   }
 };
 
@@ -133,7 +132,6 @@ export const weightsRepository = {
       institutional: swingWeights.institutional || DEFAULT_WEIGHTS.institutional,
       seasonality: swingWeights.seasonality || DEFAULT_WEIGHTS.seasonality,
       financials: swingWeights.financials || DEFAULT_WEIGHTS.financials,
-      expectations: swingWeights.expectations || DEFAULT_WEIGHTS.expectations,
     };
   },
 

@@ -1,5 +1,35 @@
 import { prisma } from '../config/database.js';
 
+// Tipos para las entidades del portfolio (hasta que Prisma genere los tipos)
+export interface PortfolioPositionType {
+  id: string;
+  symbol: string;
+  name: string;
+  assetType: string;
+  shares: number;
+  avgCost: number;
+  currency: string;
+  notes: string | null;
+  targetPrice: number | null;
+  stopLoss: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PortfolioTransactionType {
+  id: string;
+  symbol: string;
+  type: string;
+  shares: number;
+  price: number;
+  totalAmount: number;
+  currency: string;
+  commission: number;
+  notes: string | null;
+  executedAt: Date;
+  createdAt: Date;
+}
+
 export interface CreatePositionInput {
   symbol: string;
   name: string;
@@ -198,18 +228,18 @@ export const portfolioRepository = {
    * Obtener resumen del portfolio
    */
   async getPortfolioSummary() {
-    const positions = await this.findAllPositions();
-    const transactions = await this.findAllTransactions(1000);
+    const positions = await this.findAllPositions() as PortfolioPositionType[];
+    const transactions = await this.findAllTransactions(1000) as PortfolioTransactionType[];
 
     // Calcular totales
-    const totalInvested = positions.reduce((sum, p) => sum + (p.shares * p.avgCost), 0);
+    const totalInvested = positions.reduce((sum: number, p: PortfolioPositionType) => sum + (p.shares * p.avgCost), 0);
     const totalBuys = transactions
-      .filter(t => t.type === 'buy')
-      .reduce((sum, t) => sum + t.totalAmount, 0);
+      .filter((t: PortfolioTransactionType) => t.type === 'buy')
+      .reduce((sum: number, t: PortfolioTransactionType) => sum + t.totalAmount, 0);
     const totalSells = transactions
-      .filter(t => t.type === 'sell')
-      .reduce((sum, t) => sum + t.totalAmount, 0);
-    const totalCommissions = transactions.reduce((sum, t) => sum + t.commission, 0);
+      .filter((t: PortfolioTransactionType) => t.type === 'sell')
+      .reduce((sum: number, t: PortfolioTransactionType) => sum + t.totalAmount, 0);
+    const totalCommissions = transactions.reduce((sum: number, t: PortfolioTransactionType) => sum + t.commission, 0);
 
     return {
       positionCount: positions.length,

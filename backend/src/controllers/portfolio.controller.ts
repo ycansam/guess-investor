@@ -1,8 +1,30 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
 import { logger } from '../middleware/logger.js';
-import { portfolioRepository } from '../repositories/portfolio.repository.js';
+import { portfolioRepository, PortfolioPositionType } from '../repositories/portfolio.repository.js';
 import { yahooService } from '../services/external/yahoo.service.js';
+
+// Tipos para las posiciones con precios
+interface PositionWithPrices {
+  id: string;
+  symbol: string;
+  name: string;
+  assetType: string;
+  shares: number;
+  avgCost: number;
+  currency: string;
+  notes: string | null;
+  targetPrice: number | null;
+  stopLoss: number | null;
+  currentPrice: number;
+  marketValue: number;
+  costBasis: number;
+  gainLoss: number;
+  gainLossPercent: number;
+  dayChange: number;
+  atTarget: boolean;
+  atStopLoss: boolean;
+}
 
 export const portfolioController = {
   // ============================================================================
@@ -14,11 +36,11 @@ export const portfolioController = {
    * Obtener todas las posiciones con precios actuales
    */
   getPositions: asyncHandler(async (_req: Request, res: Response) => {
-    const positions = await portfolioRepository.findAllPositions();
+    const positions = await portfolioRepository.findAllPositions() as PortfolioPositionType[];
 
     // Obtener precios actuales para todas las posiciones
-    const positionsWithPrices = await Promise.all(
-      positions.map(async (position) => {
+    const positionsWithPrices: PositionWithPrices[] = await Promise.all(
+      positions.map(async (position: PortfolioPositionType): Promise<PositionWithPrices> => {
         try {
           const quote = await yahooService.getQuote(position.symbol);
           const currentPrice = quote?.price || position.avgCost;
@@ -76,8 +98,8 @@ export const portfolioController = {
     );
 
     // Calcular totales
-    const totalCostBasis = positionsWithPrices.reduce((sum, p) => sum + p.costBasis, 0);
-    const totalMarketValue = positionsWithPrices.reduce((sum, p) => sum + p.marketValue, 0);
+    const totalCostBasis = positionsWithPrices.reduce((sum: number, p) => sum + p.costBasis, 0);
+    const totalMarketValue = positionsWithPrices.reduce((sum: number, p) => sum + p.marketValue, 0);
     const totalGainLoss = totalMarketValue - totalCostBasis;
     const totalGainLossPercent = totalCostBasis > 0 ? (totalGainLoss / totalCostBasis) * 100 : 0;
 
@@ -91,7 +113,7 @@ export const portfolioController = {
     }));
 
     // Diversificación por tipo de activo
-    const byAssetType = positionsWithPrices.reduce((acc, p) => {
+    const byAssetType = positionsWithPrices.reduce((acc: Record<string, number>, p) => {
       const type = p.assetType;
       if (!acc[type]) acc[type] = 0;
       acc[type] += p.marketValue;
@@ -100,8 +122,8 @@ export const portfolioController = {
 
     const assetTypeAllocation = Object.entries(byAssetType).map(([type, value]) => ({
       type,
-      value,
-      weight: totalMarketValue > 0 ? (value / totalMarketValue) * 100 : 0,
+      value: value as number,
+      weight: totalMarketValue > 0 ? ((value as number) / totalMarketValue) * 100 : 0,
     }));
 
     res.json({
@@ -114,7 +136,7 @@ export const portfolioController = {
           totalMarketValue,
           totalGainLoss,
           totalGainLossPercent,
-          dayChange: positionsWithPrices.reduce((sum, p) => sum + (p.marketValue * p.dayChange / 100), 0),
+          dayChange: positionsWithPrices.reduce((sum: number, p) => sum + (p.marketValue * p.dayChange / 100), 0),
         },
         diversification,
         assetTypeAllocation,
@@ -313,7 +335,7 @@ export const portfolioController = {
 
     res.json({
       success: true,
-      data: transactions.map(t => ({
+      data: transactions.map((t: { id: string; symbol: string; type: string; shares: number; price: number; totalAmount: number; currency: string; commission: number | null; notes: string | null; executedAt: Date }) => ({
         id: t.id,
         symbol: t.symbol,
         type: t.type,
