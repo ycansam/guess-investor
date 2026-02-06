@@ -80,6 +80,7 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
   const [tradeStatus, setTradeStatus] = useState<{ canTrade: boolean; reason: string; suggestion: string } | null>(null);
   const [eurRate, setEurRate] = useState<number>(1);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [auditExpanded, setAuditExpanded] = useState<boolean>(false);
   // Estado para el modal de detalle de factor
   const [factorModal, setFactorModal] = useState<{ visible: boolean; type: FactorType; score?: number }>({
     visible: false,
@@ -1110,65 +1111,80 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
         </Text>
       </View>
 
-      {/* AUDITORÍA - Verificación de datos */}
+      {/* AUDITORÍA - Verificación de datos (COLAPSABLE) */}
       {prediction.analysisData?.audit && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔍 Auditoría - Verificar datos:</Text>
-          <Text style={styles.auditSubtitle}>
-            Puedes verificar cada dato haciendo clic en los enlaces:
-          </Text>
+          <Pressable 
+            style={styles.collapsibleHeader}
+            onPress={() => setAuditExpanded(!auditExpanded)}
+          >
+            <Text style={styles.sectionTitle}>🔍 Auditoría - Verificar datos</Text>
+            <Ionicons 
+              name={auditExpanded ? 'chevron-up' : 'chevron-down'} 
+              size={20} 
+              color="#9ca3af" 
+            />
+          </Pressable>
           
-          {/* Fuentes de datos */}
-          {prediction.analysisData?.audit?.dataSources && (
-          <View style={styles.auditSourcesContainer}>
-            {prediction.analysisData.audit.dataSources.map((source, index) => (
-              <View key={index} style={styles.auditSourceItem}>
-                <Text style={styles.auditSourceName}>📊 {source.name}</Text>
-                <Text style={styles.auditSourceValue}>{source.rawValue}</Text>
-                <Text 
-                  style={styles.auditSourceUrl}
-                  onPress={() => {
-                    // En React Native Web esto abre el enlace
-                    if (typeof window !== 'undefined') {
-                      window.open(source.url, '_blank');
-                    }
-                  }}
-                >
-                  🔗 Verificar →
+          {auditExpanded && (
+            <View style={styles.collapsibleContent}>
+              <Text style={styles.auditSubtitle}>
+                Puedes verificar cada dato haciendo clic en los enlaces:
+              </Text>
+              
+              {/* Fuentes de datos */}
+              {prediction.analysisData?.audit?.dataSources && (
+              <View style={styles.auditSourcesContainer}>
+                {prediction.analysisData.audit.dataSources.map((source, index) => (
+                  <View key={index} style={styles.auditSourceItem}>
+                    <Text style={styles.auditSourceName}>📊 {source.name}</Text>
+                    <Text style={styles.auditSourceValue}>{source.rawValue}</Text>
+                    <Text 
+                      style={styles.auditSourceUrl}
+                      onPress={() => {
+                        // En React Native Web esto abre el enlace
+                        if (typeof window !== 'undefined') {
+                          window.open(source.url, '_blank');
+                        }
+                      }}
+                    >
+                      🔗 Verificar →
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              )}
+
+              {/* Cálculo paso a paso */}
+              {prediction.analysisData?.audit?.calculationSteps && (
+              <>
+              <Text style={styles.auditCalcTitle}>📐 Cálculo matemático:</Text>
+              <View style={styles.auditCalcContainer}>
+                {prediction.analysisData.audit.calculationSteps.map((step, index) => (
+                  <View key={index} style={styles.auditCalcStep}>
+                    <Text style={styles.auditStepName}>{step.step}</Text>
+                    <Text style={styles.auditStepFormula}>{step.formula}</Text>
+                    <Text style={styles.auditStepResult}>= {step.result}</Text>
+                  </View>
+                ))}
+              </View>
+              </>
+              )}
+
+              {/* Fórmula final */}
+              {prediction.currentPrice && prediction.predictedChange !== undefined && (
+              <View style={styles.auditFinalFormula}>
+                <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
+                <Text style={styles.auditFormulaText}>
+                  {(() => {
+                    const basePrice = prediction.currentPrice * eurRate;
+                    const targetPrice = basePrice * (1 + prediction.predictedChange / 100);
+                    return `Precio objetivo = ${basePrice.toFixed(2)} × (1 + ${prediction.predictedChange.toFixed(2)}%) = ${targetPrice.toFixed(2)} EUR`;
+                  })()}
                 </Text>
               </View>
-            ))}
-          </View>
-          )}
-
-          {/* Cálculo paso a paso */}
-          {prediction.analysisData?.audit?.calculationSteps && (
-          <>
-          <Text style={styles.auditCalcTitle}>📐 Cálculo matemático:</Text>
-          <View style={styles.auditCalcContainer}>
-            {prediction.analysisData.audit.calculationSteps.map((step, index) => (
-              <View key={index} style={styles.auditCalcStep}>
-                <Text style={styles.auditStepName}>{step.step}</Text>
-                <Text style={styles.auditStepFormula}>{step.formula}</Text>
-                <Text style={styles.auditStepResult}>= {step.result}</Text>
-              </View>
-            ))}
-          </View>
-          </>
-          )}
-
-          {/* Fórmula final */}
-          {prediction.currentPrice && prediction.predictedChange !== undefined && (
-          <View style={styles.auditFinalFormula}>
-            <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
-            <Text style={styles.auditFormulaText}>
-              {(() => {
-                const basePrice = prediction.currentPrice * eurRate;
-                const targetPrice = basePrice * (1 + prediction.predictedChange / 100);
-                return `Precio objetivo = ${basePrice.toFixed(2)} × (1 + ${prediction.predictedChange.toFixed(2)}%) = ${targetPrice.toFixed(2)} EUR`;
-              })()}
-            </Text>
-          </View>
+              )}
+            </View>
           )}
         </View>
       )}

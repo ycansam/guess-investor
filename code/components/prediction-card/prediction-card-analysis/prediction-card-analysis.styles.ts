@@ -106,6 +106,16 @@ export const styles = StyleSheet.create({
     color: DARK.textSecondary,
     marginBottom: 8,
   },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  collapsibleContent: {
+    paddingTop: 8,
+  },
   text: {
     fontSize: 12,
     color: DARK.textSecondary,

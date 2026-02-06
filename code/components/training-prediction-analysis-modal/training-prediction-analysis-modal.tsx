@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { TIMEFRAME_INFO, TrainingPrediction } from '../../services/training-cache-service';
 
 interface TrainingPredictionAnalysisModalProps {
@@ -11,6 +12,8 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
   prediction,
   onClose,
 }) => {
+  const [auditExpanded, setAuditExpanded] = useState<boolean>(false);
+  
   if (!prediction) return null;
 
   const analysis = prediction.analysisData;
@@ -383,48 +386,63 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
               </View>
             )}
 
-            {/* Auditoría */}
+            {/* Auditoría (COLAPSABLE) */}
             {analysis?.audit && analysis.audit.dataSources && analysis.audit.dataSources.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>🔍 Auditoría - Verificar datos</Text>
-                <Text style={styles.auditSubtitle}>Puedes verificar cada dato haciendo clic en los enlaces:</Text>
-                <View style={styles.auditBox}>
-                  {analysis.audit.dataSources.map((source, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.auditItem}
-                      onPress={() => {
-                        if (source.url) {
-                          Linking.openURL(source.url);
-                        }
-                      }}
-                    >
-                      <View style={styles.auditItemHeader}>
-                        <Text style={styles.auditItemTitle}>{source.name}</Text>
-                        {source.url && <Text style={styles.auditItemLink}>🔗 Verificar →</Text>}
-                      </View>
-                      {source.rawValue && (
-                        <Text style={styles.auditItemData}>{source.rawValue}</Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Cálculo Matemático */}
-            {analysis?.audit && analysis.audit.calculationSteps && analysis.audit.calculationSteps.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>📐 Cálculo matemático</Text>
-                <View style={styles.calculationBox}>
-                  {analysis.audit.calculationSteps.map((calc, idx) => (
-                    <View key={idx} style={styles.calculationItem}>
-                      <Text style={styles.calculationStep}>{calc.step}</Text>
-                      <Text style={styles.calculationFormula}>{calc.formula}</Text>
-                      <Text style={styles.calculationResult}>= {calc.result}</Text>
+                <TouchableOpacity 
+                  style={styles.collapsibleHeader}
+                  onPress={() => setAuditExpanded(!auditExpanded)}
+                >
+                  <Text style={styles.sectionTitle}>🔍 Auditoría - Verificar datos</Text>
+                  <Ionicons 
+                    name={auditExpanded ? 'chevron-up' : 'chevron-down'} 
+                    size={20} 
+                    color="#9ca3af" 
+                  />
+                </TouchableOpacity>
+                
+                {auditExpanded && (
+                  <View style={styles.collapsibleContent}>
+                    <Text style={styles.auditSubtitle}>Puedes verificar cada dato haciendo clic en los enlaces:</Text>
+                    <View style={styles.auditBox}>
+                      {analysis.audit.dataSources.map((source, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={styles.auditItem}
+                          onPress={() => {
+                            if (source.url) {
+                              Linking.openURL(source.url);
+                            }
+                          }}
+                        >
+                          <View style={styles.auditItemHeader}>
+                            <Text style={styles.auditItemTitle}>{source.name}</Text>
+                            {source.url && <Text style={styles.auditItemLink}>🔗 Verificar →</Text>}
+                          </View>
+                          {source.rawValue && (
+                            <Text style={styles.auditItemData}>{source.rawValue}</Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
                     </View>
-                  ))}
-                </View>
+                    
+                    {/* Cálculo Matemático dentro del desplegable */}
+                    {analysis.audit.calculationSteps && analysis.audit.calculationSteps.length > 0 && (
+                      <>
+                        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>📐 Cálculo matemático</Text>
+                        <View style={styles.calculationBox}>
+                          {analysis.audit.calculationSteps.map((calc, idx) => (
+                            <View key={idx} style={styles.calculationItem}>
+                              <Text style={styles.calculationStep}>{calc.step}</Text>
+                              <Text style={styles.calculationFormula}>{calc.formula}</Text>
+                              <Text style={styles.calculationResult}>= {calc.result}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                )}
               </View>
             )}
 
@@ -531,6 +549,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#818cf8',
     marginBottom: 12,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  collapsibleContent: {
+    paddingTop: 8,
   },
   infoGrid: {
     backgroundColor: '#1a1a1a',
