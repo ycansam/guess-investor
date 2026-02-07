@@ -10,7 +10,7 @@ import { TopTrendsTab } from '../top-trends';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { FavoritesList } from './favorites-list';
 import { MarketPredictions } from './market-predictions';
-import { TabBar, TabType } from './tab-bar';
+import { SideMenu, TabType } from './side-menu';
 import { useHome } from './use-home';
 
 export function Home() {
@@ -19,6 +19,7 @@ export function Home() {
   const [showTracking, setShowTracking] = useState(false);
   const [showMLDiagnostics, setShowMLDiagnostics] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -80,7 +81,8 @@ export function Home() {
       <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
 
       <Header 
-        title="Guess Investor" 
+        title="Guess Investor"
+        onMenuPress={() => setShowMenu(true)}
         actions={[
           { icon: '🎯', onPress: () => router.push('/screener') },
           { icon: '💼', onPress: () => router.push('/portfolio') },
@@ -89,6 +91,16 @@ export function Home() {
         ]}
         actionIcon="📊"
         onActionPress={() => setShowTracking(true)}
+      />
+
+      {/* Menú lateral */}
+      <SideMenu
+        visible={showMenu}
+        onClose={() => setShowMenu(false)}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        predictionsCount={predictionsCount}
+        favoritesCount={favoritesCount}
       />
 
       {/* Modal de Alertas */}
@@ -116,13 +128,6 @@ export function Home() {
           </View>
         </View>
       </Modal>
-
-      <TabBar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        predictionsCount={predictionsCount}
-        favoritesCount={favoritesCount}
-      />
 
       {renderContent()}
     </SafeAreaView>
