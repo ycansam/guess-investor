@@ -1,13 +1,16 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
 import { logger } from '../middleware/logger.js';
+import { backtestingService } from '../services/analysis/backtesting.service.js';
 import { catalystCalendarService } from '../services/analysis/catalyst-calendar.service.js';
 import { cotReportsService } from '../services/analysis/cot-reports.service.js';
 import { divergenceService } from '../services/analysis/divergence.service.js';
 import { intermarketService } from '../services/analysis/intermarket.service.js';
+import { intradayTrendService } from '../services/analysis/intraday-trend.service.js';
 import { marketBreadthService } from '../services/analysis/market-breadth.service.js';
 import { optionsFlowService } from '../services/analysis/options-flow.service.js';
 import { riskRewardService } from '../services/analysis/risk-reward.service.js';
+import { sectorRotationService } from '../services/analysis/sector-rotation.service.js';
 import { shortInterestService } from '../services/analysis/short-interest.service.js';
 import { volatilityService } from '../services/analysis/volatility.service.js';
 import { volumeProfileService } from '../services/analysis/volume-profile.service.js';
@@ -662,6 +665,127 @@ router.get('/volatility/:symbol', asyncHandler(async (req: Request, res: Respons
   res.json({
     success: true,
     data: volatility,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/intraday-trend/:symbol
+ * Obtiene análisis de tendencia intradía (VWAP, pivots, momentum corto plazo)
+ */
+router.get('/intraday-trend/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting intraday trend for ${symbol}`);
+  const trend = await intradayTrendService.getIntradayTrend(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: trend,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/sector-rotation
+ * Obtiene análisis de rotación sectorial (flujos de capital, régimen de mercado)
+ */
+router.get('/sector-rotation', asyncHandler(async (req: Request, res: Response) => {
+  logger.info(`[Analysis] Getting sector rotation analysis`);
+  const rotation = await sectorRotationService.getRotationAnalysis();
+  
+  res.json({
+    success: true,
+    data: rotation,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/sector-rotation/:symbol
+ * Obtiene sesgo de rotación para un símbolo específico
+ */
+router.get('/sector-rotation/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting sector rotation bias for ${symbol}`);
+  const bias = await sectorRotationService.getRotationBiasForSymbol(symbol.toUpperCase());
+  const fullAnalysis = await sectorRotationService.getRotationAnalysis();
+  
+  res.json({
+    success: true,
+    data: {
+      symbol: symbol.toUpperCase(),
+      rotationBias: bias,
+      marketRegime: fullAnalysis.marketRegime,
+      regimeStrength: fullAnalysis.regimeStrength,
+    },
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * POST /api/analysis/backtest
+ * Ejecuta un backtest completo
+ * Body: { symbol, startDate, endDate, timeframeDays, predictionThreshold, stopLoss?, takeProfit? }
+ */
+router.post('/backtest', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol, startDate, endDate, timeframeDays, predictionThreshold, stopLoss, takeProfit } = req.body;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const config = {
+    symbol: symbol.toUpperCase(),
+    startDate: startDate ? new Date(startDate) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
+    endDate: endDate ? new Date(endDate) : new Date(),
+    timeframeDays: timeframeDays || 1,
+    predictionThreshold: predictionThreshold || 20,
+    stopLoss,
+    takeProfit,
+  };
+
+  logger.info(`[Analysis] Running backtest for ${symbol}`, config);
+  const result = await backtestingService.runBacktest(config);
+  
+  res.json({
+    success: true,
+    data: result,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/backtest/quick/:symbol
+ * Backtest rápido con configuración por defecto
+ */
+router.get('/backtest/quick/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const days = parseInt(req.query.days as string) || 90;
+  const timeframe = parseInt(req.query.timeframe as string) || 1;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Quick backtest for ${symbol} (${days} days, ${timeframe}d timeframe)`);
+  const result = await backtestingService.quickBacktest(symbol.toUpperCase(), days, timeframe);
+  
+  res.json({
+    success: true,
+    data: {
+      symbol: symbol.toUpperCase(),
+      ...result,
+    },
     timestamp: new Date().toISOString(),
   });
 }));

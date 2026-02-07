@@ -29,6 +29,7 @@ import { DivergenceAnalysis, divergenceService } from '../analysis/divergence.se
 import { IntradayTrendData, intradayTrendService } from '../analysis/intraday-trend.service.js';
 import { MarketBreadthData, marketBreadthService } from '../analysis/market-breadth.service.js';
 import { OptionsFlowData, optionsFlowService } from '../analysis/options-flow.service.js';
+import { sectorRotationService } from '../analysis/sector-rotation.service.js';
 import { VolatilityData, volatilityService } from '../analysis/volatility.service.js';
 import { VolumeProfileData, volumeProfileService } from '../analysis/volume-profile.service.js';
 // ELIMINADOS:
@@ -50,9 +51,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-    factorCorrelationService,
-    probabilisticModelService,
-    reinforcementLearningService,
+  factorCorrelationService,
+  probabilisticModelService,
+  reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { commodityCorrelationService } from './commodity-correlation.service.js';
@@ -643,6 +644,7 @@ export const predictionCalculatorService = {
       let divergences: DivergenceAnalysis | null = null;
       let volatilityIV: VolatilityData | null = null;
       let marketBreadth: MarketBreadthData | null = null;
+      let sectorRotationBias = 0;
 
       if (timeframeDays <= 1) {
         // Obtener todos los factores intradía en paralelo
@@ -654,6 +656,7 @@ export const predictionCalculatorService = {
           divergenceData,
           volatilityData,
           breadthData,
+          rotationBias,
         ] = await Promise.all([
           intradayTrendService.getIntradayTrend(symbol),
           type === 'stock' ? optionsFlowService.getOptionsFlow(symbol, quote.price) : Promise.resolve(null),
@@ -661,6 +664,7 @@ export const predictionCalculatorService = {
           divergenceService.getDivergences(symbol),
           type === 'stock' ? volatilityService.getVolatilityAnalysis(symbol) : Promise.resolve(null),
           marketBreadthService.getMarketBreadth(),
+          type === 'stock' ? sectorRotationService.getRotationBiasForSymbol(symbol) : Promise.resolve(0),
         ]);
         
         intradayTrend = intradayTrendData;
@@ -669,8 +673,9 @@ export const predictionCalculatorService = {
         divergences = divergenceData;
         volatilityIV = volatilityData;
         marketBreadth = breadthData;
+        sectorRotationBias = rotationBias;
         
-        logger.info(`[PredictionCalc] Intraday factors loaded: trend=${intradayTrend?.hasData}, options=${optionsFlow?.hasData}, volume=${volumeProfile?.hasData}, divergences=${divergences?.hasDivergence}, volatility=${volatilityIV?.hasData}, breadth=${marketBreadth?.hasData}`);
+        logger.info(`[PredictionCalc] Intraday factors loaded: trend=${intradayTrend?.hasData}, options=${optionsFlow?.hasData}, volume=${volumeProfile?.hasData}, divergences=${divergences?.hasDivergence}, volatility=${volatilityIV?.hasData}, breadth=${marketBreadth?.hasData}, sectorBias=${sectorRotationBias.toFixed(1)}`);
       }
 
       // Asignar technical (ya viene del subyacente si es commodity ETF)
@@ -732,6 +737,21 @@ export const predictionCalculatorService = {
       } else if (rlRecommendation.recommendedAction === 'predict_high' && rlRecommendation.confidence > 0.6) {
         prediction.confidence = Math.min(95, prediction.confidence + 5);
         logger.info(`[PredictionCalc] RL suggests high confidence prediction (+5%)`);
+      }
+
+      // Aplicar sesgo de rotación sectorial (solo para acciones e intradía)
+      if (sectorRotationBias !== 0 && timeframeDays <= 1) {
+        const rotationAdjustment = sectorRotationBias * 0.02; // Max ±2% de ajuste
+        prediction.predictedChange += rotationAdjustment;
+        
+        // Recalcular dirección si cambió significativamente
+        if (prediction.predictedChange > 0.1) {
+          prediction.direction = 'up';
+        } else if (prediction.predictedChange < -0.1) {
+          prediction.direction = 'down';
+        }
+        
+        logger.info(`[PredictionCalc] Applied sector rotation bias: ${rotationAdjustment.toFixed(2)}%`);
       }
 
       // Añadir info del subyacente si es ETF de commodity

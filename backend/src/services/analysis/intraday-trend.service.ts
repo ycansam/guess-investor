@@ -96,8 +96,8 @@ export const intradayTrendService = {
    */
   async analyzeIntradayTrend(symbol: string): Promise<IntradayTrendData> {
     try {
-      // Obtener datos de 2 días con intervalo de 5 minutos
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=5m&range=2d`;
+      // Obtener datos de 2 días con intervalo de 5 minutos incluyendo pre/post market
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=5m&range=2d&includePrePost=true`;
       
       const response = await fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -120,6 +120,10 @@ export const intradayTrendService = {
       const volumes = result.indicators.quote[0].volume || [];
       const highs = result.indicators.quote[0].high || [];
       const lows = result.indicators.quote[0].low || [];
+      
+      // Obtener metadata de trading periods para pre/post market
+      const tradingPeriods = result.meta?.tradingPeriods;
+      const regularMarketTime = result.meta?.regularMarketTime;
       
       if (closes.length < 12) { // Mínimo 1 hora de datos
         return this.getDefaultData();
@@ -146,6 +150,10 @@ export const intradayTrendService = {
       const change1h = ((currentPrice - price1h) / price1h) * 100;
       const change4h = ((currentPrice - price4h) / price4h) * 100;
       const changeToday = ((currentPrice - priceOpen) / priceOpen) * 100;
+      
+      // Pre-market analysis
+      const premarketData = this.analyzePremarket(timestamps, closes, volumes, tradingPeriods, regularMarketTime);
+      const changePremarket = premarketData.change;
       
       // Momentum
       const momentum1h = this.classifyMomentum(change1h, 0.3);
@@ -209,7 +217,7 @@ export const intradayTrendService = {
         change1h,
         change4h,
         changeToday,
-        changePremarket: 0, // TODO: Implementar si hay datos premarket
+        changePremarket,
         momentum1h,
         momentum4h,
         momentumToday,
@@ -265,6 +273,94 @@ export const intradayTrendService = {
       }
     }
     return 0;
+  },
+
+  /**
+   * Analiza datos de pre-market (4:00 AM - 9:30 AM ET)
+   */
+  analyzePremarket(
+    timestamps: number[],
+    closes: number[],
+    volumes: number[],
+    tradingPeriods: any,
+    regularMarketTime: number | undefined
+  ): { change: number; volume: number; high: number; low: number; hasData: boolean } {
+    try {
+      const now = new Date();
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      
+      // Pre-market: 4:00 AM - 9:30 AM ET (9:00 - 14:30 UTC)
+      const premarketStart = new Date(today);
+      premarketStart.setUTCHours(9, 0, 0, 0); // 4:00 AM ET
+      
+      const premarketEnd = new Date(today);
+      premarketEnd.setUTCHours(14, 30, 0, 0); // 9:30 AM ET
+      
+      const premarketStartMs = premarketStart.getTime();
+      const premarketEndMs = premarketEnd.getTime();
+      
+      // Obtener cierre del día anterior (último precio antes de hoy)
+      let previousClose = 0;
+      const yesterdayEnd = today.getTime();
+      
+      for (let i = timestamps.length - 1; i >= 0; i--) {
+        const ts = timestamps[i] * 1000;
+        if (ts < yesterdayEnd && closes[i]) {
+          previousClose = closes[i];
+          break;
+        }
+      }
+      
+      // Si no tenemos cierre anterior, buscar en tradingPeriods o meta
+      if (!previousClose && regularMarketTime) {
+        // Usar precio de mercado regular como referencia
+        for (let i = 0; i < timestamps.length; i++) {
+          if (timestamps[i] === regularMarketTime) {
+            previousClose = closes[i] || 0;
+            break;
+          }
+        }
+      }
+      
+      // Filtrar datos de premarket de hoy
+      const premarketData: { price: number; volume: number }[] = [];
+      
+      for (let i = 0; i < timestamps.length; i++) {
+        const ts = timestamps[i] * 1000;
+        if (ts >= premarketStartMs && ts < premarketEndMs && closes[i]) {
+          premarketData.push({
+            price: closes[i],
+            volume: volumes[i] || 0
+          });
+        }
+      }
+      
+      if (premarketData.length === 0 || !previousClose) {
+        return { change: 0, volume: 0, high: 0, low: 0, hasData: false };
+      }
+      
+      const premarketPrices = premarketData.map(d => d.price);
+      const lastPremarketPrice = premarketPrices[premarketPrices.length - 1];
+      const premarketHigh = Math.max(...premarketPrices);
+      const premarketLow = Math.min(...premarketPrices);
+      const premarketVolume = premarketData.reduce((sum, d) => sum + d.volume, 0);
+      
+      const change = ((lastPremarketPrice - previousClose) / previousClose) * 100;
+      
+      logger.debug(`[IntradayTrend] Premarket: prev=${previousClose.toFixed(2)}, last=${lastPremarketPrice.toFixed(2)}, change=${change.toFixed(2)}%`);
+      
+      return {
+        change,
+        volume: premarketVolume,
+        high: premarketHigh,
+        low: premarketLow,
+        hasData: true
+      };
+    } catch (error) {
+      logger.debug(`[IntradayTrend] Premarket analysis error:`, error);
+      return { change: 0, volume: 0, high: 0, low: 0, hasData: false };
+    }
   },
 
   /**
