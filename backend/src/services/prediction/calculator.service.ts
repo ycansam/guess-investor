@@ -25,12 +25,12 @@ import { predictionRepository, PredictionType } from '../../repositories/predict
 import { weightsRepository } from '../../repositories/weights.repository.js';
 import { broadMarketContextService } from '../external/broad-market-context.service.js';
 // NUEVOS SERVICIOS PARA INTRADÍA
-import { divergenceService, DivergenceAnalysis } from '../analysis/divergence.service.js';
-import { intradayTrendService, IntradayTrendData } from '../analysis/intraday-trend.service.js';
-import { marketBreadthService, MarketBreadthData } from '../analysis/market-breadth.service.js';
-import { optionsFlowService, OptionsFlowData } from '../analysis/options-flow.service.js';
-import { volatilityService, VolatilityData } from '../analysis/volatility.service.js';
-import { volumeProfileService, VolumeProfileData } from '../analysis/volume-profile.service.js';
+import { DivergenceAnalysis, divergenceService } from '../analysis/divergence.service.js';
+import { IntradayTrendData, intradayTrendService } from '../analysis/intraday-trend.service.js';
+import { MarketBreadthData, marketBreadthService } from '../analysis/market-breadth.service.js';
+import { OptionsFlowData, optionsFlowService } from '../analysis/options-flow.service.js';
+import { VolatilityData, volatilityService } from '../analysis/volatility.service.js';
+import { VolumeProfileData, volumeProfileService } from '../analysis/volume-profile.service.js';
 // ELIMINADOS:
 // - Calendar Effects: el efecto lunes es casi mito
 // - Competitors: no añade señal limpia
