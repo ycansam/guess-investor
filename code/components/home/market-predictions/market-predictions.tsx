@@ -43,7 +43,7 @@ const BREAKPOINTS = {
 };
 
 // Ancho máximo del contenido en desktop
-const MAX_CONTENT_WIDTH = 900;
+const MAX_CONTENT_WIDTH = 1800;
 
 // Tipo de cambio USD/EUR aproximado
 const USD_TO_EUR = 0.92;
@@ -1131,11 +1131,15 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
 
       <View style={{ flex: 1 }}>
         <FlatList
+          key={isDesktop ? 'grid-3col' : 'list-1col'}
           ref={flatListRef}
           data={sortedAssets}
           extraData={sortBy}
           renderItem={renderAsset}
           keyExtractor={(item, index) => `${item.symbol}-${index}`}
+          numColumns={isDesktop ? 3 : 1}
+          contentContainerStyle={isDesktop ? styles.gridContainer : undefined}
+          columnWrapperStyle={isDesktop ? styles.columnWrapper : undefined}
           ListFooterComponent={
             loadingMore ? (
               <View style={styles.loadingFooter}>
@@ -1274,8 +1278,10 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   listContentDesktop: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 40,
+    width: '80%',
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -1599,62 +1605,77 @@ const styles = StyleSheet.create({
     borderBottomColor: '#2e2e2e',
   },
   assetRowDesktop: {
-    paddingHorizontal: 24,
+    flex: 1,
+    maxWidth: '33%',
+    marginHorizontal: 2,
+    marginVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2e2e2e',
+    backgroundColor: '#1a1a1a',
+  },
+  columnWrapper: {
+    width: '100%',
+  },
+  gridContainer: {
+    paddingHorizontal: 0,
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#252525',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 8,
     position: 'relative',
   },
   icon: {
-    fontSize: 22,
+    fontSize: 18,
   },
   favoriteBadge: {
     position: 'absolute',
     top: -4,
     right: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: '#ef4444',
     justifyContent: 'center',
     alignItems: 'center',
   },
   favoriteBadgeIcon: {
-    fontSize: 10,
+    fontSize: 8,
   },
   infoContainer: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 8,
   },
   name: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     color: '#ffffff',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   subInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   symbol: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6b7280',
   },
   priceInline: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#a0a0a0',
     fontWeight: '500',
   },
   // Action container
   actionContainer: {
-    minWidth: 100,
+    minWidth: 80,
     alignItems: 'flex-end',
   },
   predictButton: {
@@ -1709,15 +1730,15 @@ const styles = StyleSheet.create({
   },
   // Checkbox styles
   checkboxContainer: {
-    width: 32,
+    width: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 6,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 5,
     borderWidth: 2,
     borderColor: '#4b5563',
     backgroundColor: '#1a1a1a',
@@ -1733,12 +1754,12 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   predictionIndicator: {
     color: '#9ca3af',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   predictionBadgeSmall: {
@@ -1756,7 +1777,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   changeText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   // Actions bar
@@ -2001,27 +2022,27 @@ const styles = StyleSheet.create({
   },
   // Chart button
   chartButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginLeft: 4,
     backgroundColor: '#1e3a5f20',
     borderRadius: 6,
   },
   chartButtonText: {
-    fontSize: 14,
+    fontSize: 12,
   },
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
   dailyChangeBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 2,
   },
   dailyLabel: {
-    fontSize: 9,
+    fontSize: 8,
     color: '#6b7280',
     fontStyle: 'italic',
   },
@@ -2034,10 +2055,10 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   predictionIconInline: {
-    fontSize: 11,
+    fontSize: 10,
   },
   predictionTextInline: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   confidenceTextInline: {
@@ -2051,17 +2072,17 @@ const styles = StyleSheet.create({
   predictionBadgeCompact: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
   },
   moreCountBadge: {
     backgroundColor: '#ffffff20',
-    borderRadius: 4,
-    paddingHorizontal: 4,
+    borderRadius: 3,
+    paddingHorizontal: 3,
     paddingVertical: 1,
-    marginLeft: 2,
+    marginLeft: 1,
   },
   moreCountText: {
     fontSize: 9,
