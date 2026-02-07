@@ -6,6 +6,9 @@ const router = Router();
 // GET /api/assets - Lista completa de activos
 router.get('/', assetController.getAll);
 
+// GET /api/assets/paginated - Lista paginada de activos
+router.get('/paginated', assetController.getPaginated);
+
 // GET /api/assets/search?q=AAPL
 router.get('/search', assetController.search);
 

@@ -305,6 +305,12 @@ export function PredictionHistoryCard({ symbol, maxItems = 10 }: PredictionHisto
                   <Text style={styles.priceRange}>
                     {formatPrice(pred.currentPrice, pred.currency)} → {formatPrice(pred.targetPrice, pred.currency)}
                   </Text>
+                  {/* Precio final real si está verificado */}
+                  {pred.verified && pred.actualPrice != null && (
+                    <Text style={styles.actualPrice}>
+                      Final: {formatPrice(pred.actualPrice, pred.currency)} ({pred.actualChange != null && pred.actualChange >= 0 ? '+' : ''}{pred.actualChange?.toFixed(2)}%)
+                    </Text>
+                  )}
                   <Text style={styles.predictionChange}>
                     {pred.predictedChange >= 0 ? '+' : ''}{pred.predictedChange.toFixed(2)}%
                     <Text style={styles.predictionConfidence}> ({pred.confidence}% conf.)</Text>
@@ -513,6 +519,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9ca3af',
     fontWeight: '400',
+    marginBottom: 2,
+  },
+  actualPrice: {
+    fontSize: 11,
+    color: '#f59e0b',
+    fontWeight: '500',
     marginBottom: 2,
   },
   predictionChange: {

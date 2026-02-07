@@ -461,6 +461,30 @@ export const apiClient = {
   },
 
   /**
+   * Obtener lista paginada de activos
+   * @param page - Número de página (1-indexed)
+   * @param pageSize - Tamaño de página (default 20, max 50)
+   * @param category - Filtrar por categoría (opcional)
+   * @param search - Búsqueda por nombre/símbolo (opcional)
+   */
+  getAssetsPaginated: (
+    page: number = 1,
+    pageSize: number = 20,
+    category?: string,
+    search?: string
+  ): Promise<{
+    assets: Array<{ symbol: string; name: string; type: string; category: string; icon: string }>;
+    pagination: { page: number; pageSize: number; total: number; hasMore: boolean; totalPages: number };
+  }> => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('pageSize', String(pageSize));
+    if (category) params.set('category', category);
+    if (search) params.set('search', search);
+    return get(`/assets/paginated?${params.toString()}`);
+  },
+
+  /**
    * Buscar activos por nombre o símbolo
    * @param query - Término de búsqueda
    * @param limit - Máximo de resultados (default 30, max 50)

@@ -27,6 +27,78 @@ export const assetController = {
   }),
 
   /**
+   * GET /api/assets/paginated
+   * Obtener lista paginada de activos con opción de búsqueda dinámica
+   */
+  getPaginated: asyncHandler(async (req: Request, res: Response) => {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(50, Math.max(10, parseInt(req.query.pageSize as string) || 20));
+    const category = req.query.category as string | undefined;
+    const search = req.query.search as string | undefined;
+
+    // Filtrar activos por categoría si se especifica
+    let filteredAssets = tradeRepublicAssets;
+    if (category) {
+      filteredAssets = filteredAssets.filter(a => a.category === category);
+    }
+
+    // Si hay búsqueda, usar la función de búsqueda
+    if (search && search.trim()) {
+      const searchResults = searchTradeRepublicAssets(search);
+      // Combinar con búsqueda en Yahoo para más resultados
+      try {
+        const yahooResults = await yahooService.search(search);
+        const seenSymbols = new Set(searchResults.map(a => a.symbol.toUpperCase()));
+        
+        // Añadir resultados de Yahoo que no estén ya
+        for (const yResult of yahooResults) {
+          if (!seenSymbols.has(yResult.symbol.toUpperCase())) {
+            seenSymbols.add(yResult.symbol.toUpperCase());
+            // Convertir resultado de Yahoo a formato TradeRepublicAsset compatible
+            searchResults.push({
+              symbol: yResult.symbol,
+              name: yResult.name,
+              type: yResult.type || 'STOCK',
+              category: detectCategory(yResult.symbol, yResult.type),
+              keywords: [yResult.symbol.toLowerCase(), yResult.name.toLowerCase()],
+            });
+          }
+        }
+      } catch {
+        // Si falla Yahoo, seguir solo con resultados locales
+      }
+      
+      filteredAssets = searchResults as typeof filteredAssets;
+    }
+
+    const total = filteredAssets.length;
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const pageAssets = filteredAssets.slice(startIndex, endIndex);
+    const hasMore = endIndex < total;
+
+    const assets = pageAssets.map(asset => ({
+      symbol: asset.symbol,
+      name: asset.name,
+      type: asset.type.toLowerCase(),
+      category: asset.category || 'other',
+      icon: getAssetIcon(asset.category, asset.type),
+    }));
+
+    res.json({
+      success: true,
+      data: assets,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        hasMore,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
+  }),
+
+  /**
    * GET /api/assets/:symbol/quote
    * Obtener cotización actual
    */
@@ -226,6 +298,35 @@ export const assetController = {
     });
   }),
 };
+
+// Helper para detectar categoría de un activo basándose en su símbolo y tipo
+function detectCategory(symbol: string, type?: string): string {
+  const s = symbol.toUpperCase();
+  const t = (type || '').toUpperCase();
+  
+  // Crypto
+  if (t === 'CRYPTOCURRENCY' || s.includes('-USD') || s.includes('-EUR')) return 'crypto';
+  
+  // Índices
+  if (s.startsWith('^') || t === 'INDEX') return 'index';
+  
+  // Futuros
+  if (s.includes('=F')) return 'commodity';
+  
+  // Forex
+  if (s.includes('=X') || t === 'FOREX' || t === 'CURRENCY') return 'forex';
+  
+  // ETFs/ETCs
+  if (t === 'ETF' || t === 'ETC') return 'etf';
+  
+  // Acciones europeas por exchange
+  if (s.endsWith('.DE') || s.endsWith('.MC') || s.endsWith('.PA') || 
+      s.endsWith('.L') || s.endsWith('.MI') || s.endsWith('.AS') ||
+      s.endsWith('.SW')) return 'stock-eu';
+  
+  // Default: stock US
+  return 'stock-us';
+}
 
 // Helper para obtener icono según categoría/tipo
 function getAssetIcon(category?: string, type?: string): string {

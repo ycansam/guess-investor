@@ -463,6 +463,7 @@ class MarketDataService {
 
   /**
    * Obtiene activos paginados con datos de precios
+   * Usa el endpoint paginado del backend para soporte de infinite scroll
    * @param page - Número de página (1-indexed)
    * @param category - Categoría opcional para filtrar
    * @param searchQuery - Búsqueda opcional por nombre/símbolo
@@ -473,65 +474,63 @@ class MarketDataService {
     category?: AssetCategory,
     searchQuery?: string
   ): Promise<{ assets: MarketAsset[]; hasMore: boolean; total: number }> {
-    // Cargar activos dinámicamente desde backend
-    const allAssets = await this.getAssets();
-    
-    // Filtrar activos
-    let filteredAssets = [...allAssets];
-    
-    if (category) {
-      filteredAssets = filteredAssets.filter(a => a.category === category);
-    }
-    
-    // Si hay búsqueda, combinar resultados locales con API del backend
-    if (searchQuery && searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      
-      // Buscar en activos locales
-      const localMatches = filteredAssets.filter(a => 
-        a.symbol.toLowerCase().includes(query) || 
-        a.name.toLowerCase().includes(query)
+    try {
+      // Usar el nuevo endpoint paginado del backend
+      const response = await apiClient.getAssetsPaginated(
+        page,
+        BATCH_SIZE,
+        category,
+        searchQuery
       );
+
+      // Convertir respuesta a formato MarketAsset
+      const pageAssets: MarketAsset[] = response.assets.map(a => ({
+        symbol: a.symbol,
+        name: a.name,
+        icon: a.icon,
+        type: this.mapAssetType(a.type),
+        category: a.category as AssetCategory,
+      }));
+
+      // Obtener precios para esta página
+      const assetsWithPrices = await this.fetchAssetsWithPrices(pageAssets);
+
+      console.log(`[MarketData] Page ${page}: ${assetsWithPrices.length} assets, hasMore: ${response.pagination.hasMore}, total: ${response.pagination.total}`);
+
+      return {
+        assets: assetsWithPrices,
+        hasMore: response.pagination.hasMore,
+        total: response.pagination.total,
+      };
+    } catch (error) {
+      console.warn('[MarketData] Backend pagination failed, falling back to local:', error);
       
-      // También buscar en la API del backend para obtener más resultados
-      try {
-        const apiResults = await apiClient.searchAssets(searchQuery, 40);
-        
-        // Convertir resultados de API a MarketAsset y combinar
-        const seenSymbols = new Set(localMatches.map(a => a.symbol.toUpperCase()));
-        
-        for (const result of apiResults) {
-          const symbolUpper = result.symbol.toUpperCase();
-          if (!seenSymbols.has(symbolUpper)) {
-            seenSymbols.add(symbolUpper);
-            localMatches.push({
-              symbol: result.symbol,
-              name: result.name,
-              icon: this.getIconForType(result.type),
-              type: this.mapAssetType(result.type),
-              category: this.detectCategory(result.symbol, result.type),
-            });
-          }
-        }
-        
-        console.log(`[MarketData] Search "${query}": ${localMatches.length} results (local + API)`);
-      } catch (error) {
-        console.warn('[MarketData] API search failed, using local only:', error);
+      // Fallback: usar lista local si el backend falla
+      const allAssets = await this.getAssets();
+      let filteredAssets = [...allAssets];
+      
+      if (category) {
+        filteredAssets = filteredAssets.filter(a => a.category === category);
       }
       
-      filteredAssets = localMatches;
+      if (searchQuery && searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        filteredAssets = filteredAssets.filter(a => 
+          a.symbol.toLowerCase().includes(query) || 
+          a.name.toLowerCase().includes(query)
+        );
+      }
+      
+      const total = filteredAssets.length;
+      const startIndex = (page - 1) * BATCH_SIZE;
+      const endIndex = startIndex + BATCH_SIZE;
+      const pageAssets = filteredAssets.slice(startIndex, endIndex);
+      const hasMore = endIndex < total;
+      
+      const assetsWithPrices = await this.fetchAssetsWithPrices(pageAssets);
+      
+      return { assets: assetsWithPrices, hasMore, total };
     }
-    
-    const total = filteredAssets.length;
-    const startIndex = (page - 1) * BATCH_SIZE;
-    const endIndex = startIndex + BATCH_SIZE;
-    const pageAssets = filteredAssets.slice(startIndex, endIndex);
-    const hasMore = endIndex < total;
-    
-    // Obtener precios para esta página
-    const assetsWithPrices = await this.fetchAssetsWithPrices(pageAssets);
-    
-    return { assets: assetsWithPrices, hasMore, total };
   }
 
   /**
