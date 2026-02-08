@@ -1,169 +1,44 @@
 {
-  "version": "2.0",
-  "updated_at": "2026-02-08T12:00:00.000Z",
-  "training_samples": 213,
+  "version": "1.0",
+  "updated_at": "2026-02-08T21:15:09.045520",
+  "training_samples": 0,
   "weights": {
     "intraday": {
-      "technical": 0.20,
-      "intradayTrend": 0.15,
-      "optionsFlow": 0.10,
-      "sentiment": 0.15,
-      "news": 0.10,
-      "volumeProfile": 0.05,
-      "divergences": 0.05,
-      "volatilityIV": 0.05,
-      "marketBreadth": 0.05,
-      "trend": 0.05,
-      "macro": 0.03,
-      "forex": 0.02,
-      "institutional": 0.00,
-      "financials": 0.00
+      "trend": 0.22,
+      "technical": 0.27,
+      "sentiment": 0.16,
+      "news": 0.19,
+      "macro": 0.05,
+      "forex": 0.05,
+      "institutional": 0.05,
+      "seasonality": 0.01,
+      "financials": 0.0
     },
     "swing": {
       "trend": 0.14,
-      "technical": 0.20,
+      "technical": 0.2,
       "sentiment": 0.12,
-      "news": 0.17,
-      "macro": 0.08,
-      "forex": 0.05,
-      "institutional": 0.08,
-      "financials": 0.04,
-      "intradayTrend": 0.05,
-      "optionsFlow": 0.03,
-      "volumeProfile": 0.02,
-      "divergences": 0.05,
-      "volatilityIV": 0.03,
-      "marketBreadth": 0.04
+      "news": 0.2,
+      "macro": 0.1,
+      "forex": 0.06,
+      "institutional": 0.1,
+      "seasonality": 0.02,
+      "financials": 0.06
     },
     "long": {
       "trend": 0.06,
-      "technical": 0.09,
-      "sentiment": 0.04,
-      "news": 0.10,
+      "technical": 0.1,
+      "sentiment": 0.05,
+      "news": 0.12,
       "macro": 0.15,
-      "forex": 0.07,
-      "institutional": 0.13,
-      "financials": 0.25,
-      "intradayTrend": 0.00,
-      "optionsFlow": 0.02,
-      "volumeProfile": 0.01,
-      "divergences": 0.03,
-      "volatilityIV": 0.02,
-      "marketBreadth": 0.03
+      "forex": 0.08,
+      "institutional": 0.14,
+      "seasonality": 0.04,
+      "financials": 0.26
     }
   },
   "metadata": {
     "learning_rate": 0.05,
-    "momentum": 0.8,
-    "version_notes": "v2.0 - Añadidos factores intradía optimizados: intradayTrend, optionsFlow, volumeProfile, divergences, volatilityIV, marketBreadth"
-  },
-  "factor_performance": {
-    "intraday": {
-      "trend": {
-        "correct_contributions": 12,
-        "incorrect_contributions": 3,
-        "total_samples": 15,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 17.266666666666666
-      },
-      "technical": {
-        "correct_contributions": 3,
-        "incorrect_contributions": 2,
-        "total_samples": 5,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 11.8
-      },
-      "sentiment": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "news": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "macro": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "forex": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "institutional": {
-        "correct_contributions": 3,
-        "incorrect_contributions": 2,
-        "total_samples": 5,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 11.8
-      },
-      "financials": {
-        "correct_contributions": 2,
-        "incorrect_contributions": 3,
-        "total_samples": 5,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 11.8
-      },
-      "intradayTrend": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "optionsFlow": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "volumeProfile": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "divergences": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "volatilityIV": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "marketBreadth": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      },
-      "expectations": {
-        "correct_contributions": 0,
-        "incorrect_contributions": 0,
-        "total_samples": 0,
-        "avg_accuracy_when_high": 0,
-        "avg_accuracy_when_low": 0
-      }
-    }
+    "momentum": 0.9
   }
 }
