@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { InvestmentPrediction } from '../../../types';
 import { AlertsModal } from '../../alerts-modal';
@@ -11,7 +11,7 @@ const BREAKPOINTS = {
   desktop: 1024,
 };
 
-const ITEMS_PER_PAGE = 24; // 3 columns x 8 rows
+const ITEMS_PER_PAGE = 42; // 3 columns x 14 rows
 const NUM_COLUMNS = 3;
 
 interface PredictionsListContentProps {
@@ -32,27 +32,43 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
   
   const [selectedPrediction, setSelectedPrediction] = useState<InvestmentPrediction | null>(null);
   const [alertPrediction, setAlertPrediction] = useState<InvestmentPrediction | null>(null);
-  const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const lastLoadTime = useRef(0);
 
-  // Predicciones visibles según paginación
+  // Filtrar predicciones que no tienen datos válidos (sin precio actual o objetivo)
+  const validPredictions = useMemo(() => {
+    return predictions.filter(p => 
+      p.currentPrice && p.currentPrice > 0 && 
+      (p.predictedPriceMax || p.predictedPriceMin || p.predictedPrice)
+    );
+  }, [predictions]);
+
+  // Predicciones visibles según paginación (page * 42)
   const visiblePredictions = useMemo(() => {
-    return predictions.slice(0, displayCount);
-  }, [predictions, displayCount]);
+    const count = page * ITEMS_PER_PAGE;
+    return validPredictions.slice(0, count);
+  }, [validPredictions, page]);
 
-  const hasMore = displayCount < predictions.length;
+  const hasMore = visiblePredictions.length < validPredictions.length;
 
-  // Cargar más items al hacer scroll
+  // Cargar más items al hacer scroll - siempre +42
   const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore) return;
+    const now = Date.now();
+    // Debounce: mínimo 300ms entre cargas
+    if (isLoading || !hasMore || (now - lastLoadTime.current) < 300) return;
     
-    setLoadingMore(true);
-    // Simular pequeño delay para smooth UX
+    lastLoadTime.current = now;
+    setIsLoading(true);
+    
+    // Cargar inmediatamente
+    setPage(p => p + 1);
+    
+    // Reset loading después de un pequeño delay
     setTimeout(() => {
-      setDisplayCount(prev => Math.min(prev + ITEMS_PER_PAGE, predictions.length));
-      setLoadingMore(false);
+      setIsLoading(false);
     }, 100);
-  }, [loadingMore, hasMore, predictions.length]);
+  }, [hasMore, isLoading]);
 
   // Calcular ancho de cada columna en desktop
   const columnWidth = useMemo(() => {
@@ -90,14 +106,14 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
     if (!hasMore) return null;
     return (
       <View style={styles.loadingFooter}>
-        {loadingMore ? (
+        {isLoading ? (
           <ActivityIndicator size="small" color="#6366f1" />
         ) : (
-          <Text style={styles.loadMoreText}>Scroll para cargar más...</Text>
+          <Text style={styles.loadMoreText}>↓ Desliza para cargar más ({visiblePredictions.length}/{validPredictions.length})</Text>
         )}
       </View>
     );
-  }, [hasMore, loadingMore]);
+  }, [hasMore, isLoading, visiblePredictions.length, validPredictions.length]);
 
   return (
     <View style={styles.container}>
@@ -121,7 +137,7 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
       />
 
       <View style={styles.header}>
-        <Text style={styles.title}>🎯 Predicciones ({predictions.length})</Text>
+        <Text style={styles.title}>🎯 Predicciones ({validPredictions.length})</Text>
         <View style={styles.headerActions}>
           {onClear && (
             <TouchableOpacity onPress={onClear}>

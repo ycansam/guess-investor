@@ -202,8 +202,8 @@ let dynamicAssets: MarketAsset[] | null = null;
 let dynamicAssetsTimestamp = 0;
 const ASSETS_CACHE_DURATION = 60 * 60 * 1000; // 1 hora para lista de activos
 
-// Tamaño de batch para paginación (20 es un buen balance para UX)
-const BATCH_SIZE = 20;
+// Tamaño de batch para paginación (42 = 3 columnas x 14 filas en desktop)
+const BATCH_SIZE = 42;
 
 // Control de rate limiting para peticiones paralelas
 const MAX_CONCURRENT_REQUESTS = 15;
