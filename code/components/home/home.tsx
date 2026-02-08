@@ -99,7 +99,7 @@ export function Home() {
         favoritesCount={favoritesCount}
       />
 
-      {/* Modal de Diagnóstico ML */
+      {/* Modal de Diagnóstico ML */}
       <MLDiagnosticsModal
         visible={showMLDiagnostics}
         onClose={() => setShowMLDiagnostics(false)}
