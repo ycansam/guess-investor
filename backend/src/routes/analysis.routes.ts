@@ -1,10 +1,28 @@
 import { Request, Response, Router } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-handler.js';
+import { logger } from '../middleware/logger.js';
+import { backtestingService } from '../services/analysis/backtesting.service.js';
+import { catalystCalendarService } from '../services/analysis/catalyst-calendar.service.js';
+import { cotReportsService } from '../services/analysis/cot-reports.service.js';
+import { divergenceService } from '../services/analysis/divergence.service.js';
+import { intermarketService } from '../services/analysis/intermarket.service.js';
+import { intradayTrendService } from '../services/analysis/intraday-trend.service.js';
+import { marketBreadthService } from '../services/analysis/market-breadth.service.js';
+import { optionsFlowService } from '../services/analysis/options-flow.service.js';
+import { riskRewardService } from '../services/analysis/risk-reward.service.js';
+import { sectorRotationService } from '../services/analysis/sector-rotation.service.js';
+import { shortInterestService } from '../services/analysis/short-interest.service.js';
+import { volatilityService } from '../services/analysis/volatility.service.js';
+import { volumeProfileService } from '../services/analysis/volume-profile.service.js';
+import { broadMarketContextService } from '../services/external/broad-market-context.service.js';
+import { financialsService } from '../services/external/financials.service.js';
+import { forexService } from '../services/external/forex.service.js';
 import { macroService } from '../services/external/macro.service.js';
 import { newsService } from '../services/external/news.service.js';
 import { sentimentService } from '../services/external/sentiment.service.js';
 import { technicalService } from '../services/external/technical.service.js';
 import { trendsService } from '../services/external/trends.service.js';
+import { yahooService } from '../services/external/yahoo.service.js';
 
 const router = Router();
 
@@ -88,6 +106,37 @@ router.get('/macro/:symbol', asyncHandler(async (req: Request, res: Response) =>
 }));
 
 /**
+ * GET /api/analysis/financials/:symbol
+ * Datos financieros fundamentales
+ */
+router.get('/financials/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const symbolUpper = symbol.toUpperCase();
+  
+  // Obtener precio actual primero
+  const quote = await yahooService.getQuote(symbolUpper);
+  if (!quote) {
+    res.json({
+      success: false,
+      error: 'No se pudo obtener datos del activo',
+    });
+    return;
+  }
+
+  const financials = await financialsService.getFinancials(symbolUpper, quote.price);
+
+  res.json({
+    success: true,
+    data: financials || { hasData: false },
+  });
+}));
+
+/**
  * GET /api/analysis/full/:symbol
  * Análisis completo (todos los datos de una vez)
  */
@@ -102,12 +151,17 @@ router.get('/full/:symbol', asyncHandler(async (req: Request, res: Response) => 
   const symbolUpper = symbol.toUpperCase();
   const assetType = type as 'stock' | 'crypto';
 
+  // Obtener precio para financials
+  const quote = await yahooService.getQuote(symbolUpper);
+  const currentPrice = quote?.price || 100;
+
   // Obtener todos los datos en paralelo
-  const [technical, news, sentiment, macro] = await Promise.all([
+  const [technical, news, sentiment, macro, financials] = await Promise.all([
     technicalService.analyze(symbolUpper),
     newsService.getNews(symbolUpper, assetType),
     sentimentService.getSentiment(symbolUpper, assetType),
     macroService.getIndicators(symbolUpper, assetType),
+    financialsService.getFinancials(symbolUpper, currentPrice),
   ]);
 
   res.json({
@@ -119,6 +173,7 @@ router.get('/full/:symbol', asyncHandler(async (req: Request, res: Response) => 
       news,
       sentiment,
       macro,
+      financials: financials || { hasData: false },
       analyzedAt: new Date().toISOString(),
     },
   });
@@ -180,6 +235,558 @@ router.get('/top-trends', asyncHandler(async (req: Request, res: Response) => {
       trends,
       analyzedAt: new Date().toISOString(),
     },
+  });
+}));
+
+/**
+ * GET /api/analysis/forex/:symbol
+ * Análisis de impacto de divisas para un activo
+ */
+router.get('/forex/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const assetName = (req.query.name as string) || '';
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const forex = await forexService.analyzeForexImpact(symbol.toUpperCase(), assetName);
+
+  res.json({
+    success: true,
+    data: forex,
+  });
+}));
+
+/**
+ * GET /api/analysis/market-context
+ * Contexto actual del mercado global (correcciones, crashes, burbujas, etc.)
+ */
+router.get('/market-context', asyncHandler(async (req: Request, res: Response) => {
+  const forceRefresh = req.query.refresh === 'true';
+  
+  const context = await broadMarketContextService.getCurrentContext(forceRefresh);
+
+  res.json({
+    success: true,
+    data: context,
+  });
+}));
+
+/**
+ * GET /api/analysis/divergences/:symbol
+ * Detecta divergencias entre precio y indicadores técnicos (RSI, MACD, Stochastic)
+ * Usado por: Soros, Tudor Jones para detectar reversiones
+ */
+router.get('/divergences/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting divergences for ${symbol}`);
+  const divergences = await divergenceService.getDivergences(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: divergences,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * POST /api/analysis/risk-reward
+ * Calcula el Risk/Reward ratio para una operación
+ * Body: { symbol, entryPrice?, direction: 'long'|'short', winRate? }
+ */
+router.post('/risk-reward', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol, entryPrice, direction, atr, winRate } = req.body;
+  
+  if (!symbol || !direction) {
+    throw BadRequestError('Symbol and direction are required');
+  }
+
+  if (!['long', 'short'].includes(direction)) {
+    throw BadRequestError('Direction must be "long" or "short"');
+  }
+
+  logger.info(`[Analysis] Calculating R/R for ${symbol} ${direction}`);
+  
+  const analysis = await riskRewardService.calculate({
+    symbol: symbol.toUpperCase(),
+    entryPrice,
+    direction,
+    atr,
+    winRate,
+  });
+  
+  res.json({
+    success: true,
+    data: analysis,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/risk-reward/:symbol/:direction
+ * Versión GET simplificada del R/R
+ */
+router.get('/risk-reward/:symbol/:direction', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol, direction } = req.params;
+  
+  if (!['long', 'short'].includes(direction)) {
+    throw BadRequestError('Direction must be "long" or "short"');
+  }
+
+  logger.info(`[Analysis] Calculating R/R for ${symbol} ${direction}`);
+  
+  const analysis = await riskRewardService.calculate({
+    symbol: symbol.toUpperCase(),
+    direction: direction as 'long' | 'short',
+  });
+  
+  res.json({
+    success: true,
+    data: analysis,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/options-flow/:symbol
+ * Obtiene análisis de flujo de opciones (Put/Call ratio, IV, unusual activity)
+ * Usado por: Steve Cohen, James Simons para detectar movimientos institucionales
+ */
+router.get('/options-flow/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const currentPrice = req.query.price ? parseFloat(req.query.price as string) : undefined;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting options flow for ${symbol}`);
+  
+  // Si no tenemos precio, intentamos obtenerlo
+  let price = currentPrice || 100;
+  if (!currentPrice) {
+    try {
+      const quoteUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+      const quoteRes = await fetch(quoteUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(5000),
+      });
+      const quoteJson = await quoteRes.json() as any;
+      price = quoteJson.chart?.result?.[0]?.meta?.regularMarketPrice || 100;
+    } catch {
+      price = 100;
+    }
+  }
+  
+  const optionsFlow = await optionsFlowService.getOptionsFlow(symbol.toUpperCase(), price);
+  
+  res.json({
+    success: true,
+    data: optionsFlow,
+    currentPrice: price,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/trader-full/:symbol
+ * Análisis completo para traders de corto plazo: divergencias + R/R + options flow
+ * Inspirado en: Soros, Tudor Jones, Druckenmiller, Simons, Cohen, Livermore
+ */
+router.get('/trader-full/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const direction = (req.query.direction as 'long' | 'short') || 'long';
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Full trader analysis for ${symbol.toUpperCase()}`);
+
+  // Primero obtenemos el R/R para tener el precio
+  const riskReward = await riskRewardService.calculate({ symbol: symbol.toUpperCase(), direction });
+
+  // Luego ejecutar los otros análisis en paralelo
+  const [divergences, optionsFlow] = await Promise.all([
+    divergenceService.getDivergences(symbol.toUpperCase()),
+    optionsFlowService.getOptionsFlow(symbol.toUpperCase(), riskReward.entryPrice),
+  ]);
+
+  // Generar recomendación consolidada
+  const recommendation = generateConsolidatedRecommendation(
+    divergences,
+    riskReward,
+    optionsFlow,
+    direction
+  );
+
+  res.json({
+    success: true,
+    data: {
+      symbol: symbol.toUpperCase(),
+      direction,
+      divergences,
+      riskReward,
+      optionsFlow,
+      recommendation,
+    },
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * Genera una recomendación consolidada basada en todos los análisis
+ */
+function generateConsolidatedRecommendation(
+  divergences: any,
+  riskReward: any,
+  optionsFlow: any,
+  direction: 'long' | 'short'
+): {
+  action: 'strong_entry' | 'entry' | 'wait' | 'avoid';
+  confidence: number;
+  reasons: string[];
+  warnings: string[];
+} {
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+  let score = 50;
+
+  // Analizar divergencias
+  if (divergences.hasDivergence) {
+    if (divergences.type === 'bullish' && direction === 'long') {
+      score += 15;
+      reasons.push(`✅ Divergencia alcista en ${divergences.indicator} (fuerza: ${divergences.strength})`);
+    } else if (divergences.type === 'bearish' && direction === 'short') {
+      score += 15;
+      reasons.push(`✅ Divergencia bajista en ${divergences.indicator} (fuerza: ${divergences.strength})`);
+    } else if (divergences.hasDivergence) {
+      score -= 10;
+      warnings.push(`⚠️ Divergencia ${divergences.type} contradice dirección ${direction}`);
+    }
+  }
+
+  // Analizar Risk/Reward
+  if (riskReward.riskRewardRatio >= 3) {
+    score += 20;
+    reasons.push(`✅ Excelente R/R: ${riskReward.riskRewardRatio.toFixed(1)}:1`);
+  } else if (riskReward.riskRewardRatio >= 2) {
+    score += 10;
+    reasons.push(`✅ Buen R/R: ${riskReward.riskRewardRatio.toFixed(1)}:1`);
+  } else if (riskReward.riskRewardRatio < 1.5) {
+    score -= 15;
+    warnings.push(`⚠️ R/R bajo: ${riskReward.riskRewardRatio.toFixed(1)}:1`);
+  }
+
+  if (riskReward.tradeQuality === 'excellent') {
+    score += 10;
+  } else if (riskReward.tradeQuality === 'poor') {
+    score -= 10;
+    warnings.push('⚠️ Calidad de trade: pobre');
+  }
+
+  // Analizar Options Flow
+  if (optionsFlow.hasData) {
+    if (optionsFlow.overallSignal === 'bullish' && direction === 'long') {
+      score += 10;
+      reasons.push(`✅ Options flow alcista (P/C: ${optionsFlow.putCallRatio.toFixed(2)})`);
+    } else if (optionsFlow.overallSignal === 'bearish' && direction === 'short') {
+      score += 10;
+      reasons.push(`✅ Options flow bajista (P/C: ${optionsFlow.putCallRatio.toFixed(2)})`);
+    } else if (optionsFlow.overallSignal !== 'neutral') {
+      score -= 5;
+      warnings.push(`⚠️ Options flow ${optionsFlow.overallSignal} contradice dirección`);
+    }
+
+    if (optionsFlow.unusualActivity) {
+      reasons.push(`🔔 ${optionsFlow.unusualSignal}`);
+    }
+  }
+
+  // Determinar acción
+  let action: 'strong_entry' | 'entry' | 'wait' | 'avoid';
+  if (score >= 75) action = 'strong_entry';
+  else if (score >= 55) action = 'entry';
+  else if (score >= 40) action = 'wait';
+  else action = 'avoid';
+
+  if (riskReward.warnings) warnings.push(...riskReward.warnings);
+
+  return {
+    action,
+    confidence: Math.min(95, Math.max(20, score)),
+    reasons,
+    warnings,
+  };
+}
+
+/**
+ * GET /api/analysis/short-interest/:symbol
+ * Obtiene datos de short interest (% en cortos)
+ * Usado por: Steve Cohen
+ */
+router.get('/short-interest/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting short interest for ${symbol}`);
+  const shortInterest = await shortInterestService.getShortInterest(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: shortInterest,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/catalysts/:symbol
+ * Obtiene calendario de catalizadores (earnings, dividendos, etc.)
+ * Usado por: Steve Cohen, George Soros
+ */
+router.get('/catalysts/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting catalysts for ${symbol}`);
+  const catalysts = await catalystCalendarService.getCatalysts(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: catalysts,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/market-breadth
+ * Obtiene datos de market breadth (% subiendo vs bajando)
+ * Usado por: Paul Tudor Jones, George Soros
+ */
+router.get('/market-breadth', asyncHandler(async (req: Request, res: Response) => {
+  logger.info(`[Analysis] Getting market breadth`);
+  const breadth = await marketBreadthService.getMarketBreadth();
+  
+  res.json({
+    success: true,
+    data: breadth,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/cot/:symbol
+ * Obtiene datos COT (Commitment of Traders) de la CFTC
+ * Usado por: George Soros
+ */
+router.get('/cot/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting COT report for ${symbol}`);
+  const cot = await cotReportsService.getCOTReport(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: cot,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/volume-profile/:symbol
+ * Obtiene Volume Profile (POC, Value Area, HVN/LVN)
+ * Usado por: Paul Tudor Jones
+ */
+router.get('/volume-profile/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const period = (req.query.period as string) || '20d';
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting volume profile for ${symbol}`);
+  const profile = await volumeProfileService.getVolumeProfile(symbol.toUpperCase(), period);
+  
+  res.json({
+    success: true,
+    data: profile,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/intermarket
+ * Obtiene análisis intermarket (correlaciones, régimen risk-on/off)
+ * Usado por: Paul Tudor Jones, George Soros
+ */
+router.get('/intermarket', asyncHandler(async (req: Request, res: Response) => {
+  logger.info(`[Analysis] Getting intermarket analysis`);
+  const intermarket = await intermarketService.getIntermarketAnalysis();
+  
+  res.json({
+    success: true,
+    data: intermarket,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/volatility/:symbol
+ * Obtiene análisis de volatilidad (IV vs RV, percentiles)
+ * Usado por: Jim Simons
+ */
+router.get('/volatility/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting volatility analysis for ${symbol}`);
+  const volatility = await volatilityService.getVolatilityAnalysis(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: volatility,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/intraday-trend/:symbol
+ * Obtiene análisis de tendencia intradía (VWAP, pivots, momentum corto plazo)
+ */
+router.get('/intraday-trend/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting intraday trend for ${symbol}`);
+  const trend = await intradayTrendService.getIntradayTrend(symbol.toUpperCase());
+  
+  res.json({
+    success: true,
+    data: trend,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/sector-rotation
+ * Obtiene análisis de rotación sectorial (flujos de capital, régimen de mercado)
+ */
+router.get('/sector-rotation', asyncHandler(async (req: Request, res: Response) => {
+  logger.info(`[Analysis] Getting sector rotation analysis`);
+  const rotation = await sectorRotationService.getRotationAnalysis();
+  
+  res.json({
+    success: true,
+    data: rotation,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/sector-rotation/:symbol
+ * Obtiene sesgo de rotación para un símbolo específico
+ */
+router.get('/sector-rotation/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Getting sector rotation bias for ${symbol}`);
+  const bias = await sectorRotationService.getRotationBiasForSymbol(symbol.toUpperCase());
+  const fullAnalysis = await sectorRotationService.getRotationAnalysis();
+  
+  res.json({
+    success: true,
+    data: {
+      symbol: symbol.toUpperCase(),
+      rotationBias: bias,
+      marketRegime: fullAnalysis.marketRegime,
+      regimeStrength: fullAnalysis.regimeStrength,
+    },
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * POST /api/analysis/backtest
+ * Ejecuta un backtest completo
+ * Body: { symbol, startDate, endDate, timeframeDays, predictionThreshold, stopLoss?, takeProfit? }
+ */
+router.post('/backtest', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol, startDate, endDate, timeframeDays, predictionThreshold, stopLoss, takeProfit } = req.body;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  const config = {
+    symbol: symbol.toUpperCase(),
+    startDate: startDate ? new Date(startDate) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
+    endDate: endDate ? new Date(endDate) : new Date(),
+    timeframeDays: timeframeDays || 1,
+    predictionThreshold: predictionThreshold || 20,
+    stopLoss,
+    takeProfit,
+  };
+
+  logger.info(`[Analysis] Running backtest for ${symbol}`, config);
+  const result = await backtestingService.runBacktest(config);
+  
+  res.json({
+    success: true,
+    data: result,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+/**
+ * GET /api/analysis/backtest/quick/:symbol
+ * Backtest rápido con configuración por defecto
+ */
+router.get('/backtest/quick/:symbol', asyncHandler(async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const days = parseInt(req.query.days as string) || 90;
+  const timeframe = parseInt(req.query.timeframe as string) || 1;
+  
+  if (!symbol) {
+    throw BadRequestError('Symbol is required');
+  }
+
+  logger.info(`[Analysis] Quick backtest for ${symbol} (${days} days, ${timeframe}d timeframe)`);
+  const result = await backtestingService.quickBacktest(symbol.toUpperCase(), days, timeframe);
+  
+  res.json({
+    success: true,
+    data: {
+      symbol: symbol.toUpperCase(),
+      ...result,
+    },
+    timestamp: new Date().toISOString(),
   });
 }));
 

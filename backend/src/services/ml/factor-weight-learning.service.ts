@@ -20,10 +20,10 @@ const MIN_WEIGHT = 0.01;    // Peso mínimo por factor
 const MAX_WEIGHT = 0.35;    // Peso máximo por factor
 const MIN_SAMPLES_TO_LEARN = 5; // Mínimo de muestras para empezar a ajustar
 
-// Factores disponibles
+// Factores disponibles (9 factores - competitors y seasonality eliminados)
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'competitors', 'forex', 'institutional', 'seasonality',
+  'forex', 'institutional',
   'financials', 'expectations'
 ] as const;
 
@@ -65,19 +65,19 @@ const DEFAULT_WEIGHTS: WeightsData = {
   training_samples: 0,
   weights: {
     intraday: {
-      trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18, macro: 0.04,
-      competitors: 0.04, forex: 0.04, institutional: 0.05, seasonality: 0.02,
-      financials: 0.02, expectations: 0.01
+      trend: 0.225, technical: 0.275, sentiment: 0.165, news: 0.185, macro: 0.04,
+      forex: 0.04, institutional: 0.05,
+      financials: 0.01, expectations: 0.01
     },
     swing: {
-      trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15, macro: 0.08,
-      competitors: 0.07, forex: 0.06, institutional: 0.10, seasonality: 0.04,
+      trend: 0.145, technical: 0.21, sentiment: 0.115, news: 0.155, macro: 0.095,
+      forex: 0.065, institutional: 0.115,
       financials: 0.05, expectations: 0.05
     },
     long: {
-      trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08, macro: 0.12,
-      competitors: 0.10, forex: 0.08, institutional: 0.12, seasonality: 0.08,
-      financials: 0.13, expectations: 0.12
+      trend: 0.065, technical: 0.095, sentiment: 0.055, news: 0.095, macro: 0.15,
+      forex: 0.095, institutional: 0.15,
+      financials: 0.15, expectations: 0.13
     }
   },
   metadata: {

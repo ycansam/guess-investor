@@ -181,7 +181,7 @@ export const ALL_ASSETS: MarketAsset[] = [
   { symbol: '^GSPC', name: 'S&P 500', icon: '📈', type: 'index', category: 'index' },
   { symbol: '^DJI', name: 'Dow Jones', icon: '🏭', type: 'index', category: 'index' },
   { symbol: '^IXIC', name: 'Nasdaq', icon: '💻', type: 'index', category: 'index' },
-  { symbol: '^IBEX', name: 'IBEX 35', icon: '🇪🇸', type: 'index', category: 'index' },
+  { symbol: '^IBEX35', name: 'IBEX 35', icon: '🇪🇸', type: 'index', category: 'index' },
   { symbol: '^GDAXI', name: 'DAX', icon: '🇩🇪', type: 'index', category: 'index' },
   { symbol: '^FTSE', name: 'FTSE 100', icon: '🇬🇧', type: 'index', category: 'index' },
   { symbol: '^FCHI', name: 'CAC 40', icon: '🇫🇷', type: 'index', category: 'index' },
@@ -202,8 +202,11 @@ let dynamicAssets: MarketAsset[] | null = null;
 let dynamicAssetsTimestamp = 0;
 const ASSETS_CACHE_DURATION = 60 * 60 * 1000; // 1 hora para lista de activos
 
-// Tamaño de batch para paginación
-const BATCH_SIZE = 10;
+// Tamaño de batch para paginación (42 = 3 columnas x 14 filas en desktop)
+const BATCH_SIZE = 42;
+
+// Control de rate limiting para peticiones paralelas
+const MAX_CONCURRENT_REQUESTS = 15;
 
 class MarketDataService {
   private lastBatchFetch: number = 0;
@@ -460,6 +463,7 @@ class MarketDataService {
 
   /**
    * Obtiene activos paginados con datos de precios
+   * Usa el endpoint paginado del backend para soporte de infinite scroll
    * @param page - Número de página (1-indexed)
    * @param category - Categoría opcional para filtrar
    * @param searchQuery - Búsqueda opcional por nombre/símbolo
@@ -470,34 +474,133 @@ class MarketDataService {
     category?: AssetCategory,
     searchQuery?: string
   ): Promise<{ assets: MarketAsset[]; hasMore: boolean; total: number }> {
-    // Cargar activos dinámicamente desde backend
-    const allAssets = await this.getAssets();
-    
-    // Filtrar activos
-    let filteredAssets = [...allAssets];
-    
-    if (category) {
-      filteredAssets = filteredAssets.filter(a => a.category === category);
-    }
-    
-    if (searchQuery && searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filteredAssets = filteredAssets.filter(a => 
-        a.symbol.toLowerCase().includes(query) || 
-        a.name.toLowerCase().includes(query)
+    try {
+      // Usar el nuevo endpoint paginado del backend
+      const response = await apiClient.getAssetsPaginated(
+        page,
+        BATCH_SIZE,
+        category,
+        searchQuery
       );
+
+      // Convertir respuesta a formato MarketAsset
+      const pageAssets: MarketAsset[] = response.assets.map(a => ({
+        symbol: a.symbol,
+        name: a.name,
+        icon: a.icon,
+        type: this.mapAssetType(a.type),
+        category: a.category as AssetCategory,
+      }));
+
+      // Obtener precios para esta página
+      const assetsWithPrices = await this.fetchAssetsWithPrices(pageAssets);
+
+      console.log(`[MarketData] Page ${page}: ${assetsWithPrices.length} assets, hasMore: ${response.pagination.hasMore}, total: ${response.pagination.total}`);
+
+      return {
+        assets: assetsWithPrices,
+        hasMore: response.pagination.hasMore,
+        total: response.pagination.total,
+      };
+    } catch (error) {
+      console.warn('[MarketData] Backend pagination failed, falling back to local:', error);
+      
+      // Fallback: usar lista local si el backend falla
+      const allAssets = await this.getAssets();
+      let filteredAssets = [...allAssets];
+      
+      if (category) {
+        filteredAssets = filteredAssets.filter(a => a.category === category);
+      }
+      
+      if (searchQuery && searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        filteredAssets = filteredAssets.filter(a => 
+          a.symbol.toLowerCase().includes(query) || 
+          a.name.toLowerCase().includes(query)
+        );
+      }
+      
+      const total = filteredAssets.length;
+      const startIndex = (page - 1) * BATCH_SIZE;
+      const endIndex = startIndex + BATCH_SIZE;
+      const pageAssets = filteredAssets.slice(startIndex, endIndex);
+      const hasMore = endIndex < total;
+      
+      const assetsWithPrices = await this.fetchAssetsWithPrices(pageAssets);
+      
+      return { assets: assetsWithPrices, hasMore, total };
+    }
+  }
+
+  /**
+   * Obtiene icono según tipo de activo
+   */
+  private getIconForType(type: string): string {
+    const typeUpper = type.toUpperCase();
+    if (typeUpper === 'CRYPTOCURRENCY') return '₿';
+    if (typeUpper === 'ETF') return '📊';
+    if (typeUpper === 'INDEX') return '📈';
+    if (typeUpper === 'FUTURE' || typeUpper === 'FUTURES') return '📅';
+    if (typeUpper === 'CURRENCY' || typeUpper === 'FOREX') return '💱';
+    return '📈'; // Default stock
+  }
+
+  /**
+   * Mapea tipo de Yahoo a tipo interno
+   */
+  private mapAssetType(type: string): 'stock' | 'crypto' | 'etf' | 'index' {
+    const typeUpper = type.toUpperCase();
+    if (typeUpper === 'CRYPTOCURRENCY') return 'crypto';
+    if (typeUpper === 'ETF' || typeUpper === 'ETC') return 'etf';
+    if (typeUpper === 'INDEX' || typeUpper === 'FUTURE' || typeUpper === 'FUTURES') return 'index';
+    return 'stock';
+  }
+
+  /**
+   * Detecta categoría basándose en símbolo y tipo
+   */
+  private detectCategory(symbol: string, type: string): string {
+    const symbolUpper = symbol.toUpperCase();
+    const typeUpper = type.toUpperCase();
+    
+    // Crypto
+    if (typeUpper === 'CRYPTOCURRENCY' || symbolUpper.includes('-USD') || symbolUpper.includes('-EUR')) {
+      return 'crypto';
     }
     
-    const total = filteredAssets.length;
-    const startIndex = (page - 1) * BATCH_SIZE;
-    const endIndex = startIndex + BATCH_SIZE;
-    const pageAssets = filteredAssets.slice(startIndex, endIndex);
-    const hasMore = endIndex < total;
+    // Índices
+    if (typeUpper === 'INDEX' || symbolUpper.startsWith('^')) {
+      return 'index';
+    }
     
-    // Obtener precios para esta página
-    const assetsWithPrices = await this.fetchAssetsWithPrices(pageAssets);
+    // ETF
+    if (typeUpper === 'ETF' || typeUpper === 'ETC') {
+      return 'etf';
+    }
     
-    return { assets: assetsWithPrices, hasMore, total };
+    // Commodities (futuros y ETFs de materias primas)
+    if (symbolUpper.includes('GOLD') || symbolUpper.includes('GLD') || symbolUpper.includes('GC=') ||
+        symbolUpper.includes('SILVER') || symbolUpper.includes('SLV') || symbolUpper.includes('SI=') ||
+        symbolUpper.includes('OIL') || symbolUpper.includes('USO') || symbolUpper.includes('CL=') ||
+        symbolUpper.includes('NG=') || symbolUpper.endsWith('=F')) {
+      return 'commodities';
+    }
+    
+    // España (mercado continuo español)
+    if (symbolUpper.endsWith('.MC')) {
+      return 'spain';
+    }
+    
+    // Europa (otros mercados europeos)
+    if (symbolUpper.endsWith('.DE') || symbolUpper.endsWith('.PA') ||
+        symbolUpper.endsWith('.MI') || symbolUpper.endsWith('.AS') || symbolUpper.endsWith('.L') ||
+        symbolUpper.endsWith('.SW') || symbolUpper.endsWith('.BR')) {
+      return 'europe';
+    }
+    
+    // Default a tech_us para acciones USA
+    return 'tech_us';
   }
 
   /**
@@ -540,43 +643,81 @@ class MarketDataService {
 
   /**
    * Obtiene precios para una lista de activos
+   * Con control de rate limiting para evitar bloqueos de API
    */
   private async fetchAssetsWithPrices(assets: MarketAsset[]): Promise<MarketAsset[]> {
     const now = Date.now();
+    const results: MarketAsset[] = [];
     
-    const promises = assets.map(async (asset) => {
-      // Verificar cache primero
+    // Separar los que están en cache de los que necesitan fetch
+    const needsFetch: MarketAsset[] = [];
+    
+    for (const asset of assets) {
       const cached = marketCache.get(asset.symbol);
       if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-        return {
+        results.push({
           ...asset,
           price: cached.data.price,
           change: cached.data.change,
           changePercent: cached.data.changePercent,
           currency: cached.data.currency,
-        };
+        });
+      } else {
+        needsFetch.push(asset);
       }
-      
-      // Fetch nuevo
-      try {
-        const data = await this.getQuoteLite(asset.symbol);
-        if (data) {
-          return {
-            ...asset,
-            price: data.price,
-            change: data.change,
-            changePercent: data.changePercent,
-            currency: data.currency,
-          };
-        }
-      } catch (error) {
-        // Silenciar error individual
-      }
-      
-      return { ...asset, error: true };
-    });
+    }
     
-    return Promise.all(promises);
+    // Fetch con control de concurrencia
+    if (needsFetch.length > 0) {
+      const fetchResults = await this.fetchWithRateLimit(needsFetch);
+      results.push(...fetchResults);
+    }
+    
+    // Ordenar según el orden original
+    const symbolOrder = new Map(assets.map((a, i) => [a.symbol, i]));
+    results.sort((a, b) => (symbolOrder.get(a.symbol) ?? 0) - (symbolOrder.get(b.symbol) ?? 0));
+    
+    return results;
+  }
+  
+  /**
+   * Fetch con control de concurrencia para evitar rate limiting
+   */
+  private async fetchWithRateLimit(assets: MarketAsset[]): Promise<MarketAsset[]> {
+    const results: MarketAsset[] = [];
+    
+    // Procesar en chunks de MAX_CONCURRENT_REQUESTS
+    for (let i = 0; i < assets.length; i += MAX_CONCURRENT_REQUESTS) {
+      const chunk = assets.slice(i, i + MAX_CONCURRENT_REQUESTS);
+      
+      const chunkPromises = chunk.map(async (asset) => {
+        try {
+          const data = await this.getQuoteLite(asset.symbol);
+          if (data) {
+            return {
+              ...asset,
+              price: data.price,
+              change: data.change,
+              changePercent: data.changePercent,
+              currency: data.currency,
+            };
+          }
+        } catch (error) {
+          // Silenciar error individual
+        }
+        return { ...asset, error: true };
+      });
+      
+      const chunkResults = await Promise.all(chunkPromises);
+      results.push(...chunkResults);
+      
+      // Pequeña pausa entre chunks si hay más por procesar
+      if (i + MAX_CONCURRENT_REQUESTS < assets.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    return results;
   }
 
   /**

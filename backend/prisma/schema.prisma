@@ -21,6 +21,7 @@ model Prediction {
   assetType         String    // "stock" | "crypto" | "etf" | "commodity"
   timeframe         String    // "intraday" | "swing" | "longterm"
   timeframeDays     Int       @default(1) // Días hasta fecha objetivo
+  predictionType    String    @default("close") // "close" (cierre del día) | "open_next_day" (apertura del día siguiente)
   
   // Predicción
   direction         String    // "up" | "down" | "neutral"
@@ -84,6 +85,7 @@ model Prediction {
   @@index([verified])
   @@index([createdAt])
   @@index([symbol, timeframe])
+  @@index([symbol, predictionType])
   @@index([quality])
   @@index([usedForTraining])
 }
@@ -110,18 +112,17 @@ model Favorite {
 model LearnedWeights {
   id          String   @id @default(uuid())
   
-  // Pesos por factor (0-1)
-  trend       Float    @default(0.091)
-  technical   Float    @default(0.091)
-  sentiment   Float    @default(0.091)
-  news        Float    @default(0.091)
-  macro       Float    @default(0.091)
-  competitors Float    @default(0.091)
-  forex       Float    @default(0.091)
-  institutional Float  @default(0.091)
-  seasonality Float    @default(0.091)
-  financials  Float    @default(0.091)
-  expectations Float   @default(0.091)
+  // Pesos por factor (0-1) - 9 factores activos
+  trend       Float    @default(0.111)
+  technical   Float    @default(0.111)
+  sentiment   Float    @default(0.111)
+  news        Float    @default(0.111)
+  macro       Float    @default(0.111)
+  forex       Float    @default(0.111)
+  institutional Float  @default(0.111)
+  seasonality Float    @default(0.02)   // Solo para activos cíclicos
+  financials  Float    @default(0.111)
+  expectations Float   @default(0.000)  // deprecated
   
   // Metadata
   version     Int      @default(1)
@@ -270,4 +271,90 @@ model MLModelState {
   
   @@unique([modelType, version])
   @@index([modelType])
+}
+
+// ============================================================================
+// PRICE ALERTS - Alertas de precio
+// ============================================================================
+
+model PriceAlert {
+  id                    String    @id @default(uuid())
+  symbol                String
+  assetName             String
+  
+  // Condición de alerta
+  targetPrice           Float     @default(0) // 0 si se usa percentChange
+  percentChange         Float?    // % de cambio para disparar
+  condition             String    // "above" | "below"
+  currentPriceAtCreation Float    // Precio cuando se creó la alerta
+  
+  // Estado
+  isActive              Boolean   @default(true)
+  isTriggered           Boolean   @default(false)
+  triggeredAt           DateTime?
+  triggeredPrice        Float?
+  
+  // Metadata
+  note                  String?
+  createdAt             DateTime  @default(now())
+  expiresAt             DateTime?
+  
+  @@index([symbol])
+  @@index([isActive])
+  @@index([isTriggered])
+}
+
+// ============================================================================
+// INVESTMENT NOTES - Notas y apuntes de inversión
+// ============================================================================
+
+model InvestmentNote {
+  id        String   @id @default(uuid())
+  symbol    String   @unique
+  note      String   // Nota de texto libre
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([symbol])
+}
+
+// ============================================================================
+// PORTFOLIO POSITIONS - Posiciones del portfolio
+// ============================================================================
+
+model PortfolioPosition {
+  id          String   @id @default(uuid())
+  symbol      String   @unique
+  name        String
+  assetType   String   // "stock" | "crypto" | "etf" | "commodity"
+  shares      Float
+  avgCost     Float
+  currency    String   @default("EUR")
+  notes       String?
+  targetPrice Float?
+  stopLoss    Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([symbol])
+}
+
+// ============================================================================
+// PORTFOLIO TRANSACTIONS - Historial de transacciones
+// ============================================================================
+
+model PortfolioTransaction {
+  id          String   @id @default(uuid())
+  symbol      String
+  type        String   // "buy" | "sell"
+  shares      Float
+  price       Float
+  totalAmount Float
+  currency    String   @default("EUR")
+  commission  Float?
+  notes       String?
+  executedAt  DateTime @default(now())
+  
+  @@index([symbol])
+  @@index([executedAt])
 }

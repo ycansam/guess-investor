@@ -10,6 +10,16 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#2e2e2e',
   },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuButton: {
+    padding: 8,
+    marginRight: 8,
+    borderRadius: 8,
+    backgroundColor: '#252525',
+  },
   titleContainer: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,4 +1,6 @@
-export * from './competitors.service.js';
+export * from './broad-market-context.service.js';
+// Calendar Effects eliminado - el efecto lunes es casi mito
+// Competitors eliminado - no añade señal limpia, mejor usar ETF sectorial o momentum relativo
 export * from './corporate-events.service.js';
 export * from './cot-report.service.js';
 export * from './dark-pools.service.js';
@@ -8,11 +10,15 @@ export * from './fear-greed.service.js';
 export * from './financials.service.js';
 export * from './finviz.service.js';
 export * from './forex.service.js';
+export * from './geopolitical-events.service.js';
 export * from './institutional.service.js';
 export * from './macro.service.js';
+export * from './market-hours.service.js';
+export * from './market-psychology.service.js';
 export * from './market-regime.service.js';
 export * from './news.service.js';
 export * from './options.service.js';
+export * from './precious-metals-usd.service.js';
 export * from './python-training.service.js';
 export * from './seasonality.service.js';
 export * from './sentiment.service.js';

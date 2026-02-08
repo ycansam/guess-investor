@@ -17,14 +17,16 @@ import {
     View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
+import { InvestorInfoCard } from '../../components/investor-info-card';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
 import { PredictionHistoryCard } from '../../components/prediction-history';
-import { TrendsModal } from '../../components/trends-modal';
-import { apiClient, CalculatedPrediction, TrendAnalysis } from '../../services/api-client';
+import { TraderAnalysisCard } from '../../components/TraderAnalysisCard';
+import { apiClient, CalculatedPrediction } from '../../services/api-client';
 import { currencyService } from '../../services/currency-service';
+import { getMarketHours } from '../../services/market-hours-service';
 import { predictionTrackingService } from '../../services/prediction-tracking-service';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
-import { AssetType, InvestmentPrediction } from '../../types';
+import { AssetType, InvestmentPrediction, InvestorInfo } from '../../types';
 
 // Tipos de timeframe para el gráfico
 type ChartTimeframe = 'intraday' | 'swing' | 'longterm';
@@ -36,6 +38,7 @@ interface ChartDataPoint {
   dataPointText?: string;
   timestamp?: number; // Unix timestamp para el tooltip
   isPrediction?: boolean; // Para diferenciar datos históricos de predicción
+  isOpenNextDay?: boolean; // Para diferenciar predicción de cierre vs apertura
 }
 
 interface AssetData {
@@ -339,7 +342,6 @@ function toInvestmentPrediction(
         competitors: calc.competitors,
         forex: calc.forex,
         institutional: calc.institutional,
-        seasonality: calc.seasonality,
         technicalAnalysis: calc.technicalAnalysis,
         factorBreakdown: calc.factorBreakdown,
         audit: calc.audit,
@@ -380,7 +382,6 @@ function toInvestmentPrediction(
         competitors: ad.competitors,
         forex: ad.forex,
         institutional: ad.institutional,
-        seasonality: ad.seasonality,
         technicalAnalysis: ad.technicalAnalysis,
         factorBreakdown: ad.factorBreakdown,
         audit: ad.audit,
@@ -413,9 +414,11 @@ export default function AssetDetailScreen() {
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [predictionData, setPredictionData] = useState<ChartDataPoint[]>([]);
   // predictionMeta ahora solo guarda timestamps - los precios se calculan dinámicamente
+  // Incluye tanto el cierre del día como la apertura del día siguiente
   const [predictionMeta, setPredictionMeta] = useState<{
     startTimestamp: number;
-    endTimestamp: number;
+    endTimestamp: number;         // Cierre del día actual
+    openNextDayTimestamp: number; // Apertura del día siguiente
   } | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<ChartTimeframe>('intraday');
   const [longtermHistoryRange, setLongtermHistoryRange] = useState<'1m' | '3m'>('1m');
@@ -429,11 +432,9 @@ export default function AssetDetailScreen() {
   // Modo de vista: 'chart' (con predicción), 'history' (solo histórico), 'table'
   const [viewMode, setViewMode] = useState<'chart' | 'history' | 'table'>('chart');
   
-  // Estado para el modal de tendencias
-  const [showTrendsModal, setShowTrendsModal] = useState(false);
-  const [trendsData, setTrendsData] = useState<TrendAnalysis | null>(null);
-  const [trendsLoading, setTrendsLoading] = useState(false);
-  const [trendsError, setTrendsError] = useState<string | null>(null);
+  // Estado para información de inversores
+  const [investorInfo, setInvestorInfo] = useState<InvestorInfo | null>(null);
+  const [investorInfoLoading, setInvestorInfoLoading] = useState(false);
   
   // Estado para la clasificación del activo (ML)
   const [assetClassification, setAssetClassification] = useState<{
@@ -735,33 +736,134 @@ export default function AssetDetailScreen() {
         }
 
         // Crear puntos de predicción como línea superpuesta
-        // La predicción comienza desde el último dato histórico hasta las 17:30 del día de vencimiento
+        // La predicción comienza desde el último dato histórico hasta el cierre del mercado del día de vencimiento
         const predPoints: ChartDataPoint[] = [];
         const steps = 10;
-        const msPerDay = 24 * 60 * 60 * 1000;
         
         // IMPORTANTE: Usar el último timestamp del histórico, NO Date.now()
         // Esto es crucial cuando hay gaps (fines de semana, festivos)
         const startTime = lastTimestamp || Date.now();
         
-        // Calcular el endTime como las 17:30 del día de vencimiento
-        // Si estamos en fin de semana, ajustar al próximo día hábil
-        let endDate = new Date(startTime + predictionDays * msPerDay);
+        // Obtener el horario de cierre correcto para este activo
+        // ETCs de commodities (EGLN.L, PHAG.MI, etc.) cierran ~22:00-23:00
+        // Acciones europeas cierran ~17:30, US ~21:00 UTC, etc.
+        const marketHours = getMarketHours(symbol, assetData?.name);
         
-        // Ajustar si cae en fin de semana (para stocks)
-        const dayOfWeek = endDate.getDay();
-        if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1); // Domingo → Lunes
-        if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2); // Sábado → Lunes
+        // Para mercados con horario extendido (commodities, forex), no ajustar fines de semana igual
+        const isExtendedHours = marketHours.hasExtendedHours && 
+          (marketHours.regularHours.includes('24') || marketHours.regularHours.includes('Casi'));
         
-        endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
+        // Parsear el horario de cierre del mercado (hora local España)
+        // regularHours puede ser "9:00 - 17:30" o "Casi 24h · Cierra Vie ~23:00 🇪🇸"
+        let closeHour = 17;
+        let closeMinute = 30;
+        
+        if (isExtendedHours) {
+          // Para commodities/forex, usar 23:00 hora España (que es lo que muestra el UI)
+          closeHour = 23;
+          closeMinute = 0;
+        } else if (marketHours.regularHours.includes(' - ')) {
+          // Formato "HH:MM - HH:MM" → extraer la hora de cierre
+          const closeMatch = marketHours.regularHours.match(/- (\d+):(\d+)/);
+          if (closeMatch) {
+            closeHour = parseInt(closeMatch[1], 10);
+            closeMinute = parseInt(closeMatch[2], 10);
+          }
+        }
+        
+        // Calcular el endTime usando el horario de cierre específico del mercado
+        // Para intradía: si no ha pasado el cierre de HOY, usar HOY; si ya pasó, usar MAÑANA
+        const now = new Date();
+        let endDate: Date;
+        
+        if (predictionDays === 1) {
+          // Intradía: calcular si expira hoy o mañana basándose en la hora actual
+          endDate = new Date(now);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+          
+          // Si ya pasó el cierre de hoy, expira mañana
+          if (now.getTime() >= endDate.getTime()) {
+            endDate.setDate(endDate.getDate() + 1);
+          }
+          
+          // Ajustar fines de semana para stocks regulares
+          if (!isExtendedHours) {
+            const dayOfWeek = endDate.getDay();
+            if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1); // Domingo → Lunes
+            if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2); // Sábado → Lunes
+          }
+        } else {
+          // Multi-día: sumar días desde el inicio
+          const msPerDay = 24 * 60 * 60 * 1000;
+          endDate = new Date(startTime + predictionDays * msPerDay);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+          
+          // Ajustar fines de semana para stocks regulares
+          if (!isExtendedHours) {
+            const dayOfWeek = endDate.getDay();
+            if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1);
+            if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2);
+          }
+        }
+        
+        // DEBUG: Log para verificar el cálculo
+        console.log('[Prediction] Market hours calculation:', {
+          symbol,
+          marketHours: marketHours.regularHours,
+          isExtendedHours,
+          closeHour,
+          closeMinute,
+          predictionDays,
+          endDate: endDate.toLocaleString(),
+        });
         const endTime = endDate.getTime();
         const totalMs = endTime - startTime;
 
-        // Guardar metadata de la predicción - SOLO timestamps
+        // Calcular la hora de apertura del día siguiente
+        // Para stocks: 9:00 (España) / 15:30 (US)
+        // Para commodities/forex: ~00:00 del día siguiente (casi 24h)
+        let openNextDayDate = new Date(endDate);
+        openNextDayDate.setDate(openNextDayDate.getDate() + 1); // Día siguiente
+        
+        // Parsear hora de apertura
+        let openHour = 7;
+        let openMinute = 30;
+        
+        if (isExtendedHours) {
+          // Trade Republic: ETCs/Commodities abren a las 7:30 hora España
+          openHour = 7;
+          openMinute = 30;
+        } else if (marketHours.regularHours.includes(' - ')) {
+          // Formato "HH:MM - HH:MM" → extraer la hora de apertura
+          // Pero para Trade Republic, siempre es 7:30
+          openHour = 7;
+          openMinute = 30;
+        }
+        
+        openNextDayDate.setHours(openHour, openMinute, 0, 0);
+        
+        // Ajustar fines de semana para la apertura
+        if (!isExtendedHours) {
+          const dayOfWeek = openNextDayDate.getDay();
+          if (dayOfWeek === 0) openNextDayDate.setDate(openNextDayDate.getDate() + 1); // Domingo → Lunes
+          if (dayOfWeek === 6) openNextDayDate.setDate(openNextDayDate.getDate() + 2); // Sábado → Lunes
+        }
+        
+        const openNextDayTime = openNextDayDate.getTime();
+        
+        console.log('[Prediction] Open next day calculation:', {
+          endDate: endDate.toLocaleString(),
+          openNextDayDate: openNextDayDate.toLocaleString(),
+          openHour,
+          openMinute,
+        });
+
+        // Guardar metadata de la predicción - timestamps para cierre y apertura
         // Los precios se calculan dinámicamente en los useMemo
         setPredictionMeta({
           startTimestamp: startTime,
           endTimestamp: endTime,
+          openNextDayTimestamp: openNextDayTime,
         });
 
         for (let i = 0; i <= steps; i++) {
@@ -791,6 +893,31 @@ export default function AssetDetailScreen() {
   useEffect(() => {
     loadAssetData();
   }, [loadAssetData]);
+
+  // Cargar información para inversores (earnings, dividendos, valoración)
+  useEffect(() => {
+    const loadInvestorInfo = async () => {
+      if (!symbol) return;
+      
+      // No cargar para cryptos
+      if (symbol.includes('-USD') || symbol.includes('-EUR')) {
+        setInvestorInfo(null);
+        return;
+      }
+
+      setInvestorInfoLoading(true);
+      try {
+        const info = await apiClient.getInvestorInfo(symbol);
+        setInvestorInfo(info);
+      } catch (error) {
+        console.log('[AssetDetail] Investor info not available:', error);
+        setInvestorInfo(null);
+      }
+      setInvestorInfoLoading(false);
+    };
+
+    loadInvestorInfo();
+  }, [symbol]);
 
   useEffect(() => {
     loadChartData();
@@ -877,9 +1004,64 @@ export default function AssetDetailScreen() {
         const graphStartTime = lastTimestamp || createdAtTime; // Usar timestamp del último dato histórico
         const msPerDay = 24 * 60 * 60 * 1000;
         
-        // Calcular el endTime como las 17:30 del día de vencimiento (desde la creación original)
-        const endDate = new Date(createdAtTime + predictionDays * msPerDay);
-        endDate.setHours(17, 30, 0, 0); // Fijar a las 17:30
+        // Obtener el horario de cierre correcto para este activo
+        const marketHours = getMarketHours(symbol, assetData?.name);
+        const isExtendedHours = marketHours.hasExtendedHours && 
+          (marketHours.regularHours.includes('24') || marketHours.regularHours.includes('Casi'));
+        
+        // Parsear el horario de cierre del mercado (hora local España)
+        let closeHour = 17;
+        let closeMinute = 30;
+        
+        if (isExtendedHours) {
+          // Para commodities/forex, usar 23:00 hora España
+          closeHour = 23;
+          closeMinute = 0;
+        } else if (marketHours.regularHours.includes(' - ')) {
+          const closeMatch = marketHours.regularHours.match(/- (\d+):(\d+)/);
+          if (closeMatch) {
+            closeHour = parseInt(closeMatch[1], 10);
+            closeMinute = parseInt(closeMatch[2], 10);
+          }
+        }
+        
+        // Calcular el endTime usando el horario de cierre específico del mercado
+        // Para intradía: si no ha pasado el cierre de HOY, usar HOY; si ya pasó, usar MAÑANA
+        const now = new Date();
+        let endDate: Date;
+        
+        if (predictionDays === 1) {
+          // Intradía: calcular si expira hoy o mañana basándose en la hora actual
+          endDate = new Date(now);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+          
+          // Si ya pasó el cierre de hoy, expira mañana
+          if (now.getTime() >= endDate.getTime()) {
+            endDate.setDate(endDate.getDate() + 1);
+          }
+          
+          // Ajustar fines de semana para stocks regulares
+          if (!isExtendedHours) {
+            const dayOfWeek = endDate.getDay();
+            if (dayOfWeek === 0) endDate.setDate(endDate.getDate() + 1); // Domingo → Lunes
+            if (dayOfWeek === 6) endDate.setDate(endDate.getDate() + 2); // Sábado → Lunes
+          }
+        } else {
+          // Multi-día: sumar días desde la creación
+          endDate = new Date(createdAtTime + predictionDays * msPerDay);
+          endDate.setHours(closeHour, closeMinute, 0, 0);
+        }
+        
+        // DEBUG: Log para verificar el cálculo
+        console.log('[Prediction Cached] Market hours calculation:', {
+          symbol,
+          marketHours: marketHours.regularHours,
+          isExtendedHours,
+          closeHour,
+          closeMinute,
+          endDate: endDate.toLocaleString(),
+        });
+        
         const predictionEndTime = endDate.getTime();
         
         // Guardar metadata de la predicción - SOLO timestamps, los precios se calculan dinámicamente
@@ -955,24 +1137,6 @@ export default function AssetDetailScreen() {
     }
   }, [router]);
 
-  // Cargar tendencias del activo
-  const loadTrends = useCallback(async () => {
-    if (!symbol) return;
-    
-    setTrendsLoading(true);
-    setTrendsError(null);
-    setShowTrendsModal(true);
-    
-    try {
-      const trends = await apiClient.getTrends(symbol);
-      setTrendsData(trends);
-    } catch (error) {
-      console.error('[AssetDetail] Error loading trends:', error);
-      setTrendsError('No se pudieron cargar las tendencias');
-    }
-    setTrendsLoading(false);
-  }, [symbol]);
-
   const chartWidth = width - 64;
   const chartAreaWidth = chartWidth - 70; // Ancho útil del gráfico (menos ejes y padding)
 
@@ -1032,6 +1196,7 @@ export default function AssetDetailScreen() {
   }, [chartData.length, chartAreaWidth]);
 
   // Solo datos históricos para la línea principal (filtrados)
+  // Extender hasta la hora actual si el mercado está abierto y no tenemos datos recientes
   const mainChartData = useMemo(() => {
     const filtered = chartData.filter(d => 
       d.value !== undefined && 
@@ -1040,19 +1205,101 @@ export default function AssetDetailScreen() {
       isFinite(d.value)
     );
     
+    if (filtered.length === 0 || selectedTimeframe !== 'intraday') {
+      return filtered;
+    }
+    
+    // Obtener hora de cierre según el tipo de activo
+    const marketHours = getMarketHours(symbol);
+    const now = new Date();
+    const lastDataPoint = filtered[filtered.length - 1];
+    const lastDataTime = new Date(lastDataPoint.timestamp);
+    
+    // Calcular la hora de cierre de hoy
+    const closeHour = marketHours.extendedHours ? 23 : 17;
+    const closeMinute = marketHours.extendedHours ? 0 : 30;
+    const marketCloseToday = new Date(now);
+    marketCloseToday.setHours(closeHour, closeMinute, 0, 0);
+    
+    // Si el último dato es de hoy y hay un gap hasta la hora actual (o cierre),
+    // extender la línea histórica con el último precio conocido
+    const isToday = lastDataTime.toDateString() === now.toDateString();
+    const timeSinceLastData = now.getTime() - lastDataTime.getTime();
+    const minGapMs = 30 * 60 * 1000; // 30 minutos mínimo de gap
+    
+    // Determinar hasta dónde extender: la hora actual o el cierre del mercado (lo que sea menor)
+    const extendUntil = now < marketCloseToday ? now : marketCloseToday;
+    
+    if (isToday && timeSinceLastData > minGapMs && extendUntil > lastDataTime) {
+      // Calcular intervalo promedio entre puntos
+      const prevPoint = filtered.length > 1 ? filtered[filtered.length - 2] : null;
+      const intervalMs = prevPoint ? (lastDataTime.getTime() - prevPoint.timestamp) : (5 * 60 * 1000);
+      
+      // Calcular cuántos puntos de extensión necesitamos
+      const gapMs = extendUntil.getTime() - lastDataTime.getTime();
+      const extensionPoints = Math.ceil(gapMs / intervalMs);
+      
+      // Crear puntos de extensión
+      const extended = [...filtered];
+      const lastHistoricValue = lastDataPoint.value;
+      
+      // Usar el precio actual en tiempo real para el último punto (si está disponible)
+      // currentPrice ya está en EUR (convertido por eurExchangeRate)
+      const currentPrice = assetData?.price 
+        ? assetData.price * (eurExchangeRate || 1) 
+        : lastHistoricValue;
+      
+      for (let i = 1; i <= Math.min(extensionPoints, 50); i++) {
+        const pointTime = new Date(lastDataTime.getTime() + (intervalMs * i));
+        
+        // No extender más allá del cierre del mercado
+        if (pointTime > marketCloseToday) break;
+        
+        const isLastExtensionPoint = i === Math.min(extensionPoints, 50) || pointTime >= extendUntil;
+        
+        // Interpolar entre el último valor histórico y el precio actual
+        const progress = i / Math.min(extensionPoints, 50);
+        const interpolatedValue = lastHistoricValue + (currentPrice - lastHistoricValue) * progress;
+        
+        // Añadir label solo en el último punto de extensión
+        let label = '';
+        if (isLastExtensionPoint) {
+          label = `${pointTime.getHours()}:${pointTime.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
+        extended.push({
+          value: isLastExtensionPoint ? currentPrice : interpolatedValue,
+          label,
+          timestamp: pointTime.getTime(),
+          isPrediction: false,
+        });
+      }
+      
+      console.log('[Chart DEBUG] Extended mainChartData with real-time price:', {
+        originalPoints: filtered.length,
+        extendedPoints: extended.length,
+        lastHistoricValue,
+        currentPrice,
+        lastOriginal: lastDataTime.toLocaleString(),
+        lastExtended: new Date(extended[extended.length - 1]?.timestamp).toLocaleString(),
+        marketClose: `${closeHour}:${closeMinute.toString().padStart(2, '0')}`,
+      });
+      
+      return extended;
+    }
+    
     // DEBUG: Log de mainChartData
-    if (filtered.length > 0 && selectedTimeframe === 'intraday') {
+    if (filtered.length > 0) {
       console.log('[Chart DEBUG] mainChartData:', {
         points: filtered.length,
         firstDate: new Date(filtered[0]?.timestamp).toLocaleString(),
         lastDate: new Date(filtered[filtered.length - 1]?.timestamp).toLocaleString(),
         uniqueDays: [...new Set(filtered.map(p => new Date(p.timestamp).toDateString()))],
-        labels: filtered.filter(p => p.label).map(p => ({ label: p.label, date: new Date(p.timestamp).toLocaleString() })),
       });
     }
     
     return filtered;
-  }, [chartData, selectedTimeframe]);
+  }, [chartData, selectedTimeframe, symbol, assetData?.price, eurExchangeRate]);
 
   // Calcular posición X y datos para la línea de predicción superpuesta
   const predictionOverlay = useMemo(() => {
@@ -1114,59 +1361,54 @@ export default function AssetDetailScreen() {
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
     
-    // Calcular predictionEndTime basado en el ÚLTIMO punto del histórico, no en predictionMeta
-    // Esto es crucial para que la línea de predicción conecte correctamente
-    if (predictionMeta && mainChartData.length > 0) {
-      const lastHistoricTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || Date.now();
-      
-      // Calcular la duración de la predicción en ms
-      const predictionDurationMs = predictionMeta.endTimestamp - predictionMeta.startTimestamp;
-      
-      // El nuevo endTime es el último histórico + la duración de la predicción
-      const adjustedPredEnd = lastHistoricTimestamp + predictionDurationMs;
-      
+    // Usar directamente predictionMeta.endTimestamp que ya tiene la hora de cierre correcta
+    // (23:00 para commodities, 17:30 para stocks regulares, etc.)
+    if (predictionMeta) {
+      console.log('[Chart] predictionEndTime from predictionMeta:', {
+        endTimestamp: predictionMeta.endTimestamp,
+        endTimestampDate: new Date(predictionMeta.endTimestamp).toLocaleString(),
+        startTimestamp: predictionMeta.startTimestamp,
+        startTimestampDate: new Date(predictionMeta.startTimestamp).toLocaleString(),
+      });
       return {
         endOfToday: endOfDay.getTime(),
-        predictionEndTime: adjustedPredEnd,
+        predictionEndTime: predictionMeta.endTimestamp,
       };
     }
     
     // Fallback si no hay datos
-    const predEnd = predictionMeta?.endTimestamp || endOfDay.getTime();
-    
     return {
       endOfToday: endOfDay.getTime(),
-      predictionEndTime: predEnd,
+      predictionEndTime: endOfDay.getTime(),
     };
-  }, [predictionMeta, mainChartData]);
+  }, [predictionMeta]);
 
-  // Calcular puntos extra para predicción y extensión del gráfico
-  const { predictionPoints, extensionPoints } = useMemo(() => {
-    if (mainChartData.length < 2) return { predictionPoints: 0, extensionPoints: 0 };
+  // Calcular puntos extra para predicción hasta la APERTURA del día siguiente
+  const predictionPoints = useMemo(() => {
+    if (mainChartData.length < 2) return 0;
     
     // Calcular el intervalo de tiempo entre puntos del histórico
     const lastTimestamp = mainChartData[mainChartData.length - 1]?.timestamp || 0;
     const prevTimestamp = mainChartData[mainChartData.length - 2]?.timestamp || 0;
     const intervalMs = lastTimestamp - prevTimestamp;
     
-    if (intervalMs <= 0) return { predictionPoints: 0, extensionPoints: 0 };
+    if (intervalMs <= 0) return 0;
     
-    // Puntos para la predicción (desde ahora hasta las 17:30 del vencimiento)
-    const msToPredEnd = predictionEndTime - lastTimestamp;
-    
-    // Si la predicción ya expiró (hora pasada), no mostrar puntos de predicción
-    if (msToPredEnd <= 0 || !predictionMeta) {
-      return { predictionPoints: 0, extensionPoints: 0 };
+    // SOLO predicción hasta la APERTURA del día siguiente (no cierre)
+    if (!predictionMeta) {
+      return 0;
     }
     
-    const predPts = Math.max(2, Math.ceil(msToPredEnd / intervalMs));
+    // Calcular puntos desde ahora hasta la apertura del día siguiente
+    const msToOpenNextDay = predictionMeta.openNextDayTimestamp - lastTimestamp;
     
-    // Ya no extendemos el gráfico hasta las 23:59, termina en la predicción
-    return {
-      predictionPoints: Math.min(predPts, 30),
-      extensionPoints: 0, // Sin puntos de extensión
-    };
-  }, [predictionMeta, mainChartData, endOfToday, predictionEndTime]);
+    if (msToOpenNextDay <= 0) {
+      return 0;
+    }
+    
+    // 10 puntos para la línea hasta apertura del día siguiente
+    return 10;
+  }, [predictionMeta, mainChartData]);
 
   // Datos del gráfico: histórico + predicción (null) + extensión (null)
   const chartDataWithExtra = useMemo(() => {
@@ -1182,29 +1424,34 @@ export default function AssetDetailScreen() {
     const predictedChange = prediction?.change || 0;
     const targetPrice = startPrice * (1 + predictedChange / 100);
     
-    // Calcular intervalo entre puntos
-    const prevTimestamp = mainChartData.length > 1 ? mainChartData[mainChartData.length - 2]?.timestamp : lastTimestamp;
-    const intervalMs = lastTimestamp - (prevTimestamp || lastTimestamp) || 3600000;
-    
     let result = [...mainChartData];
     
-    // Añadir puntos para la predicción (con valores interpolados para el tooltip)
+    // Añadir puntos para la predicción hasta la APERTURA del día siguiente
     if (predictionMeta && predictionPoints > 0) {
-      const predDuration = predictionEndTime - lastTimestamp;
+      // Duración desde ahora hasta la apertura del día siguiente
+      const predDuration = predictionMeta.openNextDayTimestamp - lastTimestamp;
+      
       // Empezamos desde i=0 para que conecte con el histórico (primer punto = startPrice)
       for (let i = 0; i <= predictionPoints; i++) {
         const progress = i / predictionPoints;
         const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
+        const pointTimestamp = lastTimestamp + (predDuration * progress);
+        
+        // Solo label en el último punto (apertura del día siguiente)
+        let label = '';
+        if (i === predictionPoints) {
+          const pointDate = new Date(pointTimestamp);
+          label = `${pointDate.getDate()}/${pointDate.getMonth() + 1} ${pointDate.getHours()}:${pointDate.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
         result.push({
-          value: interpolatedValue, // Valor real para tooltip
-          label: '',
-          timestamp: lastTimestamp + (predDuration * progress),
+          value: interpolatedValue,
+          label,
+          timestamp: pointTimestamp,
           isPrediction: true,
         });
       }
     }
-    
-    // Ya no añadimos puntos de extensión
     
     // DEBUG: Log de chartDataWithExtra
     if (selectedTimeframe === 'intraday' && result.length > 0) {
@@ -1213,16 +1460,16 @@ export default function AssetDetailScreen() {
       console.log('[Chart DEBUG] chartDataWithExtra:', {
         totalPoints: result.length,
         historicPoints: historicPoints.length,
-        predictionPoints: predictionPts.length,
+        predictionPointsCount: predictionPts.length,
         lastHistoric: historicPoints.length > 0 ? new Date(historicPoints[historicPoints.length - 1]?.timestamp).toLocaleString() : null,
         firstPrediction: predictionPts.length > 0 ? new Date(predictionPts[0]?.timestamp).toLocaleString() : null,
         lastPrediction: predictionPts.length > 0 ? new Date(predictionPts[predictionPts.length - 1]?.timestamp).toLocaleString() : null,
-        predictionEndTime: new Date(predictionEndTime).toLocaleString(),
+        openNextDayTime: predictionMeta ? new Date(predictionMeta.openNextDayTimestamp).toLocaleString() : null,
       });
     }
     
     return result;
-  }, [mainChartData, predictionMeta, predictionPoints, extensionPoints, predictionEndTime, endOfToday, prediction, lastPriceForPrediction]);
+  }, [mainChartData, predictionMeta, predictionPoints, prediction, lastPriceForPrediction]);
 
   // Calcular spacing basado en el total de puntos para que quepa en pantalla
   const chartSpacing = useMemo(() => {
@@ -1232,7 +1479,7 @@ export default function AssetDetailScreen() {
     return isNaN(spacing) || !isFinite(spacing) ? 3 : spacing;
   }, [chartDataWithExtra.length, chartAreaWidth]);
 
-  // Datos para data2: histórico copiado + predicción interpolada + extensión null
+  // Datos para data2: histórico copiado + predicción hasta apertura del día siguiente
   const predictionLineData = useMemo(() => {
     if (!predictionMeta || mainChartData.length === 0 || !prediction) return null;
     
@@ -1248,47 +1495,35 @@ export default function AssetDetailScreen() {
       value: point.value,
     }));
     
-    // Añadir puntos interpolados para la predicción (hasta las 17:30)
-    // Empezamos desde i=0 para que el primer punto tenga el mismo valor que el histórico
-    // y la línea conecte visualmente sin gap
+    // Añadir puntos interpolados para la predicción hasta APERTURA del día siguiente
     for (let i = 0; i <= predictionPoints; i++) {
       const progress = i / predictionPoints;
       const interpolatedValue = startPrice + (targetPrice - startPrice) * progress;
       data2.push({ value: interpolatedValue });
     }
     
-    // Añadir puntos null para la extensión hasta las 23:59 (invisibles)
-    for (let i = 0; i < extensionPoints; i++) {
-      data2.push({ value: null });
-    }
-    
     return data2;
-  }, [predictionMeta, mainChartData, predictionPoints, extensionPoints, prediction, lastPriceForPrediction]);
+  }, [predictionMeta, mainChartData, predictionPoints, prediction, lastPriceForPrediction]);
 
-  // Segmentos de color para data2: transparente histórico, morado predicción, transparente extensión
+  // Segmentos de color para data2: transparente histórico, naranja predicción apertura
   const predictionLineSegments = useMemo(() => {
     if (!mainChartData.length || !predictionMeta) return undefined;
     
     const lastHistoricIndex = mainChartData.length - 1;
-    // Ahora tenemos predictionPoints + 1 puntos (de i=0 a i=predictionPoints inclusive)
     const lastPredictionIndex = lastHistoricIndex + predictionPoints + 1;
-    const lastExtensionIndex = lastPredictionIndex + extensionPoints;
     
     return [
       // Histórico: transparente (se superpone con la línea verde)
       { startIndex: 0, endIndex: lastHistoricIndex, color: 'transparent' },
-      // Predicción: morado (desde hora actual hasta 17:30)
-      { startIndex: lastHistoricIndex, endIndex: lastPredictionIndex, color: '#818cf8' },
-      // Extensión: transparente (desde 17:30 hasta 23:59)
-      { startIndex: lastPredictionIndex, endIndex: lastExtensionIndex, color: 'transparent' },
+      // Predicción apertura: naranja (desde ahora hasta apertura del día siguiente)
+      { startIndex: lastHistoricIndex, endIndex: lastPredictionIndex, color: '#f97316' },
     ];
-  }, [mainChartData.length, predictionPoints, extensionPoints, predictionMeta]);
+  }, [mainChartData.length, predictionPoints, predictionMeta]);
 
   // Segmentos para la línea principal: verde solo hasta el histórico, luego transparente
   const mainLineSegments = useMemo(() => {
     const lastHistoricIndex = mainChartData.length - 1;
-    // Ahora tenemos predictionPoints + 1 puntos de predicción
-    const totalPoints = mainChartData.length + predictionPoints + 1 + extensionPoints;
+    const totalPoints = mainChartData.length + predictionPoints + 1;
     
     if (lastHistoricIndex < 0) return undefined;
     
@@ -1298,7 +1533,7 @@ export default function AssetDetailScreen() {
       // Resto: transparente
       { startIndex: lastHistoricIndex, endIndex: totalPoints - 1, color: 'transparent' },
     ];
-  }, [mainChartData.length, predictionPoints, extensionPoints]);
+  }, [mainChartData.length, predictionPoints]);
 
   // Formatear precio para tooltip
   const formatPrice = (value: number | undefined): string => {
@@ -1704,6 +1939,9 @@ export default function AssetDetailScreen() {
                         timeStr = `${hours}:${minutes}`;
                       }
                       
+                      // Determinar el label según el tipo de punto
+                      const predLabel = isPred ? ' (Apertura)' : '';
+                      
                       return (
                         <View style={{
                           backgroundColor: '#1e1e2e',
@@ -1711,13 +1949,13 @@ export default function AssetDetailScreen() {
                           paddingVertical: 8,
                           borderRadius: 8,
                           borderWidth: 1,
-                          borderColor: isPred ? '#818cf8' : '#6366f1',
+                          borderColor: isPred ? '#f97316' : '#6366f1',
                           minWidth: 100,
                           alignItems: 'center',
                         }}>
                           {dateStr ? (
                             <Text style={{ color: '#9ca3af', fontSize: 11, marginBottom: 2 }}>
-                              {dateStr} {timeStr}{isPred ? ' (Pred)' : ''}
+                              {dateStr} {timeStr}{predLabel}
                             </Text>
                           ) : null}
                           <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
@@ -1738,16 +1976,11 @@ export default function AssetDetailScreen() {
                 </View>
                 {predictionMeta && mainChartData.length > 0 && (
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendColor, { backgroundColor: '#818cf8' }]} />
+                    <View style={[styles.legendColor, { backgroundColor: '#f97316' }]} />
                     <Text style={styles.legendText}>
-                      Predicción ({(() => {
-                        // Usar el último timestamp del histórico como inicio visual
-                        const lastHistoric = mainChartData[mainChartData.length - 1]?.timestamp || predictionMeta.startTimestamp;
-                        const duration = predictionMeta.endTimestamp - predictionMeta.startTimestamp;
-                        const visualEndTime = lastHistoric + duration;
-                        const startDate = new Date(lastHistoric).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' });
-                        const endDate = new Date(visualEndTime).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' });
-                        return `${startDate} → ${endDate}`;
+                      Apertura ({(() => {
+                        const openDate = new Date(predictionMeta.openNextDayTimestamp);
+                        return `${openDate.getDate()}/${openDate.getMonth() + 1} ${openDate.getHours()}:${openDate.getMinutes().toString().padStart(2, '0')}`;
                       })()})
                     </Text>
                   </View>
@@ -1812,12 +2045,25 @@ export default function AssetDetailScreen() {
           <WeightsDropdown factorBreakdown={fullPrediction.analysisData.factorBreakdown} />
         )}
 
-        {/* Botón de Tendencias */}
-        <TouchableOpacity style={styles.trendsButton} onPress={loadTrends}>
-          <Ionicons name="trending-up" size={20} color="#fff" />
-          <Text style={styles.trendsButtonText}>Ver Tendencias</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-        </TouchableOpacity>
+        {/* Análisis Trader Pro (Divergencias, R/R, Options Flow) */}
+        {symbol && (
+          <View style={styles.traderAnalysisContainer}>
+            <TraderAnalysisCard symbol={symbol} />
+          </View>
+        )}
+
+        {/* Información para Inversores (earnings, dividendos, valoración) */}
+        {investorInfoLoading ? (
+          <View style={styles.investorInfoLoading}>
+            <ActivityIndicator size="small" color="#6366f1" />
+            <Text style={styles.investorInfoLoadingText}>Cargando info inversor...</Text>
+          </View>
+        ) : investorInfo ? (
+          <View style={styles.investorInfoContainer}>
+            <Text style={styles.investorInfoTitle}>📊 Información para Inversores</Text>
+            <InvestorInfoCard info={investorInfo} currency="EUR" />
+          </View>
+        ) : null}
 
         {/* Análisis detallado de la predicción */}
         {fullPrediction && fullPrediction.analysisData && (
@@ -1836,15 +2082,6 @@ export default function AssetDetailScreen() {
         {/* Espaciado inferior */}
         <View style={{ height: 40 }} />
       </ScrollView>
-
-      {/* Modal de Tendencias */}
-      <TrendsModal
-        visible={showTrendsModal}
-        onClose={() => setShowTrendsModal(false)}
-        trends={trendsData}
-        loading={trendsLoading}
-        error={trendsError}
-      />
     </View>
   );
 }
@@ -2058,6 +2295,29 @@ const styles = StyleSheet.create({
   analysisContainer: {
     marginTop: 16,
   },
+  traderAnalysisContainer: {
+    marginTop: 16,
+  },
+  investorInfoContainer: {
+    marginTop: 16,
+  },
+  investorInfoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  investorInfoLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 8,
+  },
+  investorInfoLoadingText: {
+    color: '#9ca3af',
+    fontSize: 13,
+  },
   historyContainer: {
     marginTop: 16,
   },
@@ -2093,24 +2353,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     textTransform: 'uppercase',
-  },
-  trendsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#1a1a2e',
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#6366f1',
-  },
-  trendsButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-    flex: 1,
   },
   // Estilos para toggle gráfico/tabla
   viewToggle: {

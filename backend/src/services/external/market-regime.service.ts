@@ -25,7 +25,7 @@ export type MarketRegime =
 // Factores
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'competitors', 'forex', 'institutional', 'seasonality',
+  'competitors', 'forex', 'institutional',
   'financials', 'expectations'
 ] as const;
 
@@ -57,104 +57,104 @@ export interface RegimeDetection {
 const DEFAULT_REGIME_WEIGHTS: Record<MarketRegime, Record<Timeframe, WeightsMap>> = {
   bull_quiet: {
     intraday: {
-      trend: 0.20, technical: 0.22, sentiment: 0.12, news: 0.15,
+      trend: 0.21, technical: 0.23, sentiment: 0.13, news: 0.16,
       macro: 0.06, competitors: 0.06, forex: 0.05, institutional: 0.06,
-      seasonality: 0.03, financials: 0.03, expectations: 0.02
+      financials: 0.03, expectations: 0.01
     },
     swing: {
-      trend: 0.15, technical: 0.18, sentiment: 0.10, news: 0.12,
+      trend: 0.16, technical: 0.19, sentiment: 0.11, news: 0.13,
       macro: 0.10, competitors: 0.08, forex: 0.06, institutional: 0.08,
-      seasonality: 0.04, financials: 0.05, expectations: 0.04
+      financials: 0.05, expectations: 0.04
     },
     long: {
-      trend: 0.08, technical: 0.10, sentiment: 0.05, news: 0.08,
-      macro: 0.14, competitors: 0.10, forex: 0.08, institutional: 0.12,
-      seasonality: 0.06, financials: 0.10, expectations: 0.09
+      trend: 0.08, technical: 0.11, sentiment: 0.06, news: 0.09,
+      macro: 0.15, competitors: 0.10, forex: 0.08, institutional: 0.13,
+      financials: 0.11, expectations: 0.09
     },
   },
   bull_euphoria: {
     intraday: {
-      trend: 0.28, technical: 0.25, sentiment: 0.20, news: 0.12,
+      trend: 0.29, technical: 0.26, sentiment: 0.21, news: 0.12,
       macro: 0.02, competitors: 0.03, forex: 0.02, institutional: 0.04,
-      seasonality: 0.01, financials: 0.01, expectations: 0.02
+      financials: 0.00, expectations: 0.01
     },
     swing: {
-      trend: 0.25, technical: 0.22, sentiment: 0.18, news: 0.14,
+      trend: 0.26, technical: 0.23, sentiment: 0.19, news: 0.15,
       macro: 0.03, competitors: 0.04, forex: 0.03, institutional: 0.05,
-      seasonality: 0.02, financials: 0.02, expectations: 0.02
+      financials: 0.01, expectations: 0.01
     },
     long: {
-      trend: 0.20, technical: 0.18, sentiment: 0.15, news: 0.12,
+      trend: 0.21, technical: 0.19, sentiment: 0.16, news: 0.13,
       macro: 0.05, competitors: 0.06, forex: 0.04, institutional: 0.08,
-      seasonality: 0.03, financials: 0.04, expectations: 0.05
+      financials: 0.04, expectations: 0.04
     },
   },
   bear_panic: {
     intraday: {
-      trend: 0.15, technical: 0.20, sentiment: 0.12, news: 0.18,
+      trend: 0.16, technical: 0.21, sentiment: 0.13, news: 0.19,
       macro: 0.08, competitors: 0.03, forex: 0.04, institutional: 0.12,
-      seasonality: 0.02, financials: 0.02, expectations: 0.04
+      financials: 0.02, expectations: 0.02
     },
     swing: {
-      trend: 0.12, technical: 0.16, sentiment: 0.10, news: 0.15,
+      trend: 0.13, technical: 0.17, sentiment: 0.11, news: 0.16,
       macro: 0.12, competitors: 0.04, forex: 0.05, institutional: 0.15,
-      seasonality: 0.02, financials: 0.04, expectations: 0.05
+      financials: 0.04, expectations: 0.03
     },
     long: {
-      trend: 0.08, technical: 0.10, sentiment: 0.06, news: 0.10,
-      macro: 0.16, competitors: 0.06, forex: 0.06, institutional: 0.18,
-      seasonality: 0.04, financials: 0.08, expectations: 0.08
+      trend: 0.09, technical: 0.11, sentiment: 0.07, news: 0.11,
+      macro: 0.17, competitors: 0.06, forex: 0.06, institutional: 0.18,
+      financials: 0.09, expectations: 0.06
     },
   },
   bear_orderly: {
     intraday: {
-      trend: 0.18, technical: 0.24, sentiment: 0.10, news: 0.14,
+      trend: 0.19, technical: 0.25, sentiment: 0.11, news: 0.15,
       macro: 0.08, competitors: 0.05, forex: 0.05, institutional: 0.08,
-      seasonality: 0.02, financials: 0.03, expectations: 0.03
+      financials: 0.03, expectations: 0.01
     },
     swing: {
-      trend: 0.14, technical: 0.20, sentiment: 0.08, news: 0.12,
+      trend: 0.15, technical: 0.21, sentiment: 0.09, news: 0.13,
       macro: 0.12, competitors: 0.06, forex: 0.06, institutional: 0.10,
-      seasonality: 0.03, financials: 0.05, expectations: 0.04
+      financials: 0.05, expectations: 0.03
     },
     long: {
-      trend: 0.10, technical: 0.12, sentiment: 0.05, news: 0.08,
-      macro: 0.16, competitors: 0.08, forex: 0.08, institutional: 0.14,
-      seasonality: 0.04, financials: 0.08, expectations: 0.07
+      trend: 0.11, technical: 0.13, sentiment: 0.06, news: 0.09,
+      macro: 0.17, competitors: 0.08, forex: 0.08, institutional: 0.14,
+      financials: 0.09, expectations: 0.05
     },
   },
   sideways_choppy: {
     intraday: {
-      trend: 0.10, technical: 0.28, sentiment: 0.12, news: 0.12,
+      trend: 0.11, technical: 0.30, sentiment: 0.13, news: 0.13,
       macro: 0.06, competitors: 0.08, forex: 0.06, institutional: 0.08,
-      seasonality: 0.04, financials: 0.03, expectations: 0.03
+      financials: 0.03, expectations: 0.02
     },
     swing: {
-      trend: 0.08, technical: 0.25, sentiment: 0.10, news: 0.10,
+      trend: 0.09, technical: 0.27, sentiment: 0.11, news: 0.11,
       macro: 0.10, competitors: 0.10, forex: 0.07, institutional: 0.08,
-      seasonality: 0.04, financials: 0.04, expectations: 0.04
+      financials: 0.04, expectations: 0.03
     },
     long: {
-      trend: 0.06, technical: 0.15, sentiment: 0.06, news: 0.08,
-      macro: 0.14, competitors: 0.12, forex: 0.08, institutional: 0.12,
-      seasonality: 0.05, financials: 0.08, expectations: 0.06
+      trend: 0.07, technical: 0.16, sentiment: 0.07, news: 0.09,
+      macro: 0.15, competitors: 0.12, forex: 0.08, institutional: 0.12,
+      financials: 0.09, expectations: 0.05
     },
   },
   recovery: {
     intraday: {
-      trend: 0.22, technical: 0.20, sentiment: 0.14, news: 0.12,
+      trend: 0.23, technical: 0.21, sentiment: 0.15, news: 0.13,
       macro: 0.06, competitors: 0.05, forex: 0.04, institutional: 0.10,
-      seasonality: 0.02, financials: 0.02, expectations: 0.03
+      financials: 0.02, expectations: 0.01
     },
     swing: {
-      trend: 0.18, technical: 0.18, sentiment: 0.12, news: 0.10,
+      trend: 0.19, technical: 0.19, sentiment: 0.13, news: 0.11,
       macro: 0.10, competitors: 0.06, forex: 0.05, institutional: 0.12,
-      seasonality: 0.03, financials: 0.03, expectations: 0.03
+      financials: 0.03, expectations: 0.02
     },
     long: {
-      trend: 0.12, technical: 0.12, sentiment: 0.08, news: 0.08,
-      macro: 0.14, competitors: 0.08, forex: 0.06, institutional: 0.14,
-      seasonality: 0.04, financials: 0.08, expectations: 0.06
+      trend: 0.13, technical: 0.13, sentiment: 0.09, news: 0.09,
+      macro: 0.15, competitors: 0.08, forex: 0.06, institutional: 0.14,
+      financials: 0.09, expectations: 0.04
     },
   },
 };

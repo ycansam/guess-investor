@@ -8,7 +8,7 @@
  * 3. Regime: Pesos según régimen de mercado
  * 4. Momentum: Modelo que prioriza tendencia y técnico
  * 5. MeanReversion: Modelo contrarian para reversiones
- * 6. Fundamental: Modelo que prioriza financials, expectations, macro
+ * 6. Fundamental: Modelo que prioriza financials, macro, institutional
  * 7. Sentiment: Modelo que prioriza sentiment y news
  * 
  * SELECCIÓN DINÁMICA: El ensemble activa/desactiva modelos según los datos disponibles.
@@ -19,11 +19,10 @@ import { logger } from '../../middleware/logger.js';
 import { trainingRepository } from '../../repositories/training.repository.js';
 import { pythonMlService, type AssetProfile } from '../ml/python-ml.service.js';
 
-// Factores de análisis (debe coincidir con los del sistema)
+// Factores de análisis (8 factores - competitors, expectations y seasonality eliminados)
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'competitors', 'forex', 'institutional', 'seasonality',
-  'financials', 'expectations'
+  'forex', 'institutional', 'financials'
 ] as const;
 
 type Factor = typeof FACTORS[number];
@@ -44,12 +43,9 @@ export interface DataAvailability {
   sentiment: boolean;
   news: boolean;
   macro: boolean;
-  competitors: boolean;
   forex: boolean;
   institutional: boolean;
-  seasonality: boolean;
   financials: boolean;
-  expectations: boolean;
 }
 
 /**
@@ -101,56 +97,57 @@ export type MarketRegime = 'trending_up' | 'trending_down' | 'high_volatility' |
  * Pesos fijos para modelo Momentum (prioriza tendencia)
  */
 const MOMENTUM_WEIGHTS: WeightsMap = {
-  trend: 0.30, technical: 0.28, sentiment: 0.15, news: 0.10,
-  macro: 0.02, competitors: 0.03, forex: 0.02, institutional: 0.04,
-  seasonality: 0.02, financials: 0.02, expectations: 0.02
+  trend: 0.34, technical: 0.32, sentiment: 0.16, news: 0.10,
+  macro: 0.02, forex: 0.02, institutional: 0.04,
+  financials: 0.00
 };
 
 /**
  * Pesos fijos para modelo Mean Reversion (contrarian)
  */
 const MEAN_REVERSION_WEIGHTS: WeightsMap = {
-  trend: 0.05, technical: 0.35, sentiment: 0.08, news: 0.05,
-  macro: 0.10, competitors: 0.08, forex: 0.05, institutional: 0.10,
-  seasonality: 0.04, financials: 0.05, expectations: 0.05
+  trend: 0.05, technical: 0.40, sentiment: 0.12, news: 0.06,
+  macro: 0.12, forex: 0.05, institutional: 0.13,
+  financials: 0.07
 };
 
 /**
  * Pesos fijos para modelo Fundamental (prioriza análisis fundamental)
+ * expectations absorbido en financials y news
  */
 const FUNDAMENTAL_WEIGHTS: WeightsMap = {
-  trend: 0.05, technical: 0.05, sentiment: 0.05, news: 0.08,
-  macro: 0.18, competitors: 0.12, forex: 0.07, institutional: 0.10,
-  seasonality: 0.05, financials: 0.15, expectations: 0.10
+  trend: 0.05, technical: 0.05, sentiment: 0.05, news: 0.15,
+  macro: 0.25, forex: 0.08, institutional: 0.12,
+  financials: 0.25
 };
 
 /**
  * Pesos fijos para modelo Sentiment-Driven (prioriza sentiment y news)
  */
 const SENTIMENT_DRIVEN_WEIGHTS: WeightsMap = {
-  trend: 0.10, technical: 0.10, sentiment: 0.30, news: 0.25,
-  macro: 0.05, competitors: 0.05, forex: 0.03, institutional: 0.05,
-  seasonality: 0.02, financials: 0.02, expectations: 0.03
+  trend: 0.10, technical: 0.10, sentiment: 0.34, news: 0.31,
+  macro: 0.05, forex: 0.03, institutional: 0.05,
+  financials: 0.02
 };
 
 /**
- * Pesos base globales por timeframe
+ * Pesos base globales por timeframe (9 factores)
  */
 const DEFAULT_GLOBAL_WEIGHTS: Record<Timeframe, WeightsMap> = {
   intraday: {
-    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.18,
-    macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
-    seasonality: 0.02, financials: 0.02, expectations: 0.01
+    trend: 0.23, technical: 0.28, sentiment: 0.17, news: 0.19,
+    macro: 0.04, forex: 0.04, institutional: 0.05,
+    financials: 0.00
   },
   swing: {
-    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
-    macro: 0.08, competitors: 0.07, forex: 0.06, institutional: 0.10,
-    seasonality: 0.04, financials: 0.05, expectations: 0.05
+    trend: 0.14, technical: 0.23, sentiment: 0.12, news: 0.18,
+    macro: 0.09, forex: 0.06, institutional: 0.11,
+    financials: 0.07
   },
   long: {
-    trend: 0.05, technical: 0.08, sentiment: 0.04, news: 0.08,
-    macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
-    seasonality: 0.08, financials: 0.13, expectations: 0.12
+    trend: 0.06, technical: 0.09, sentiment: 0.05, news: 0.12,
+    macro: 0.16, forex: 0.08, institutional: 0.14,
+    financials: 0.30
   }
 };
 
@@ -168,10 +165,10 @@ const REGIME_WEIGHTS: Record<MarketRegime, Partial<WeightsMap>> = {
     technical: 0.30, sentiment: 0.20, news: 0.15,
   },
   low_volatility: {
-    financials: 0.20, macro: 0.15, expectations: 0.15,
+    financials: 0.30, macro: 0.20, institutional: 0.15,
   },
   ranging: {
-    technical: 0.25, sentiment: 0.15, competitors: 0.10,
+    technical: 0.28, sentiment: 0.18,
   }
 };
 
@@ -219,7 +216,7 @@ const MODEL_DATA_REQUIREMENTS: Record<ModelType, { required: Factor[]; preferred
   },
   fundamental: {
     required: ['financials'],
-    preferred: ['macro', 'expectations', 'competitors', 'institutional'],
+    preferred: ['macro', 'institutional', 'news'], // news absorbe analyst expectations
     minRequired: 2, // financials + at least 1 preferred
   },
   sentiment_driven: {
@@ -363,9 +360,9 @@ export const ensembleService = {
     
     // Contar factores disponibles por categoría
     const hasTechnicalData = availability.trend || availability.technical;
-    const hasFundamentalData = availability.financials || availability.macro || availability.expectations;
+    const hasFundamentalData = availability.financials || availability.macro || availability.institutional;
     const hasSentimentData = availability.sentiment || availability.news;
-    const hasAlternativeData = availability.institutional || availability.competitors || availability.forex;
+    const hasAlternativeData = availability.institutional || availability.forex;
     
     const totalFactors = Object.values(availability).filter(Boolean).length;
     
@@ -783,7 +780,7 @@ export const ensembleService = {
     report += '  regime: Ajustado al régimen de mercado actual\n';
     report += '  momentum: Prioriza trend y análisis técnico\n';
     report += '  mean_reversion: Contrarian, busca reversiones\n';
-    report += '  fundamental: Prioriza financials, macro, expectations\n';
+    report += '  fundamental: Prioriza financials, macro, institutional\n';
     report += '  sentiment_driven: Prioriza sentiment y noticias\n';
     
     report += '\nSELECCIÓN DINÁMICA:\n';

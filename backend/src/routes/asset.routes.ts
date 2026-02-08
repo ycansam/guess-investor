@@ -6,6 +6,9 @@ const router = Router();
 // GET /api/assets - Lista completa de activos
 router.get('/', assetController.getAll);
 
+// GET /api/assets/paginated - Lista paginada de activos
+router.get('/paginated', assetController.getPaginated);
+
 // GET /api/assets/search?q=AAPL
 router.get('/search', assetController.search);
 
@@ -20,6 +23,9 @@ router.get('/:symbol/quote', assetController.getQuote);
 
 // GET /api/assets/:symbol/history?range=1mo&interval=1d
 router.get('/:symbol/history', assetController.getHistory);
+
+// GET /api/assets/:symbol/investor-info - Información detallada para inversores
+router.get('/:symbol/investor-info', assetController.getInvestorInfo);
 
 // DELETE /api/assets/:symbol/cache - Limpiar caché de un símbolo
 router.delete('/:symbol/cache', assetController.clearCache);

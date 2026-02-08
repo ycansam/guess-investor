@@ -1,16 +1,31 @@
 # Guess Investor - App React Native
 
-**Última actualización:** 22 de enero de 2026  
-**Versión:** 1.5.0
+**Última actualización:** 8 de febrero de 2026  
+**Versión:** 1.6.0
 
 Aplicación móvil de predicción de inversiones construida con [Expo](https://expo.dev) y React Native.
 
-## 🆕 Novedades v1.5.0
+## 🆕 Novedades v1.6.0
 
-- **Classifier Learning**: El sistema ML aprende de predicciones verificadas
-- **UI Simplificada**: Eliminados selectores de categorías (Tech USA, Crypto, España)
-- **factorBreakdown Fix**: Los datos de factores se guardan correctamente para entrenamiento
-- **Multiplicadores Dinámicos**: Ajuste automático de pesos por grupo de activo
+### 📊 UX Desktop
+- **Paginación desktop**: Carga 42 activos por página (grid 3x14)
+- **Filtrado inteligente**: Los activos sin datos de precio válido no se muestran
+- **Scroll infinito mejorado**: Debounce de 300ms y throttling optimizado
+- **Footer informativo**: Muestra progreso de carga (ej: 42/523)
+
+### 🧠 ML Diagnostics
+- **Classifier samples actualizados**: Commodity muestra 107 muestras (antes 15)
+- **Mejor detección**: 50+ commodity ETFs detectados correctamente
+
+## 🆕 Novedades v2.0.0
+
+- **Risk Filter UI**: Muestra advertencias de abstención
+- **14 Factores**: 8 tradicionales + 6 intradía (trend, technical, sentiment, news, macro, forex, institutional, financials, intradayTrend, optionsFlow, volumeProfile, divergences, volatilityIV, marketBreadth)
+- **Intervalos de Confianza**: Visualización de CI 50/80/95%
+- **Commodity ETFs**: Detección automática y sincronización con futuro base
+- **Forex mejorado**: 50+ exchanges con indicadores de riesgo
+
+> **Eliminados**: Seasonality, Competitors, Expectations (ruido sin valor predictivo)
 
 ## 🚀 Get Started
 
@@ -57,28 +72,38 @@ code/
 │   ├── predictions-list/    # Lista de predicciones
 │   ├── top-trends/          # Tendencias del mercado
 │   ├── ml-diagnostics-modal/    # Diagnóstico de ML
-│   ├── TrackingStatsCard.tsx    # Estadísticas de tracking
+│   ├── risk-filter/         # Visualización Risk Filter
 │   └── _shared/             # Componentes compartidos
 ├── services/                # Servicios y lógica
 │   ├── api-client.ts        # Cliente API del backend
 │   ├── ai-service.ts        # Servicio de predicciones IA
 │   ├── market-data-service.ts   # Datos de mercado
-│   ├── training-cache-service.ts # Cache de predicciones
 │   └── favorites-service-v2.ts  # Gestión de favoritos
 ├── store/                   # Estado global (Zustand)
 │   └── prediction-store.ts
 ├── types/                   # Tipos TypeScript
 └── config/                  # Configuración
-    └── learned_weights.json # Pesos aprendidos
 ```
 
 ## 📱 Pestañas
 
 | Tab | Descripción |
 |-----|-------------|
-| **Predicciones** | Lista de activos con predicciones, filtros de ordenamiento y timeframe |
+| **Predicciones** | Lista de activos con predicciones y filtros |
 | **Favoritos** | Activos guardados para acceso rápido |
 | **Tendencias** | Top gainers, losers y rachas del mercado |
+
+## 🎯 Datos de Predicción
+
+La app muestra para cada activo:
+
+- **Dirección**: UP / DOWN / NEUTRAL con emoji
+- **Cambio esperado**: Porcentaje predicho
+- **Confianza**: 0-100% con color coding
+- **Recomendación**: strong_buy, buy, hold, sell, etc.
+- **Risk Filter**: Advertencia si shouldAbstain=true
+- **Factor Breakdown**: Puntuación de cada factor
+- **Intervalos de confianza**: 50%, 80%, 95%
 
 ## 🔗 Conexión con Backend
 
@@ -97,6 +122,18 @@ npm start
 
 # Build para Android
 npx expo build:android
+
+# Build para iOS
+npx expo build:ios
+```
+
+## 📊 Timeframes
+
+| Timeframe | Descripción |
+|-----------|-------------|
+| **Intraday** | Predicción para cierre del día |
+| **Swing** | 2-7 días |
+| **Long** | >7 días |
 
 # Build para iOS
 npx expo build:ios

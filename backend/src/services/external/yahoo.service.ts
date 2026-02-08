@@ -346,29 +346,229 @@ export const yahooService = {
   },
 
   /**
-   * Buscar símbolos
+   * Buscar símbolos - Búsqueda mejorada con múltiples fuentes externas
    */
-  async search(query: string): Promise<Array<{ symbol: string; name: string; type: string }>> {
-    try {
-      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-        },
-      });
+  async search(query: string): Promise<Array<{ symbol: string; name: string; type: string; exchange?: string }>> {
+    const results: Array<{ symbol: string; name: string; type: string; exchange?: string }> = [];
+    const seenSymbols = new Set<string>();
 
-      if (!response.ok) return [];
+    // Función helper para añadir resultados sin duplicados
+    const addResults = (items: Array<{ symbol: string; name: string; type: string; exchange?: string }>) => {
+      for (const item of items) {
+        const key = item.symbol.toUpperCase();
+        if (!seenSymbols.has(key)) {
+          seenSymbols.add(key);
+          results.push(item);
+        }
+      }
+    };
 
-      const json: any = await response.json();
-      return (json.quotes || []).map((q: { symbol: string; shortname?: string; longname?: string; quoteType?: string }) => ({
-        symbol: q.symbol,
-        name: q.shortname || q.longname || q.symbol,
-        type: q.quoteType || 'unknown',
-      }));
-    } catch {
-      return [];
+    // Ejecutar búsquedas en paralelo para mayor velocidad
+    const searchPromises: Promise<void>[] = [];
+
+    // 1. Búsqueda principal en Yahoo Finance (aumentado a 25 resultados)
+    searchPromises.push((async () => {
+      try {
+        const yahooUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=25&newsCount=0&enableFuzzyQuery=true&quotesQueryId=tss_match_phrase_query`;
+        
+        const yahooResponse = await fetch(yahooUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (yahooResponse.ok) {
+          const json: any = await yahooResponse.json();
+          const yahooResults = (json.quotes || []).map((q: any) => ({
+            symbol: q.symbol,
+            name: q.shortname || q.longname || q.symbol,
+            type: q.quoteType || 'unknown',
+            exchange: q.exchange || q.exchDisp,
+          }));
+          addResults(yahooResults);
+          logger.debug(`[Yahoo Search] Found ${yahooResults.length} results for "${query}"`);
+        }
+      } catch (error) {
+        logger.warn(`[Yahoo Search] Primary search failed: ${error}`);
+      }
+    })());
+
+    // 2. Búsqueda alternativa con Yahoo autosuggest
+    searchPromises.push((async () => {
+      try {
+        const suggestUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=20&newsCount=0&listsCount=0`;
+        
+        const suggestResponse = await fetch(suggestUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (suggestResponse.ok) {
+          const json: any = await suggestResponse.json();
+          const suggestResults = (json.quotes || []).map((q: any) => ({
+            symbol: q.symbol,
+            name: q.shortname || q.longname || q.symbol,
+            type: q.quoteType || 'unknown',
+            exchange: q.exchange || q.exchDisp,
+          }));
+          addResults(suggestResults);
+        }
+      } catch {
+        // Silently fail
+      }
+    })());
+
+    // 3. Financial Modeling Prep - Búsqueda por símbolo (API gratuita)
+    searchPromises.push((async () => {
+      try {
+        // FMP tiene un tier gratuito con límite de requests
+        const fmpUrl = `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(query)}&limit=20`;
+        
+        const fmpResponse = await fetch(fmpUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+          signal: AbortSignal.timeout(4000),
+        });
+
+        if (fmpResponse.ok) {
+          const fmpData: any = await fmpResponse.json();
+          if (Array.isArray(fmpData)) {
+            const fmpResults = fmpData.map((item: any) => ({
+              symbol: item.symbol,
+              name: item.name || item.symbol,
+              type: item.stockExchange?.includes('ETF') ? 'ETF' : 'EQUITY',
+              exchange: item.stockExchange || item.exchangeShortName,
+            }));
+            addResults(fmpResults);
+            logger.debug(`[FMP Search] Found ${fmpResults.length} results for "${query}"`);
+          }
+        }
+      } catch (error) {
+        logger.debug(`[FMP Search] Failed (may need API key): ${error}`);
+      }
+    })());
+
+    // 4. Alpha Vantage Symbol Search (tier gratuito limitado)
+    searchPromises.push((async () => {
+      try {
+        // Alpha Vantage tiene un tier gratuito con 25 requests/día
+        const avUrl = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&datatype=json`;
+        
+        const avResponse = await fetch(avUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+          signal: AbortSignal.timeout(4000),
+        });
+
+        if (avResponse.ok) {
+          const avData: any = await avResponse.json();
+          if (avData.bestMatches && Array.isArray(avData.bestMatches)) {
+            const avResults = avData.bestMatches.map((item: any) => ({
+              symbol: item['1. symbol'],
+              name: item['2. name'],
+              type: item['3. type'] || 'EQUITY',
+              exchange: item['4. region'],
+            }));
+            addResults(avResults);
+            logger.debug(`[Alpha Vantage] Found ${avResults.length} results for "${query}"`);
+          }
+        }
+      } catch (error) {
+        logger.debug(`[Alpha Vantage] Failed: ${error}`);
+      }
+    })());
+
+    // 5. Búsqueda en Dukascopy (para Forex y CFDs)
+    searchPromises.push((async () => {
+      try {
+        const dukasUrl = `https://freeserv.dukascopy.com/2.0/index.php?path=common/instruments&filter=${encodeURIComponent(query)}`;
+        
+        const dukasResponse = await fetch(dukasUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (dukasResponse.ok) {
+          const dukasData: any = await dukasResponse.json();
+          if (Array.isArray(dukasData)) {
+            const dukasResults = dukasData.slice(0, 15).map((item: any) => ({
+              symbol: item.name || item.title,
+              name: item.title || item.description || item.name,
+              type: item.group || 'CFD',
+              exchange: 'Dukascopy',
+            }));
+            addResults(dukasResults);
+          }
+        }
+      } catch {
+        // Silently fail
+      }
+    })());
+
+    // Esperar a todas las búsquedas paralelas
+    await Promise.allSettled(searchPromises);
+
+    // 6. Para búsquedas específicas, intentar variantes de símbolo (secuencial para no sobrecargar)
+    const upperQuery = query.toUpperCase().trim();
+    if (upperQuery.length <= 6 && /^[A-Z0-9]+$/.test(upperQuery)) {
+      // Probar variantes comunes de exchanges europeos
+      const variants = [
+        upperQuery,           // Original (ej: AAPL)
+        `${upperQuery}.MC`,   // Madrid (ej: ITX.MC)
+        `${upperQuery}.DE`,   // Frankfurt/Xetra
+        `${upperQuery}.L`,    // Londres
+        `${upperQuery}.PA`,   // París
+        `${upperQuery}.MI`,   // Milán
+        `${upperQuery}.AS`,   // Amsterdam
+        `${upperQuery}.BR`,   // Bruselas
+        `${upperQuery}.SW`,   // Suiza
+        `${upperQuery}.V`,    // Toronto Venture
+        `${upperQuery}.TO`,   // Toronto
+        `${upperQuery}-USD`,  // Crypto USD
+        `${upperQuery}-EUR`,  // Crypto EUR
+        `${upperQuery}3L.L`,  // ETPs apalancados Londres (Natural Gas 3x)
+        `${upperQuery}3S.L`,  // ETPs inversos Londres
+        `3${upperQuery}.L`,   // Formato alternativo
+      ];
+
+      for (const variant of variants) {
+        if (!seenSymbols.has(variant)) {
+          // Verificar si el símbolo existe con una llamada rápida
+          try {
+            const checkUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(variant)}?interval=1d&range=1d`;
+            const checkResponse = await fetch(checkUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0' },
+              signal: AbortSignal.timeout(2000),
+            });
+            
+            if (checkResponse.ok) {
+              const data: any = await checkResponse.json();
+              const meta = data?.chart?.result?.[0]?.meta;
+              if (meta && meta.regularMarketPrice) {
+                addResults([{
+                  symbol: variant,
+                  name: meta.shortName || meta.longName || variant,
+                  type: meta.instrumentType || 'EQUITY',
+                  exchange: meta.exchangeName,
+                }]);
+              }
+            }
+          } catch {
+            // Skip variant
+          }
+        }
+      }
     }
+
+    logger.info(`[Search] Total ${results.length} unique results for "${query}" (Yahoo + FMP + Alpha Vantage + variants)`);
+    return results;
   },
 
   /**

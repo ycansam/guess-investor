@@ -18,7 +18,7 @@ import { logger } from '../../middleware/logger.js';
 
 export type FactorName = 
   | 'trend' | 'technical' | 'sentiment' | 'news' | 'macro'
-  | 'competitors' | 'forex' | 'institutional' | 'seasonality'
+  | 'forex' | 'institutional' | 'seasonality'
   | 'financials' | 'expectations';
 
 export type Timeframe = 'intraday' | 'swing' | 'long';
@@ -96,14 +96,14 @@ const SIMILARITY_THRESHOLD = 0.5;
 
 const ALL_FACTORS: FactorName[] = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'competitors', 'forex', 'institutional', 'seasonality',
+  'forex', 'institutional', 'seasonality',
   'financials', 'expectations'
 ];
 
 const DEFAULT_WEIGHTS: Record<FactorName, number> = {
-  trend: 0.12, technical: 0.15, sentiment: 0.10, news: 0.08,
-  macro: 0.05, competitors: 0.08, forex: 0.03, institutional: 0.10,
-  seasonality: 0.05, financials: 0.12, expectations: 0.12
+  trend: 0.14, technical: 0.17, sentiment: 0.11, news: 0.09,
+  macro: 0.06, forex: 0.04, institutional: 0.11,
+  seasonality: 0.05, financials: 0.12, expectations: 0.11
 };
 
 // Cache

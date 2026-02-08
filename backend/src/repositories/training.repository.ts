@@ -204,17 +204,16 @@ export const trainingRepository = {
       // Devolver formato compatible con LearnedWeights de Prisma
       return {
         id: 'file-based',
-        trend: swingWeights.trend || 0.091,
-        technical: swingWeights.technical || 0.091,
-        sentiment: swingWeights.sentiment || 0.091,
-        news: swingWeights.news || 0.091,
-        macro: swingWeights.macro || 0.091,
-        competitors: swingWeights.competitors || 0.091,
-        forex: swingWeights.forex || 0.091,
-        institutional: swingWeights.institutional || 0.091,
-        seasonality: swingWeights.seasonality || 0.091,
-        financials: swingWeights.financials || 0.091,
-        expectations: swingWeights.expectations || 0.091,
+        trend: swingWeights.trend || 0.10,
+        technical: swingWeights.technical || 0.10,
+        sentiment: swingWeights.sentiment || 0.10,
+        news: swingWeights.news || 0.10,
+        macro: swingWeights.macro || 0.10,
+        forex: swingWeights.forex || 0.10,
+        institutional: swingWeights.institutional || 0.10,
+        seasonality: swingWeights.seasonality || 0.10,
+        financials: swingWeights.financials || 0.10,
+        expectations: swingWeights.expectations || 0.10,
         version: parseInt(data.version) || 1,
         trainedAt: new Date(data.updated_at || Date.now()),
         sampleCount: data.training_samples || 0,
@@ -239,7 +238,6 @@ export const trainingRepository = {
     sentiment: number;
     news: number;
     macro: number;
-    competitors: number;
     forex: number;
     institutional: number;
     seasonality: number;

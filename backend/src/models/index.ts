@@ -13,19 +13,17 @@ export type Timeframe = z.infer<typeof TimeframeSchema>;
 export const DirectionSchema = z.enum(['up', 'down']);
 export type Direction = z.infer<typeof DirectionSchema>;
 
-// Factor scores
+// Factor scores (9 factores activos)
 export const FactorScoresSchema = z.object({
   trend: z.number(),
   technical: z.number(),
   sentiment: z.number(),
   news: z.number(),
   macro: z.number(),
-  competitors: z.number(),
   forex: z.number(),
   institutional: z.number(),
-  seasonality: z.number(),
   financials: z.number(),
-  expectations: z.number(),
+  seasonality: z.number(),
 });
 export type FactorScores = z.infer<typeof FactorScoresSchema>;
 
@@ -91,6 +89,8 @@ export const AssetQuoteSchema = z.object({
   volume: z.number().optional(),
   marketCap: z.number().optional(),
   previousClose: z.number().optional(),
+  dividendYield: z.number().optional(),
+  regularMarketChangePercent: z.number().optional(),
 });
 export type AssetQuote = z.infer<typeof AssetQuoteSchema>;
 
@@ -134,12 +134,10 @@ export const WeightsSchema = z.object({
   sentiment: z.number().min(0).max(1),
   news: z.number().min(0).max(1),
   macro: z.number().min(0).max(1),
-  competitors: z.number().min(0).max(1),
   forex: z.number().min(0).max(1),
   institutional: z.number().min(0).max(1),
-  seasonality: z.number().min(0).max(1),
   financials: z.number().min(0).max(1),
-  expectations: z.number().min(0).max(1),
+  seasonality: z.number().min(0).max(1),
 });
 export type Weights = z.infer<typeof WeightsSchema>;
 

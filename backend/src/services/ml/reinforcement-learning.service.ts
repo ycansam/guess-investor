@@ -467,4 +467,13 @@ export const reinforcementLearningService = {
       successRate,
     };
   },
+
+  /**
+   * Resetea el modelo RL a estado inicial (también en memoria)
+   */
+  async reset(): Promise<void> {
+    modelState = this.createEmptyState();
+    stateLoaded = true;
+    logger.info('[RL] Model reset to initial state');
+  },
 };

@@ -6,7 +6,10 @@ import { trainingRepository } from '../repositories/training.repository.js';
 import { pythonTrainingService } from '../services/external/python-training.service.js';
 import { classifierLearningService } from '../services/ml/classifier-learning.service.js';
 import { factorWeightLearningService } from '../services/ml/factor-weight-learning.service.js';
+import { probabilisticModelService } from '../services/ml/probabilistic-model.service.js';
+import { reinforcementLearningService } from '../services/ml/reinforcement-learning.service.js';
 import { predictionCalculatorService } from '../services/prediction/calculator.service.js';
+import { confidenceCalibrationService } from '../services/prediction/confidence-calibration.service.js';
 import { ensembleService } from '../services/prediction/ensemble.service.js';
 
 // ============================================================================
@@ -217,17 +220,16 @@ export const trainingController = {
   resetWeights: asyncHandler(async (_req: Request, res: Response) => {
     // Guardar pesos por defecto con el formato correcto
     const defaultWeights = {
-      trend: 0.10,
-      technical: 0.15,
+      trend: 0.14,
+      technical: 0.20,
       sentiment: 0.12,
-      news: 0.10,
+      news: 0.16,
       macro: 0.10,
-      competitors: 0.08,
-      forex: 0.05,
-      institutional: 0.08,
-      seasonality: 0.07,
+      forex: 0.06,
+      institutional: 0.10,
+      seasonality: 0.02,
       financials: 0.10,
-      expectations: 0.05,
+      expectations: 0.00,
       sampleCount: 0,
       accuracy: 0,
     };
@@ -680,20 +682,26 @@ export const trainingController = {
     const mlModelsResult = await prisma.mLModelState.deleteMany({});
     results.mlModels = mlModelsResult.count;
 
+    // 3.1. Resetear estado EN MEMORIA de los servicios ML
+    // (importante: la DB está vacía pero los servicios mantienen estado en memoria)
+    await reinforcementLearningService.reset();
+    await probabilisticModelService.reset();
+    await classifierLearningService.reset();
+    await confidenceCalibrationService.reset();
+
     // 4. Resetear pesos aprendidos a valores por defecto (no uniformes)
     // Estos son los pesos por defecto para swing (balance entre corto y largo plazo)
     const defaultWeights = {
-      trend: 0.12,
-      technical: 0.18,
-      sentiment: 0.10,
-      news: 0.15,
-      macro: 0.08,
-      competitors: 0.07,
+      trend: 0.14,
+      technical: 0.20,
+      sentiment: 0.12,
+      news: 0.16,
+      macro: 0.10,
       forex: 0.06,
       institutional: 0.10,
-      seasonality: 0.04,
-      financials: 0.05,
-      expectations: 0.05,
+      seasonality: 0.02,
+      financials: 0.10,
+      expectations: 0.00,
       sampleCount: 0,
       accuracy: 0,
     };

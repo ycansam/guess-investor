@@ -1,6 +1,10 @@
 import { Prediction } from '@prisma/client';
 import { prisma } from '../config/database.js';
+
+import { calculateIntradayExpiry, calculateNextDayOpen, detectMarketType, getMarketCloseTime } from '../services/external/market-hours.service.js';
 import { isMarketClosedForPrediction } from '../services/external/yahoo.service.js';
+
+export type PredictionType = 'close' | 'open_next_day';
 
 // ============================================================================
 // TIPOS
@@ -12,6 +16,7 @@ export interface CreatePredictionData {
   assetType: string;
   timeframe: string;
   timeframeDays?: number;
+  predictionType?: PredictionType; // 'close' (cierre del día) o 'open_next_day' (apertura día siguiente)
   direction: string;
   predictedChange: number;
   confidence: number;
@@ -86,40 +91,33 @@ export interface PredictionStats {
 export const predictionRepository = {
   /**
    * Crear una nueva predicción
+   * @param data - Datos de la predicción
+   * @param data.predictionType - 'close' para cierre del día, 'open_next_day' para apertura del día siguiente
    */
   async create(data: CreatePredictionData): Promise<Prediction> {
     const timeframeDays = data.timeframeDays || 1;
+    const predictionType = data.predictionType || 'close';
     const now = new Date();
     let expiresAt: Date;
     
-    if (timeframeDays === 1) {
-      // Para predicciones intradía:
-      // - Si se crea ANTES de las 16:30 UTC (17:30 España) → expira HOY a las 16:30 UTC
-      // - Si se crea DESPUÉS de las 16:30 UTC → expira MAÑANA a las 16:30 UTC
-      const marketCloseHour = 16; // 16:30 UTC = 17:30 España (CET)
-      const marketCloseMinute = 30;
-      
-      expiresAt = new Date(now);
-      expiresAt.setUTCHours(marketCloseHour, marketCloseMinute, 0, 0);
-      
-      // Si ya pasó el cierre de hoy, expira mañana
-      if (now >= expiresAt) {
-        expiresAt.setDate(expiresAt.getDate() + 1);
-      }
-      
-      // Ajustar si cae en fin de semana (stocks)
-      if (data.assetType === 'stock') {
-        const day = expiresAt.getDay();
-        if (day === 0) expiresAt.setDate(expiresAt.getDate() + 1); // Domingo → Lunes
-        if (day === 6) expiresAt.setDate(expiresAt.getDate() + 2); // Sábado → Lunes
-      }
+    if (predictionType === 'open_next_day') {
+      // Predicción para la apertura del día siguiente
+      expiresAt = calculateNextDayOpen(data.symbol, data.assetType, data.asset);
+    } else if (timeframeDays === 1) {
+      // Para predicciones intradía (cierre de hoy) usar el nuevo servicio que detecta
+      // el tipo de mercado (commodities, forex, stocks) y aplica el horario correcto
+      expiresAt = calculateIntradayExpiry(data.symbol, data.assetType, data.asset);
     } else {
-      // Para predicciones de más días: sumar días completos
+      // Para predicciones de más días: usar horario específico del mercado
+      const marketType = detectMarketType(data.symbol, data.asset);
+      const closeTime = getMarketCloseTime(marketType);
+      
       expiresAt = new Date(now);
       expiresAt.setDate(expiresAt.getDate() + timeframeDays);
+      expiresAt.setUTCHours(closeTime.hourUTC, closeTime.minuteUTC, 0, 0);
       
-      // Ajustar a día hábil si es acción
-      if (data.assetType === 'stock') {
+      // Ajustar a día hábil si es acción y no es commodity/forex (24h)
+      if (data.assetType === 'stock' && !closeTime.isNearlyAlwaysOpen) {
         const day = expiresAt.getDay();
         if (day === 0) expiresAt.setDate(expiresAt.getDate() + 1);
         if (day === 6) expiresAt.setDate(expiresAt.getDate() + 2);
@@ -136,6 +134,7 @@ export const predictionRepository = {
         assetType: data.assetType,
         timeframe: data.timeframe,
         timeframeDays,
+        predictionType,
         direction: data.direction,
         predictedChange: data.predictedChange,
         confidence: data.confidence,

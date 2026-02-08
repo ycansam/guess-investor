@@ -20,6 +20,88 @@ interface MarketSchedule {
   lunchBreak?: { start: { hour: number; minute: number }; end: { hour: number; minute: number } };
   weekendDays: number[]; // 0 = domingo, 6 = sábado
   holidays2025: string[]; // Festivos bursátiles 2025 en formato MM-DD
+  isAlwaysOpen?: boolean; // Para crypto 24/7
+  isNearlyAlwaysOpen?: boolean; // Para forex/commodities (solo cierra fin de semana)
+}
+
+// Palabras clave que indican ETCs/ETFs de commodities (oro, plata, petróleo, etc.)
+// Estos activos trackean commodities que operan casi 24h
+const COMMODITY_ETC_KEYWORDS = [
+  // Metales preciosos
+  'GOLD', 'SILVER', 'PLATINUM', 'PALLADIUM', 'PRECIOUS',
+  'ORO', 'PLATA', 'PLATINO', 'PALADIO',
+  // Energía
+  'OIL', 'CRUDE', 'BRENT', 'WTI', 'NATURAL GAS', 'PETROLEUM',
+  'PETROLEO', 'CRUDO', 'GAS NATURAL',
+  // Metales industriales
+  'COPPER', 'ALUMINUM', 'ZINC', 'NICKEL', 'TIN', 'LEAD',
+  'COBRE', 'ALUMINIO', 'NIQUEL', 'ESTAÑO', 'PLOMO',
+  // Agrícolas
+  'WHEAT', 'CORN', 'SOYBEAN', 'COFFEE', 'SUGAR', 'COTTON', 'COCOA',
+  'TRIGO', 'MAIZ', 'SOJA', 'CAFE', 'AZUCAR', 'ALGODON', 'CACAO',
+  // Genéricos
+  'COMMODITY', 'COMMODITIES', 'PHYSICAL', 'BULLION',
+  'MATERIAS PRIMAS', 'RAW MATERIAL',
+];
+
+// Prefijos comunes de ETCs de commodities (funcionan en cualquier bolsa)
+const COMMODITY_ETC_PREFIXES = [
+  // iShares Physical
+  'PHAU', 'PHAG', 'PHPT', 'PHPM', 'PALL', 'IGLN', 'ISLN', 'IAUP', 'IAGP',
+  // WisdomTree
+  'WGLD', 'WSLV', 'WPLAT', 'WPALL', 'WOIL', 'WBRT', 'WNGA', 'WCOA', 'WCOB',
+  'PHGP', 'PHSP', 'PHPP', 'PHPD', 'CRUD', 'BRNT', 'NGAS', 'APTS', 'AIGC',
+  // Invesco/Source
+  'SGLD', 'SGLP', 'SGLN', 'SSLV', 'SPLT', 'SPLA',
+  // Xtrackers/DWS
+  'XGLD', 'XSLV', 'XAD1', 'XAD2', 'XGDU',
+  // Amundi
+  'GLDA', 'SLVA', 'GLDM',
+  // VanEck
+  'VZLA', 'VZLC', 'GDX', 'GDXJ',
+  // Gold Bullion Securities / ETF Securities
+  'GBS', 'GBSS', 'ETFS', 'BULL', 'OILB', 'OILW',
+  // Xetra-Gold y similares
+  '4GLD', 'GZUR', 'EGLN',
+  // Otros
+  'ZGLD', 'CSGOLD', 'ZSILVER', 'ZSIL', 'OGZD', 'RICI',
+];
+
+// Patrones de símbolos especiales (crypto, commodities, forex)
+const SPECIAL_SYMBOL_PATTERNS: { pattern: RegExp; exchange: string }[] = [
+  // Crypto (24/7)
+  { pattern: /-USD$/, exchange: 'crypto' },  // BTC-USD, ETH-USD
+  { pattern: /-EUR$/, exchange: 'crypto' },  // BTC-EUR
+  { pattern: /-GBP$/, exchange: 'crypto' },
+  { pattern: /^(BTC|ETH|SOL|XRP|DOGE|ADA|DOT|AVAX|MATIC|LINK|UNI|ATOM|LTC|BCH|XLM|ALGO|VET|FIL|THETA|SAND|MANA|AXS|NEAR|FTM|ONE|EGLD|HBAR|ICP|FLOW|ENJ|CHZ|CRO)$/i, exchange: 'crypto' },
+  
+  // Commodities Futuros (casi 24h, cierra fin de semana)
+  { pattern: /=F$/, exchange: 'commodities' }, // GC=F (oro), SI=F (plata), CL=F (petróleo)
+  
+  // Forex (casi 24h, cierra fin de semana)  
+  { pattern: /=X$/, exchange: 'forex' }, // EURUSD=X, GBPUSD=X
+];
+
+/**
+ * Detecta si un símbolo es un ETC de commodities basándose en su prefijo
+ */
+function isCommodityETC(symbol: string): boolean {
+  const upperSymbol = symbol.toUpperCase();
+  // Extraer el ticker sin el sufijo de bolsa (ej: PHAG.MI -> PHAG)
+  const ticker = upperSymbol.split('.')[0];
+  
+  return COMMODITY_ETC_PREFIXES.some(prefix => 
+    ticker === prefix || ticker.startsWith(prefix)
+  );
+}
+
+/**
+ * Detecta si el nombre de un activo indica que es un commodity
+ */
+function isCommodityByName(assetName: string): boolean {
+  if (!assetName) return false;
+  const upperName = assetName.toUpperCase();
+  return COMMODITY_ETC_KEYWORDS.some(keyword => upperName.includes(keyword));
 }
 
 // Mapeo de sufijo de símbolo a bolsa
@@ -82,6 +164,63 @@ const EXCHANGE_SUFFIXES: Record<string, string> = {
 
 // Horarios de las principales bolsas
 const MARKET_SCHEDULES: Record<string, MarketSchedule> = {
+  // === MERCADOS ESPECIALES ===
+  
+  // Crypto - 24/7
+  crypto: {
+    name: 'Mercado de Criptomonedas',
+    nameShort: 'Crypto',
+    timezone: 'UTC',
+    utcOffset: 0,
+    regularOpen: { hour: 0, minute: 0 },
+    regularClose: { hour: 23, minute: 59 },
+    weekendDays: [], // Abierto siempre
+    holidays2025: [], // Sin festivos
+    isAlwaysOpen: true,
+  },
+
+  // Commodities Futuros - Casi 24h (domingo 23:00 a viernes 22:00 UTC)
+  // En horario España: domingo 00:00 a sábado 00:00 aproximadamente
+  commodities: {
+    name: 'Mercado de Futuros (Commodities)',
+    nameShort: 'Futuros',
+    timezone: 'America/New_York',
+    utcOffset: -5,
+    dstOffset: 1,
+    dstStart: { month: 3, weekOfMonth: 2, dayOfWeek: 0 },
+    dstEnd: { month: 11, weekOfMonth: 1, dayOfWeek: 0 },
+    // CME Globex: Domingo 6pm ET - Viernes 5pm ET (con pausas de mantenimiento)
+    regularOpen: { hour: 18, minute: 0 }, // 6pm ET domingo
+    regularClose: { hour: 17, minute: 0 }, // 5pm ET viernes
+    weekendDays: [6], // Solo sábado cerrado completamente
+    holidays2025: [
+      '01-01', // Año Nuevo
+      '01-20', // MLK Day
+      '02-17', // Presidents Day  
+      '04-18', // Good Friday
+      '05-26', // Memorial Day
+      '07-04', // Independence Day
+      '09-01', // Labor Day
+      '11-27', // Thanksgiving
+      '12-25', // Christmas
+    ],
+    isNearlyAlwaysOpen: true,
+  },
+
+  // Forex - Casi 24h (domingo 22:00 UTC a viernes 22:00 UTC)
+  forex: {
+    name: 'Mercado Forex',
+    nameShort: 'Forex',
+    timezone: 'UTC',
+    utcOffset: 0,
+    // El forex abre domingo 22:00 UTC (Sydney) y cierra viernes 22:00 UTC (NY)
+    regularOpen: { hour: 22, minute: 0 }, // Domingo
+    regularClose: { hour: 22, minute: 0 }, // Viernes
+    weekendDays: [6], // Solo sábado cerrado completamente
+    holidays2025: ['12-25'], // Solo Navidad tiene menor liquidez
+    isNearlyAlwaysOpen: true,
+  },
+
   // === ESTADOS UNIDOS ===
   nyse: {
     name: 'New York Stock Exchange / NASDAQ',
@@ -712,15 +851,37 @@ export interface MarketHoursInfo {
 }
 
 /**
- * Detecta el exchange basándose en el sufijo del símbolo
+ * Detecta el exchange basándose en el símbolo
+ * Primero verifica patrones especiales (crypto, commodities, forex)
+ * Luego ETCs de commodities por prefijo
+ * Finalmente por sufijo de bolsa
  */
-function detectExchange(symbol: string): string {
-  // Buscar el sufijo más largo que coincida
+function detectExchange(symbol: string, assetName?: string): string {
+  const upperSymbol = symbol.toUpperCase();
+  
+  // 1. Verificar patrones especiales primero (futuros, forex, crypto)
+  for (const { pattern, exchange } of SPECIAL_SYMBOL_PATTERNS) {
+    if (pattern.test(upperSymbol)) {
+      return exchange;
+    }
+  }
+  
+  // 2. Verificar si es un ETC de commodities (por prefijo del símbolo)
+  if (isCommodityETC(upperSymbol)) {
+    return 'commodities'; // Usa horario de commodities globales
+  }
+  
+  // 3. Verificar por nombre del activo si contiene keywords de commodities
+  if (assetName && isCommodityByName(assetName)) {
+    return 'commodities';
+  }
+  
+  // 4. Buscar por sufijo de bolsa
   let bestMatch = 'nyse'; // Por defecto USA
   let longestSuffix = 0;
 
   for (const [suffix, exchange] of Object.entries(EXCHANGE_SUFFIXES)) {
-    if (suffix.length > 0 && symbol.toUpperCase().endsWith(suffix.toUpperCase())) {
+    if (suffix.length > 0 && upperSymbol.endsWith(suffix.toUpperCase())) {
       if (suffix.length > longestSuffix) {
         longestSuffix = suffix.length;
         bestMatch = exchange;
@@ -806,6 +967,36 @@ function getMarketStatus(schedule: MarketSchedule, localTime: Date): { status: M
   const dayOfWeek = localTime.getDay();
   const currentMinutes = localTime.getHours() * 60 + localTime.getMinutes();
 
+  // Crypto: siempre abierto
+  if (schedule.isAlwaysOpen) {
+    return { status: 'open', inLunchBreak: false };
+  }
+
+  // Forex/Commodities: casi siempre abierto (solo cierra sábado completo)
+  if (schedule.isNearlyAlwaysOpen) {
+    // Sábado cerrado completamente
+    if (dayOfWeek === 6) {
+      return { status: 'weekend', inLunchBreak: false };
+    }
+    // Domingo: abre por la tarde/noche
+    if (dayOfWeek === 0) {
+      // Forex/Commodities abren domingo tarde (22:00 UTC / 18:00 ET)
+      const openMinutes = schedule.regularOpen.hour * 60 + schedule.regularOpen.minute;
+      if (currentMinutes < openMinutes) {
+        return { status: 'closed', inLunchBreak: false };
+      }
+    }
+    // Viernes: cierra por la tarde/noche
+    if (dayOfWeek === 5) {
+      const closeMinutes = schedule.regularClose.hour * 60 + schedule.regularClose.minute;
+      if (currentMinutes >= closeMinutes) {
+        return { status: 'weekend', inLunchBreak: false };
+      }
+    }
+    // Resto del tiempo está abierto (L-J completos, D tarde, V hasta cierre)
+    return { status: 'open', inLunchBreak: false };
+  }
+
   // Verificar fin de semana
   if (schedule.weekendDays.includes(dayOfWeek)) {
     return { status: 'weekend', inLunchBreak: false };
@@ -860,6 +1051,31 @@ function getNextEvent(schedule: MarketSchedule, localTime: Date, status: MarketS
   const currentMinutes = localTime.getHours() * 60 + localTime.getMinutes();
   const openMinutes = schedule.regularOpen.hour * 60 + schedule.regularOpen.minute;
   const closeMinutes = schedule.regularClose.hour * 60 + schedule.regularClose.minute;
+
+  // Crypto: siempre abierto
+  if (schedule.isAlwaysOpen) {
+    return { event: 'Siempre abierto', time: '24/7' };
+  }
+
+  // Forex/Commodities: casi siempre abierto
+  if (schedule.isNearlyAlwaysOpen) {
+    const dayOfWeek = localTime.getDay();
+    if (status === 'open') {
+      if (dayOfWeek === 5) { // Viernes
+        return { 
+          event: 'Cierre semanal', 
+          time: formatTime(schedule.regularClose.hour, schedule.regularClose.minute) 
+        };
+      }
+      return { event: 'Abierto', time: 'Hasta viernes' };
+    }
+    if (status === 'weekend' || status === 'closed') {
+      return { 
+        event: 'Apertura', 
+        time: `Domingo ${formatTime(schedule.regularOpen.hour, schedule.regularOpen.minute)}` 
+      };
+    }
+  }
 
   switch (status) {
     case 'open':
@@ -956,9 +1172,11 @@ function getStatusDisplay(status: MarketStatus): { emoji: string; text: string }
 
 /**
  * Obtiene información completa de horarios del mercado
+ * @param symbol - Símbolo del activo (ej: PHAG.MI, AAPL, BTC-USD)
+ * @param assetName - Nombre opcional del activo para mejor detección (ej: "WisdomTree Physical Silver")
  */
-export function getMarketHours(symbol: string): MarketHoursInfo {
-  const exchangeKey = detectExchange(symbol);
+export function getMarketHours(symbol: string, assetName?: string): MarketHoursInfo {
+  const exchangeKey = detectExchange(symbol, assetName);
   const schedule = MARKET_SCHEDULES[exchangeKey] || MARKET_SCHEDULES.nyse;
 
   const now = new Date();
@@ -967,7 +1185,17 @@ export function getMarketHours(symbol: string): MarketHoursInfo {
   const { emoji, text } = getStatusDisplay(status);
   const nextEvent = getNextEvent(schedule, marketLocalTime, status);
 
-  const regularHours = `${formatTime(schedule.regularOpen.hour, schedule.regularOpen.minute)} - ${formatTime(schedule.regularClose.hour, schedule.regularClose.minute)}`;
+  // Para commodities casi 24h, mostrar horario especial en hora España
+  let regularHours: string;
+  if (schedule.isAlwaysOpen) {
+    regularHours = '24/7';
+  } else if (schedule.isNearlyAlwaysOpen) {
+    // Commodities/Forex: mostrar cierre en hora España (UTC+1 invierno, UTC+2 verano)
+    // CME cierra viernes 17:00 ET = 22:00 UTC = 23:00 España (invierno) / 00:00 (verano)
+    regularHours = 'Casi 24h · Cierra Vie ~23:00 🇪🇸';
+  } else {
+    regularHours = `${formatTime(schedule.regularOpen.hour, schedule.regularOpen.minute)} - ${formatTime(schedule.regularClose.hour, schedule.regularClose.minute)}`;
+  }
 
   // Formatear hora local del mercado
   const localTimeStr = `${marketLocalTime.getHours().toString().padStart(2, '0')}:${marketLocalTime.getMinutes().toString().padStart(2, '0')}`;
@@ -982,7 +1210,7 @@ export function getMarketHours(symbol: string): MarketHoursInfo {
     nextEvent: nextEvent.event,
     nextEventTime: nextEvent.time,
     regularHours,
-    hasExtendedHours: !!(schedule.preMarketOpen || schedule.afterHoursClose),
+    hasExtendedHours: !!(schedule.preMarketOpen || schedule.afterHoursClose || schedule.isNearlyAlwaysOpen),
     timezone: schedule.timezone,
     isHoliday: status === 'holiday',
   };
@@ -991,8 +1219,8 @@ export function getMarketHours(symbol: string): MarketHoursInfo {
 /**
  * Verifica si el usuario puede operar ahora mismo
  */
-export function canTradeNow(symbol: string): { canTrade: boolean; reason: string; suggestion: string } {
-  const info = getMarketHours(symbol);
+export function canTradeNow(symbol: string, assetName?: string): { canTrade: boolean; reason: string; suggestion: string } {
+  const info = getMarketHours(symbol, assetName);
 
   switch (info.status) {
     case 'open':

@@ -135,6 +135,7 @@ export interface InvestmentPrediction {
       usingLearnedWeights?: boolean; // Si se usaron pesos aprendidos por ML
       confidenceExplanation: string; // Por qué la confianza es X%
       signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
+      streakAdjustment?: { days: number; direction: string; adjustment: number }; // Ajuste por racha
     };
     // AUDITORÍA: Trazabilidad de datos y cálculos para verificación
     audit?: {
@@ -151,6 +152,29 @@ export interface InvestmentPrediction {
       }[];
       combinedScoreBreakdown: string;
       expectedChangeBreakdown: string;
+    };
+    // Eventos importantes (earnings, dividendos, splits)
+    events?: {
+      hasData: boolean;
+      warnings: string[];
+      eventRiskScore: number;
+      nextEarnings?: {
+        date: Date;
+        daysUntil: number;
+        isEstimate: boolean;
+        epsEstimate?: number;
+      };
+      dividend?: {
+        yield?: number;
+        exDate?: Date;
+        daysUntilEx?: number;
+        amount?: number;
+      };
+      nextSplit?: {
+        date: Date;
+        ratio: string;
+        daysUntil: number;
+      };
     };
     // Meta-learning: Uncertainty analysis
     uncertainty?: {
@@ -220,4 +244,85 @@ export interface ParsedAIResponse {
   message: string;
   prediction?: Partial<InvestmentPrediction>;
   marketInsights?: string[];
+}
+// ============================================================================
+// INFORMACIÓN PARA INVERSORES
+// ============================================================================
+
+export interface EarningsInfo {
+  nextDate: Date | null;
+  daysUntil: number | null;
+  quarter: string | null;
+  estimatedEPS: number | null;
+  revenueEstimate: number | null;
+  lastSurprise: number | null;
+  avgSurprise: number | null;
+  beatRate: number;
+  riskLevel: 'high' | 'medium' | 'low';
+}
+
+export interface DividendInfo {
+  yield: number | null;
+  annualAmount: number | null;
+  exDate: Date | null;
+  payDate: Date | null;
+  frequency: string | null;
+  payoutRatio: number | null;
+  yearsConsecutive: number | null;
+  growthRate5Y: number | null;
+  isUpcoming: boolean;
+}
+
+export interface FairValueInfo {
+  targetPrice: number | null;
+  currentPrice: number;
+  upside: number | null;
+  peRatio: number | null;
+  forwardPE: number | null;
+  pegRatio: number | null;
+  priceToBook: number | null;
+  priceToSales: number | null;
+  valuationStatus: 'undervalued' | 'fair' | 'overvalued' | 'unknown';
+  valuationScore: number;
+}
+
+export interface FinancialHealthInfo {
+  freeCashFlow: number | null;
+  freeCashFlowFormatted: string | null;
+  fcfYield: number | null;
+  profitMargin: number | null;
+  operatingMargin: number | null;
+  returnOnEquity: number | null;
+  returnOnAssets: number | null;
+  revenueGrowth: number | null;
+  earningsGrowth: number | null;
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  quickRatio: number | null;
+  interestCoverage: number | null;
+  healthScore: number;
+  healthStatus: 'excellent' | 'good' | 'fair' | 'poor' | 'unknown';
+}
+
+export interface RiskMetricsInfo {
+  beta: number | null;
+  volatility52w: number | null;
+  maxDrawdown52w: number | null;
+  sharpeRatio: number | null;
+  riskLevel: 'low' | 'moderate' | 'high' | 'very_high';
+}
+
+export interface InvestorInfo {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  currency: string;
+  earnings: EarningsInfo;
+  dividends: DividendInfo;
+  fairValue: FairValueInfo;
+  financialHealth: FinancialHealthInfo;
+  riskMetrics: RiskMetricsInfo;
+  summary: string;
+  keyPoints: string[];
+  lastUpdated: Date;
 }

@@ -17,7 +17,7 @@ import { logger } from '../../middleware/logger.js';
 
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'competitors', 'forex', 'institutional', 'seasonality',
+  'forex', 'institutional', 'seasonality',
   'financials', 'expectations'
 ] as const;
 
@@ -84,9 +84,9 @@ const MIN_TRAIN_SAMPLES = 15;
 const VALIDATION_WINDOW = 10;
 const STEP_SIZE = 5;
 const DEFAULT_WEIGHTS: WeightsMap = {
-  trend: 0.12, technical: 0.15, sentiment: 0.10, news: 0.10,
-  macro: 0.08, competitors: 0.08, forex: 0.05, institutional: 0.10,
-  seasonality: 0.05, financials: 0.09, expectations: 0.08,
+  trend: 0.14, technical: 0.17, sentiment: 0.11, news: 0.11,
+  macro: 0.10, forex: 0.06, institutional: 0.11,
+  seasonality: 0.05, financials: 0.09, expectations: 0.06,
 };
 
 // ============================================================================

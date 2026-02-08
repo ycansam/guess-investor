@@ -165,6 +165,15 @@ export function TopTrendsModal({ visible, onClose }: TopTrendsModalProps) {
               {formatChange(trend.change30d)}
             </Text>
           </View>
+          <View style={styles.changeRow}>
+            <Text style={styles.changeLabel}>90d</Text>
+            <Text style={[
+              styles.changeValue,
+              { color: trend.change90d >= 0 ? theme.colors.success : theme.colors.danger }
+            ]}>
+              {formatChange(trend.change90d)}
+            </Text>
+          </View>
         </View>
 
         {/* Arrow */}

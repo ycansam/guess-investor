@@ -42,4 +42,30 @@ export const styles = StyleSheet.create({
   listContent: {
     paddingVertical: 8,
   },
+  // Desktop styles
+  desktopScrollContainer: {
+    flex: 1,
+  },
+  desktopScrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    gap: 16,
+    maxWidth: 1400,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  loadingFooter: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreText: {
+    color: '#6b7280',
+    fontSize: 14,
+  },
 });

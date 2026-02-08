@@ -116,7 +116,6 @@ ${directionEmoji} Predicción: ${directionText} (${prediction.predictedChange >=
           competitors: prediction.competitors,
           forex: prediction.forex,
           institutional: prediction.institutional,
-          seasonality: prediction.seasonality,
           factorBreakdown: prediction.factorBreakdown,
           audit: prediction.audit,
           uncertainty: prediction.uncertaintyScore !== undefined ? {

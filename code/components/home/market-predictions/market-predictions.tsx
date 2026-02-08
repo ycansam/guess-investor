@@ -7,30 +7,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    FlatList,
-    PanResponder,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  FlatList,
+  PanResponder,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -43,7 +43,7 @@ const BREAKPOINTS = {
 };
 
 // Ancho máximo del contenido en desktop
-const MAX_CONTENT_WIDTH = 900;
+const MAX_CONTENT_WIDTH = 1800;
 
 // Tipo de cambio USD/EUR aproximado
 const USD_TO_EUR = 0.92;
@@ -88,7 +88,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [cachedPredictions, setCachedPredictions] = useState<TrainingPrediction[]>([]);
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [isPredictingBatch, setIsPredictingBatch] = useState(false);
-  const [selectionMode, setSelectionMode] = useState<'predict' | 'delete'>('predict');
   const [sortBy, setSortBy] = useState<'default' | 'pred_desc' | 'pred_asc'>('default');
   const [selectedPrediction, setSelectedPrediction] = useState<TrainingPrediction | null>(null);
   const [recommendedTimeframes, setRecommendedTimeframes] = useState<Map<string, TrainingTimeframe>>(new Map());
@@ -532,36 +531,32 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     });
   }, []);
 
-  // Seleccionar todos según modo
+  // Seleccionar todos los activos disponibles
   const selectAll = useCallback(() => {
-    if (selectionMode === 'predict') {
-      // Seleccionar activos sin predicción
-      const availableSymbols = displayedAssets
-        .filter(a => !a.loading && a.price !== undefined && !getCachedPrediction(a.symbol, selectedTimeframe))
-        .map(a => a.symbol);
-      setSelectedSymbols(new Set(availableSymbols));
-    } else {
-      // Seleccionar predicciones existentes del timeframe actual
-      const predictedSymbols = cachedPredictions
-        .filter(p => p.timeframe === selectedTimeframe)
-        .map(p => p.symbol);
-      setSelectedSymbols(new Set(predictedSymbols));
-    }
-  }, [selectionMode, displayedAssets, selectedTimeframe, getCachedPrediction, cachedPredictions]);
+    const availableSymbols = displayedAssets
+      .filter(a => !a.loading && a.price !== undefined)
+      .map(a => a.symbol);
+    setSelectedSymbols(new Set(availableSymbols));
+  }, [displayedAssets]);
 
   // Deseleccionar todos
   const deselectAll = useCallback(() => {
     setSelectedSymbols(new Set());
   }, []);
 
-  // Obtener activos seleccionables según modo
+  // Obtener todos los activos seleccionables
   const selectableAssets = useMemo(() => {
-    if (selectionMode === 'predict') {
-      return displayedAssets.filter(a => !a.loading && a.price !== undefined && !getCachedPrediction(a.symbol, selectedTimeframe));
-    } else {
-      return displayedAssets.filter(a => getCachedPrediction(a.symbol, selectedTimeframe) !== null);
-    }
-  }, [selectionMode, displayedAssets, selectedTimeframe, getCachedPrediction]);
+    return displayedAssets.filter(a => !a.loading && a.price !== undefined);
+  }, [displayedAssets]);
+
+  // Contar seleccionados para predecir (sin predicción) y eliminar (con predicción)
+  const selectedToPredictCount = useMemo(() => {
+    return Array.from(selectedSymbols).filter(s => !getCachedPrediction(s, selectedTimeframe)).length;
+  }, [selectedSymbols, selectedTimeframe, getCachedPrediction]);
+
+  const selectedToDeleteCount = useMemo(() => {
+    return Array.from(selectedSymbols).filter(s => getCachedPrediction(s, selectedTimeframe) !== null).length;
+  }, [selectedSymbols, selectedTimeframe, getCachedPrediction]);
 
   // Debounce para la búsqueda
   useEffect(() => {
@@ -586,17 +581,22 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       return true;
     });
 
+    // Filtrar activos sin datos válidos (sin precio o en loading)
+    const withValidData = deduplicated.filter(a => 
+      !a.loading && a.price !== undefined && a.price > 0
+    );
+
     // Obtener predicción para un símbolo desde cachedPredictions
     const getPrediction = (symbol: string) => {
       return cachedPredictions.find(p => p.symbol === symbol && p.timeframe === selectedTimeframe) || null;
     };
 
     // Separar en 3 grupos: con predicción, favoritos sin predicción, resto
-    const withPrediction = deduplicated.filter(a => getPrediction(a.symbol) !== null);
-    const favoritesWithoutPrediction = deduplicated.filter(a => 
+    const withPrediction = withValidData.filter(a => getPrediction(a.symbol) !== null);
+    const favoritesWithoutPrediction = withValidData.filter(a => 
       getPrediction(a.symbol) === null && favoriteSymbols.has(a.symbol)
     );
-    const rest = deduplicated.filter(a => 
+    const rest = withValidData.filter(a => 
       getPrediction(a.symbol) === null && !favoriteSymbols.has(a.symbol)
     );
     
@@ -808,17 +808,15 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     const isPredicting = predictingSymbol === item.symbol;
     const isSelected = selectedSymbols.has(item.symbol);
     
-    // En modo predecir: seleccionar activos sin predicción
-    // En modo eliminar: seleccionar activos con predicción
-    const canSelect = !item.loading && item.price !== undefined && 
-      (selectionMode === 'predict' ? !cached : !!cached);
+    // Siempre se puede seleccionar si tiene precio
+    const canSelect = !item.loading && item.price !== undefined;
 
     return (
       <TouchableOpacity 
         style={[
           styles.assetRow, 
           isDesktop && styles.assetRowDesktop,
-          selectionMode === 'delete' && cached && styles.assetRowDeleteMode,
+          isSelected && cached && styles.assetRowDeleteMode,
         ]}
         onPress={() => canSelect && toggleSelection(item.symbol)}
         disabled={!canSelect}
@@ -826,30 +824,20 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       >
         {/* Checkbox */}
         <View style={styles.checkboxContainer}>
-          {selectionMode === 'delete' && cached ? (
-            // En modo eliminar, mostrar checkbox para predicciones
-            <View style={[
-              styles.checkbox,
-              isSelected && styles.checkboxDeleteSelected,
-            ]}>
-              {isSelected && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-          ) : cached ? (
-            // Mostrar predicción existente en lugar de checkbox
-            <View style={[styles.predictionBadgeSmall, { backgroundColor: cached.direction === 'up' ? '#10b981' : cached.direction === 'down' ? '#ef4444' : '#6b7280' }]}>
-              <Text style={styles.predictionIconSmall}>
-                {cached.direction === 'up' ? '📈' : cached.direction === 'down' ? '📉' : '➡️'}
-              </Text>
-            </View>
-          ) : isPredicting ? (
+          {isPredicting ? (
             <ActivityIndicator size="small" color="#3b82f6" />
           ) : (
             <View style={[
               styles.checkbox,
-              isSelected && styles.checkboxSelected,
+              isSelected && (cached ? styles.checkboxDeleteSelected : styles.checkboxSelected),
               !canSelect && styles.checkboxDisabled,
             ]}>
               {isSelected && <Text style={styles.checkmark}>✓</Text>}
+              {!isSelected && cached && (
+                <Text style={styles.predictionIndicator}>
+                  {cached.direction === 'up' ? '↑' : cached.direction === 'down' ? '↓' : '→'}
+                </Text>
+              )}
             </View>
           )}
         </View>
@@ -1000,190 +988,6 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     { key: 'bullish', label: 'Alcistas', icon: '🐂' },
   ];
 
-  // Header con filtros de ordenamiento y selector de timeframe
-  const renderHeader = () => (
-    <View>
-      {/* Ordenación de activos (movida desde Explorar) */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.exploreSortContainer}
-        contentContainerStyle={styles.exploreSortContent}
-      >
-        {EXPLORE_SORT_OPTIONS.map(option => (
-          <TouchableOpacity
-            key={option.key}
-            style={[styles.exploreSortChip, exploreSortBy === option.key && styles.exploreSortChipActive]}
-            onPress={() => setExploreSortBy(option.key)}
-          >
-            <Text style={styles.exploreSortIcon}>{option.icon}</Text>
-            <Text style={[styles.exploreSortLabel, exploreSortBy === option.key && styles.exploreSortLabelActive]}>
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Selector de timeframe */}
-      <View style={styles.timeframeContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeframeContent}>
-          {(Object.keys(TIMEFRAME_INFO) as TrainingTimeframe[]).map((tf) => {
-            const info = TIMEFRAME_INFO[tf];
-            const count = cachedPredictions.filter(p => p.timeframe === tf).length;
-            
-            return (
-              <TouchableOpacity
-                key={tf}
-                style={[
-                  styles.timeframeChip,
-                  selectedTimeframe === tf && styles.timeframeChipActive,
-                ]}
-                onPress={() => setSelectedTimeframe(tf)}
-              >
-                <Text style={[
-                  styles.timeframeLabel,
-                  selectedTimeframe === tf && styles.timeframeLabelActive,
-                ]}>
-                  {info.label}
-                </Text>
-                <Text style={[
-                  styles.timeframeDuration,
-                  selectedTimeframe === tf && styles.timeframeDurationActive,
-                ]}>
-                  {info.duration}
-                </Text>
-                {count > 0 && (
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countText}>{count}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Info del timeframe seleccionado */}
-      <View style={styles.timeframeInfo}>
-        <Text style={styles.timeframeInfoText}>
-          📍 {TIMEFRAME_INFO[selectedTimeframe].description}
-        </Text>
-      </View>
-
-      {/* Ordenar por */}
-      <View style={styles.sortContainer}>
-        <Text style={styles.sortLabel}>Ordenar:</Text>
-        <View style={styles.sortOptions}>
-          {[
-            { key: 'default', label: 'Original' },
-            { key: 'pred_desc', label: '📈 Mayor' },
-            { key: 'pred_asc', label: '📉 Menor' },
-          ].map((option) => (
-            <TouchableOpacity
-              key={option.key}
-              style={[
-                styles.sortChip,
-                sortBy === option.key && styles.sortChipActive,
-              ]}
-              onPress={() => setSortBy(option.key as typeof sortBy)}
-            >
-              <Text style={[
-                styles.sortChipText,
-                sortBy === option.key && styles.sortChipTextActive,
-              ]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Estadísticas */}
-      <View style={styles.statsRow}>
-        <Text style={styles.statsText}>
-          {cachedPredictions.length} predicciones activas
-        </Text>
-      </View>
-
-      {/* Selector de modo */}
-      <View style={styles.modeSelector}>
-        <TouchableOpacity
-          style={[styles.modeButton, selectionMode === 'predict' && styles.modeButtonActive]}
-          onPress={() => { setSelectionMode('predict'); setSelectedSymbols(new Set()); }}
-        >
-          <Text style={[styles.modeButtonText, selectionMode === 'predict' && styles.modeButtonTextActive]}>
-            🔮 Predecir
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.modeButton, selectionMode === 'delete' && styles.modeButtonDeleteActive]}
-          onPress={() => { setSelectionMode('delete'); setSelectedSymbols(new Set()); }}
-        >
-          <Text style={[styles.modeButtonText, selectionMode === 'delete' && styles.modeButtonTextActive]}>
-            🗑️ Eliminar
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Barra de acciones */}
-      <View style={styles.actionsBar}>
-        <TouchableOpacity
-          style={styles.selectAllButton}
-          onPress={allSelected ? deselectAll : selectAll}
-        >
-          <View style={[styles.checkbox, allSelected && styles.checkboxSelected]}>
-            {allSelected && <Text style={styles.checkmark}>✓</Text>}
-          </View>
-          <Text style={styles.selectAllText}>
-            {allSelected ? 'Deseleccionar' : 'Seleccionar'}
-          </Text>
-          <Text style={styles.selectableCount}>
-            ({selectableAssets.length})
-          </Text>
-        </TouchableOpacity>
-
-        {selectionMode === 'predict' ? (
-          <TouchableOpacity
-            style={[
-              styles.predictAllButton,
-              (selectedSymbols.size === 0 || isPredictingBatch) && styles.predictAllButtonDisabled,
-            ]}
-            onPress={predictSelected}
-            disabled={selectedSymbols.size === 0 || isPredictingBatch}
-          >
-            {isPredictingBatch ? (
-              <>
-                <ActivityIndicator size="small" color="#ffffff" />
-                <Text style={styles.predictAllText}>Analizando...</Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.predictAllIcon}>🔮</Text>
-                <Text style={styles.predictAllText}>
-                  Predecir {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[
-              styles.deleteAllButton,
-              selectedSymbols.size === 0 && styles.deleteAllButtonDisabled,
-            ]}
-            onPress={deleteSelected}
-            disabled={selectedSymbols.size === 0}
-          >
-            <Text style={styles.deleteAllIcon}>🗑️</Text>
-            <Text style={styles.deleteAllText}>
-              Eliminar {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
-
   return (
     <View style={[styles.container, isDesktop && { paddingHorizontal: horizontalPadding }]}>
       {/* Modal de Análisis de Predicción */}
@@ -1206,39 +1010,141 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           </View>
         </View>
 
-        {/* Descripción */}
-        <Text style={styles.description}>
-          Entrena la IA haciendo predicciones. Las predicciones se cachean durante su período de validez.
-        </Text>
+        {/* Búsqueda + Estadísticas en una línea */}
+        <View style={styles.searchStatsRow}>
+          <View style={styles.searchContainerCompact}>
+            <Ionicons name="search" size={18} color="#6b7280" />
+            <TextInput
+              style={styles.searchInputCompact}
+              placeholder="Buscar..."
+              placeholderTextColor="#6b7280"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color="#6b7280" />
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={styles.statsTextCompact}>
+            {cachedPredictions.length} activas
+          </Text>
+        </View>
 
-        {/* Búsqueda - fuera del FlatList para mantener foco */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar predicción o favorito..."
-            placeholderTextColor="#6b7280"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color="#6b7280" />
+        {/* Filtros de activos */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.exploreSortContainer}
+          contentContainerStyle={styles.exploreSortContent}
+        >
+          {EXPLORE_SORT_OPTIONS.map(option => (
+            <TouchableOpacity
+              key={option.key}
+              style={[styles.exploreSortChip, exploreSortBy === option.key && styles.exploreSortChipActive]}
+              onPress={() => setExploreSortBy(option.key)}
+            >
+              <Text style={styles.exploreSortIcon}>{option.icon}</Text>
+              <Text style={[styles.exploreSortLabel, exploreSortBy === option.key && styles.exploreSortLabelActive]}>
+                {option.label}
+              </Text>
             </TouchableOpacity>
-          )}
+          ))}
+        </ScrollView>
+
+        {/* Timeframes + Acciones en una línea */}
+        <View style={styles.timeframeActionsRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timeframeScrollCompact}>
+            {(Object.keys(TIMEFRAME_INFO) as TrainingTimeframe[]).map((tf) => {
+              const info = TIMEFRAME_INFO[tf];
+              const count = cachedPredictions.filter(p => p.timeframe === tf).length;
+              
+              return (
+                <TouchableOpacity
+                  key={tf}
+                  style={[
+                    styles.timeframeChipCompact,
+                    selectedTimeframe === tf && styles.timeframeChipActive,
+                  ]}
+                  onPress={() => setSelectedTimeframe(tf)}
+                >
+                  <Text style={[
+                    styles.timeframeLabelCompact,
+                    selectedTimeframe === tf && styles.timeframeLabelActive,
+                  ]}>
+                    {info.label}
+                  </Text>
+                  {count > 0 && (
+                    <View style={styles.countBadgeCompact}>
+                      <Text style={styles.countTextCompact}>{count}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Acciones */}
+          <View style={styles.actionsCompact}>
+            <TouchableOpacity
+              style={styles.selectAllCompact}
+              onPress={allSelected ? deselectAll : selectAll}
+            >
+              <View style={[styles.checkboxSmall, allSelected && styles.checkboxSelected]}>
+                {allSelected && <Text style={styles.checkmarkSmall}>✓</Text>}
+              </View>
+              <Text style={styles.selectCountText}>({selectableAssets.length})</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.actionBtnCompact,
+                styles.predictBtn,
+                (selectedToPredictCount === 0 || isPredictingBatch) && styles.actionBtnDisabled,
+              ]}
+              onPress={predictSelected}
+              disabled={selectedToPredictCount === 0 || isPredictingBatch}
+            >
+              {isPredictingBatch ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.actionBtnIcon}>🔮</Text>
+                  {selectedToPredictCount > 0 && <Text style={styles.actionBtnText}>{selectedToPredictCount}</Text>}
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.actionBtnCompact,
+                styles.deleteBtn,
+                selectedToDeleteCount === 0 && styles.actionBtnDisabled,
+              ]}
+              onPress={deleteSelected}
+              disabled={selectedToDeleteCount === 0}
+            >
+              <Text style={styles.actionBtnIcon}>🗑️</Text>
+              {selectedToDeleteCount > 0 && <Text style={styles.actionBtnText}>{selectedToDeleteCount}</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
       <View style={{ flex: 1 }}>
         <FlatList
+          key={isDesktop ? 'grid-3col' : 'list-1col'}
           ref={flatListRef}
           data={sortedAssets}
           extraData={sortBy}
           renderItem={renderAsset}
           keyExtractor={(item, index) => `${item.symbol}-${index}`}
-          ListHeaderComponent={renderHeader}
+          numColumns={isDesktop ? 3 : 1}
+          contentContainerStyle={isDesktop ? styles.gridContainer : undefined}
+          columnWrapperStyle={isDesktop ? styles.columnWrapper : undefined}
           ListFooterComponent={
             loadingMore ? (
               <View style={styles.loadingFooter}>
@@ -1377,8 +1283,10 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   listContentDesktop: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 40,
+    width: '80%',
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -1401,9 +1309,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#a0a0a0',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
-  // Búsqueda
+  // Búsqueda + Stats compacto
+  searchStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  searchContainerCompact: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 8,
+  },
+  searchInputCompact: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 15,
+    padding: 0,
+  },
+  statsTextCompact: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  // Búsqueda (legacy)
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1425,9 +1362,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     padding: 0,
   },
-  // Ordenación de activos (movida desde Explorar)
+  // Ordenación de activos
   exploreSortContainer: {
-    marginBottom: 8,
+    marginBottom: 4,
   },
   exploreSortContent: {
     paddingHorizontal: 12,
@@ -1435,28 +1372,121 @@ const styles = StyleSheet.create({
   exploreSortChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     backgroundColor: '#1a1a1a',
-    borderRadius: 16,
+    borderRadius: 14,
     marginRight: 8,
   },
   exploreSortChipActive: {
     backgroundColor: '#6366f1',
   },
   exploreSortIcon: {
-    fontSize: 12,
+    fontSize: 14,
     marginRight: 4,
   },
   exploreSortLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
     color: '#a0a0a0',
   },
   exploreSortLabelActive: {
     color: '#ffffff',
   },
-  // Timeframe selector
+  // Timeframe + Actions row
+  timeframeActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+  },
+  timeframeScrollCompact: {
+    flex: 1,
+  },
+  timeframeChipCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  timeframeLabelCompact: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#a0a0a0',
+  },
+  countBadgeCompact: {
+    marginLeft: 6,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  countTextCompact: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  actionsCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 8,
+  },
+  selectAllCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  checkboxSmall: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#4b5563',
+    backgroundColor: '#1a1a1a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkmarkSmall: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  selectCountText: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  actionBtnCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 4,
+  },
+  predictBtn: {
+    backgroundColor: '#6366f1',
+  },
+  deleteBtn: {
+    backgroundColor: '#ef4444',
+  },
+  actionBtnDisabled: {
+    backgroundColor: '#4b5563',
+  },
+  actionBtnIcon: {
+    fontSize: 16,
+  },
+  actionBtnText: {
+    fontSize: 14,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  // Timeframe selector (legacy)
   timeframeContainer: {
     marginBottom: 8,
   },
@@ -1580,62 +1610,77 @@ const styles = StyleSheet.create({
     borderBottomColor: '#2e2e2e',
   },
   assetRowDesktop: {
-    paddingHorizontal: 24,
+    flex: 1,
+    maxWidth: '33%',
+    marginHorizontal: 2,
+    marginVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2e2e2e',
+    backgroundColor: '#1a1a1a',
+  },
+  columnWrapper: {
+    width: '100%',
+  },
+  gridContainer: {
+    paddingHorizontal: 0,
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#252525',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 8,
     position: 'relative',
   },
   icon: {
-    fontSize: 22,
+    fontSize: 18,
   },
   favoriteBadge: {
     position: 'absolute',
     top: -4,
     right: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: '#ef4444',
     justifyContent: 'center',
     alignItems: 'center',
   },
   favoriteBadgeIcon: {
-    fontSize: 10,
+    fontSize: 8,
   },
   infoContainer: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 8,
   },
   name: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     color: '#ffffff',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   subInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   symbol: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6b7280',
   },
   priceInline: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#a0a0a0',
     fontWeight: '500',
   },
   // Action container
   actionContainer: {
-    minWidth: 100,
+    minWidth: 80,
     alignItems: 'flex-end',
   },
   predictButton: {
@@ -1690,15 +1735,15 @@ const styles = StyleSheet.create({
   },
   // Checkbox styles
   checkboxContainer: {
-    width: 32,
+    width: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 6,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 5,
     borderWidth: 2,
     borderColor: '#4b5563',
     backgroundColor: '#1a1a1a',
@@ -1714,7 +1759,12 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  predictionIndicator: {
+    color: '#9ca3af',
+    fontSize: 10,
     fontWeight: 'bold',
   },
   predictionBadgeSmall: {
@@ -1732,7 +1782,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   changeText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   // Actions bar
@@ -1760,24 +1810,31 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginLeft: 4,
   },
+  actionButtonsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   predictAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#6366f1',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    minWidth: 50,
+    justifyContent: 'center',
   },
   predictAllButtonDisabled: {
     backgroundColor: '#4b5563',
   },
   predictAllIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    fontSize: 14,
+    marginRight: 4,
   },
   predictAllText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   // Mode selector
@@ -1812,20 +1869,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ef4444',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    minWidth: 50,
+    justifyContent: 'center',
   },
   deleteAllButtonDisabled: {
-    backgroundColor: '#fca5a5',
+    backgroundColor: '#6b7280',
   },
   deleteAllIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    fontSize: 14,
+    marginRight: 4,
   },
   deleteAllText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   // Asset row delete mode
@@ -1968,27 +2027,27 @@ const styles = StyleSheet.create({
   },
   // Chart button
   chartButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginLeft: 4,
     backgroundColor: '#1e3a5f20',
     borderRadius: 6,
   },
   chartButtonText: {
-    fontSize: 14,
+    fontSize: 12,
   },
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
   dailyChangeBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 2,
   },
   dailyLabel: {
-    fontSize: 9,
+    fontSize: 8,
     color: '#6b7280',
     fontStyle: 'italic',
   },
@@ -2001,10 +2060,10 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   predictionIconInline: {
-    fontSize: 11,
+    fontSize: 10,
   },
   predictionTextInline: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   confidenceTextInline: {
@@ -2018,17 +2077,17 @@ const styles = StyleSheet.create({
   predictionBadgeCompact: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
   },
   moreCountBadge: {
     backgroundColor: '#ffffff20',
-    borderRadius: 4,
-    paddingHorizontal: 4,
+    borderRadius: 3,
+    paddingHorizontal: 3,
     paddingVertical: 1,
-    marginLeft: 2,
+    marginLeft: 1,
   },
   moreCountText: {
     fontSize: 9,

@@ -1,50 +1,44 @@
 {
   "version": "1.0",
-  "updated_at": "2026-01-22T20:36:06.040965",
-  "training_samples": 116,
+  "updated_at": "2026-02-08T21:15:09.045520",
+  "training_samples": 0,
   "weights": {
     "intraday": {
-      "trend": 0.198751,
-      "technical": 0.248688,
-      "sentiment": 0.149813,
-      "news": 0.179026,
-      "macro": 0.03995,
-      "competitors": 0.03995,
-      "forex": 0.03995,
-      "institutional": 0.049938,
-      "seasonality": 0.020974,
-      "financials": 0.021474,
-      "expectations": 0.011486
+      "trend": 0.22,
+      "technical": 0.27,
+      "sentiment": 0.16,
+      "news": 0.19,
+      "macro": 0.05,
+      "forex": 0.05,
+      "institutional": 0.05,
+      "seasonality": 0.01,
+      "financials": 0.0
     },
     "swing": {
-      "trend": 0.12,
-      "technical": 0.18,
-      "sentiment": 0.1,
-      "news": 0.15,
-      "macro": 0.08,
-      "competitors": 0.07,
+      "trend": 0.14,
+      "technical": 0.2,
+      "sentiment": 0.12,
+      "news": 0.2,
+      "macro": 0.1,
       "forex": 0.06,
       "institutional": 0.1,
-      "seasonality": 0.04,
-      "financials": 0.05,
-      "expectations": 0.05
+      "seasonality": 0.02,
+      "financials": 0.06
     },
     "long": {
-      "trend": 0.05,
-      "technical": 0.08,
-      "sentiment": 0.04,
-      "news": 0.08,
-      "macro": 0.12,
-      "competitors": 0.1,
+      "trend": 0.06,
+      "technical": 0.1,
+      "sentiment": 0.05,
+      "news": 0.12,
+      "macro": 0.15,
       "forex": 0.08,
-      "institutional": 0.12,
-      "seasonality": 0.08,
-      "financials": 0.13,
-      "expectations": 0.12
+      "institutional": 0.14,
+      "seasonality": 0.04,
+      "financials": 0.26
     }
   },
   "metadata": {
     "learning_rate": 0.05,
-    "momentum": 0.8
+    "momentum": 0.9
   }
 }

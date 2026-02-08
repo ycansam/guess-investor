@@ -218,12 +218,33 @@ export interface CalculatedPrediction {
   competitors?: any;
   forex?: any;
   institutional?: any;
-  seasonality?: any;
   technicalAnalysis?: any;
   uncertaintyScore?: number;
   shouldPredict?: boolean;
   uncertaintyWarning?: string;
   uncertaintyReasons?: string[];
+  // Eventos del calendario (earnings, dividendos, splits)
+  events?: {
+    hasData: boolean;
+    warnings: string[];
+    eventRiskScore?: number;
+    nextEarnings?: {
+      date: string;
+      daysUntil: number;
+      estimate?: number;
+    };
+    dividend?: {
+      yield: number;
+      exDate?: string;
+      daysUntilEx?: number;
+      frequency?: string;
+    };
+    nextSplit?: {
+      date: string;
+      daysUntil: number;
+      ratio: string;
+    };
+  };
 }
 
 export interface FullAnalysis {
@@ -234,6 +255,49 @@ export interface FullAnalysis {
   sentiment: SentimentData;
   macro: MacroIndicators;
   analyzedAt: string;
+}
+
+export interface ForexImpact {
+  baseCurrency: string;
+  pair: string;
+  trend: 'strengthening' | 'weakening' | 'stable';
+  changePercent: number;
+  forexScore: number;
+  hasData: boolean;
+  summary: string;
+}
+
+export interface FinancialsData {
+  peRatio: number | null;
+  forwardPE: number | null;
+  pegRatio: number | null;
+  priceToBook: number | null;
+  priceToSales: number | null;
+  evToEbitda: number | null;
+  evToRevenue: number | null;
+  fcfYield: number | null;
+  profitMargin: number | null;
+  operatingMargin: number | null;
+  grossMargin: number | null;
+  returnOnEquity: number | null;
+  returnOnAssets: number | null;
+  revenueGrowth: number | null;
+  earningsGrowth: number | null;
+  dividendYield: number | null;
+  payoutRatio: number | null;
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  quickRatio: number | null;
+  targetPrice: number | null;
+  targetVsCurrent: number | null;
+  recommendationMean: number | null;
+  numberOfAnalysts: number | null;
+  financialsScore: number;
+  valuationScore: number;
+  qualityScore: number;
+  hasData: boolean;
+  dataQuality: 'high' | 'medium' | 'low';
+  summary: string;
 }
 
 export interface TrendStreak {
@@ -314,6 +378,7 @@ export interface TrendRanking {
   change24h: number;
   change7d: number;
   change30d: number;
+  change90d: number;
   trendScore: number;
   trendPrediction: 'continue' | 'reverse' | 'uncertain';
 }
@@ -396,10 +461,36 @@ export const apiClient = {
   },
 
   /**
-   * Buscar activos por nombre o símbolo
+   * Obtener lista paginada de activos
+   * @param page - Número de página (1-indexed)
+   * @param pageSize - Tamaño de página (default 20, max 50)
+   * @param category - Filtrar por categoría (opcional)
+   * @param search - Búsqueda por nombre/símbolo (opcional)
    */
-  searchAssets: (query: string): Promise<SearchResult[]> => {
-    return get(`/assets/search?q=${encodeURIComponent(query)}`);
+  getAssetsPaginated: (
+    page: number = 1,
+    pageSize: number = 20,
+    category?: string,
+    search?: string
+  ): Promise<{
+    assets: Array<{ symbol: string; name: string; type: string; category: string; icon: string }>;
+    pagination: { page: number; pageSize: number; total: number; hasMore: boolean; totalPages: number };
+  }> => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('pageSize', String(pageSize));
+    if (category) params.set('category', category);
+    if (search) params.set('search', search);
+    return get(`/assets/paginated?${params.toString()}`);
+  },
+
+  /**
+   * Buscar activos por nombre o símbolo
+   * @param query - Término de búsqueda
+   * @param limit - Máximo de resultados (default 30, max 50)
+   */
+  searchAssets: (query: string, limit: number = 30): Promise<SearchResult[]> => {
+    return get(`/assets/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   },
 
   /**
@@ -444,6 +535,19 @@ export const apiClient = {
     return del('/assets/cache');
   },
 
+  /**
+   * Obtener información detallada para inversores (earnings, dividendos, valoración)
+   */
+  getInvestorInfo: async (symbol: string): Promise<any | null> => {
+    try {
+      const response = await get<any>(`/assets/${encodeURIComponent(symbol)}/investor-info`);
+      return response;
+    } catch (error) {
+      console.log('[API] Investor info not available for', symbol);
+      return null;
+    }
+  },
+
   // -------------------------------------------------------------------------
   // ANALYSIS
   // -------------------------------------------------------------------------
@@ -474,6 +578,21 @@ export const apiClient = {
    */
   getMacroIndicators: (symbol: string, type: 'stock' | 'crypto' = 'stock'): Promise<MacroIndicators> => {
     return get(`/analysis/macro/${encodeURIComponent(symbol)}?type=${type}`);
+  },
+
+  /**
+   * Obtener análisis de impacto de divisas
+   */
+  getForexImpact: (symbol: string, assetName?: string): Promise<ForexImpact> => {
+    const params = assetName ? `?name=${encodeURIComponent(assetName)}` : '';
+    return get(`/analysis/forex/${encodeURIComponent(symbol)}${params}`);
+  },
+
+  /**
+   * Obtener datos financieros fundamentales
+   */
+  getFinancials: (symbol: string): Promise<FinancialsData> => {
+    return get(`/analysis/financials/${encodeURIComponent(symbol)}`);
   },
 
   /**

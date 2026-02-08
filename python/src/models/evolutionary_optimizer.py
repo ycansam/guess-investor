@@ -51,9 +51,21 @@ class EvolutionaryOptimizer:
         self.momentum = momentum
         
         # Inicializar pesos
-        self.weights = weights if weights else {
-            tf: dict(w) for tf, w in DEFAULT_WEIGHTS.items()
-        }
+        if weights:
+            self.weights = {tf: dict(w) for tf, w in weights.items()}
+        else:
+            self.weights = {tf: dict(w) for tf, w in DEFAULT_WEIGHTS.items()}
+        
+        # Asegurar que todos los factores de FACTORS existan en los pesos
+        # Si faltan factores, agregar con valor por defecto
+        for tf in self.TIMEFRAMES:
+            if tf not in self.weights:
+                self.weights[tf] = dict(DEFAULT_WEIGHTS.get(tf, {}))
+            for factor in FACTORS:
+                if factor not in self.weights[tf]:
+                    # Usar valor de DEFAULT_WEIGHTS o WEIGHT_MIN
+                    default_val = DEFAULT_WEIGHTS.get(tf, {}).get(factor, WEIGHT_MIN)
+                    self.weights[tf][factor] = default_val
         
         # Velocidad para momentum
         self.velocity = {

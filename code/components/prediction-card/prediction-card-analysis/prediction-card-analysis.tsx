@@ -1,20 +1,49 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { currencyService } from '../../../services/currency-service';
 import { canTradeNow, getMarketHours, MarketHoursInfo } from '../../../services/market-hours-service';
 import { InvestmentPrediction } from '../../../types';
+import { FactorDetailModal, FactorType } from '../../factor-detail-modal';
 import { styles } from './prediction-card-analysis.styles';
+
+// Tooltips explicativos para usuarios no expertos
+const TOOLTIPS: Record<string, { title: string; explanation: string }> = {
+  sentiment: {
+    title: '🌐 Sentimiento del Mercado',
+    explanation: 'Mide el estado emocional de los inversores. Bullish (🐂) = optimismo. Bearish (🐻) = pesimismo. Se calcula con índices de miedo/codicia.',
+  },
+  vix: {
+    title: '📊 VIX - Índice del Miedo',
+    explanation: 'Volatilidad esperada. <18: Complacencia (⚠️). 18-25: Normal. >25: Miedo (oportunidad contrarian). Cuando está bajo, el mercado ignora riesgos.',
+  },
+  putCallRatio: {
+    title: '📈 Put/Call Ratio',
+    explanation: 'Compara opciones de venta vs compra. <0.7: Optimismo excesivo. >1.0: Mucho miedo (señal contrarian alcista).',
+  },
+  overallScore: {
+    title: '🎯 Score Institucional',
+    explanation: 'Puntuación combinada (-100 a +100). Positivo = señales alcistas. Negativo = señales bajistas. Combina VIX, Put/Call y otros indicadores.',
+  },
+  bearish: {
+    title: '🐻 Bearish (Bajista)',
+    explanation: 'Pesimismo en el mercado, se esperan bajadas. Un sentimiento bearish no siempre es malo - puede ser oportunidad de compra.',
+  },
+};
 
 interface PredictionCardAnalysisProps {
   prediction: InvestmentPrediction;
 }
 
-// Factores esenciales por tipo de activo (se muestran aunque no tengan datos)
+// Factores esenciales por tipo de activo (9 factores - competitors y expectations eliminados)
+// Seasonality: solo para activos cíclicos (retail, etc.) - NO para commodities
+// Forex: solo para activos con exposición internacional
 const ESSENTIAL_FACTORS: Record<string, string[]> = {
-  stock: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
-  crypto: ['trend', 'technical', 'sentiment', 'news', 'macro', 'seasonality'],
+  stock: ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'financials'],
+  crypto: ['trend', 'technical', 'sentiment', 'news', 'macro'],
   etf: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
-  index: ['trend', 'technical', 'macro', 'sentiment', 'seasonality'],
+  index: ['trend', 'technical', 'macro', 'sentiment'],
+  commodity: ['trend', 'technical', 'macro', 'forex'], // SIN seasonality - no es fiable para commodities
 };
 
 // Detectar tipo de activo y devolver factores esenciales
@@ -23,6 +52,19 @@ function getEssentialFactors(symbol: string): string[] {
   
   if (upperSymbol.includes('-USD') || ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'].some(c => upperSymbol.startsWith(c))) {
     return ESSENTIAL_FACTORS.crypto;
+  }
+  // Commodities - Futuros y ETFs de materias primas
+  const commoditySymbols = [
+    'GC=F', 'CL=F', 'SI=F', 'NG=F', 'HG=F', 'PL=F', 'PA=F', // Futuros
+    'GLD', 'SLV', 'USO', 'UNG', 'IAU', 'PPLT', 'PALL',      // ETFs USA
+    'PHAG.MI', 'PHAU.MI', 'NGAS.MI', 'CRUD.MI', 'OILB.MI',  // ETCs Italia
+    'PHAG.L', 'PHAU.L', 'SSLN.L', 'ISLN.L', 'EGLN.L', 'IGLN.L', 'SGLN.L', // ETCs Londres
+  ];
+  if (commoditySymbols.includes(upperSymbol) || 
+      upperSymbol.includes('GOLD') || upperSymbol.includes('SILVER') || 
+      upperSymbol.includes('OIL') || upperSymbol.includes('PHAG') ||
+      upperSymbol.includes('PHAU') || upperSymbol.endsWith('=F')) {
+    return ESSENTIAL_FACTORS.commodity;
   }
   if (['SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO'].includes(upperSymbol)) {
     return ESSENTIAL_FACTORS.etf;
@@ -37,6 +79,41 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
   const [marketInfo, setMarketInfo] = useState<MarketHoursInfo | null>(null);
   const [tradeStatus, setTradeStatus] = useState<{ canTrade: boolean; reason: string; suggestion: string } | null>(null);
   const [eurRate, setEurRate] = useState<number>(1);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [auditExpanded, setAuditExpanded] = useState<boolean>(false);
+  // Estado para el modal de detalle de factor
+  const [factorModal, setFactorModal] = useState<{ visible: boolean; type: FactorType; score?: number }>({
+    visible: false,
+    type: 'technical',
+  });
+
+  // Componente de tooltip con hover para web y tap para móvil
+  const TooltipWrapper: React.FC<{ tooltipKey: string; children: React.ReactNode }> = ({ tooltipKey, children }) => {
+    const tooltip = TOOLTIPS[tooltipKey];
+    const isWeb = Platform.OS === 'web';
+    
+    return (
+      <View style={{ position: 'relative', zIndex: activeTooltip === tooltipKey ? 100 : 1 }}>
+        <Pressable
+          onHoverIn={isWeb ? () => setActiveTooltip(tooltipKey) : undefined}
+          onHoverOut={isWeb ? () => setActiveTooltip(null) : undefined}
+          onPress={() => setActiveTooltip(activeTooltip === tooltipKey ? null : tooltipKey)}
+          style={{ flexDirection: 'row', alignItems: 'center' }}
+        >
+          {children}
+          <Text style={{ fontSize: 11, marginLeft: 4, color: '#6366f1' }}>ⓘ</Text>
+        </Pressable>
+        
+        {/* Tooltip flotante */}
+        {activeTooltip === tooltipKey && tooltip && (
+          <View style={styles.hoverTooltip}>
+            <Text style={styles.hoverTooltipTitle}>{tooltip.title}</Text>
+            <Text style={styles.hoverTooltipText}>{tooltip.explanation}</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   // Obtener rate de conversión a EUR (usando la moneda real del activo, no adivinando por símbolo)
   useEffect(() => {
@@ -122,6 +199,121 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
         </View>
       )}
 
+      {/* Eventos Importantes (Earnings, Dividendos, Splits) */}
+      {prediction.analysisData?.events?.hasData && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📅 Próximos Eventos:</Text>
+          <View style={{ backgroundColor: '#1a1a2e', borderRadius: 10, padding: 12 }}>
+            {/* Warnings */}
+            {prediction.analysisData.events.warnings.length > 0 && (
+              <View style={{ marginBottom: 10 }}>
+                {prediction.analysisData.events.warnings.map((warning, idx) => (
+                  <Text key={idx} style={{ 
+                    fontSize: 13, 
+                    color: warning.includes('⚠️') ? '#FF9800' : '#e5e5e5',
+                    marginBottom: 4,
+                    fontWeight: warning.includes('⚠️') ? '600' : '400'
+                  }}>
+                    {warning}
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {/* Próximos Earnings */}
+            {prediction.analysisData.events.nextEarnings && (
+              <View style={{ backgroundColor: '#252547', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 14, color: '#e5e5e5', fontWeight: '600' }}>
+                    📊 Earnings
+                  </Text>
+                  {prediction.analysisData.events.nextEarnings.daysUntil <= 7 && (
+                    <View style={{ 
+                      backgroundColor: prediction.analysisData.events.nextEarnings.daysUntil <= 3 ? '#F44336' : '#FF9800',
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 10,
+                      marginLeft: 8
+                    }}>
+                      <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>
+                        {prediction.analysisData.events.nextEarnings.daysUntil <= 3 ? '¡PRONTO!' : 'ESTA SEMANA'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                  📆 {new Date(prediction.analysisData.events.nextEarnings.date).toLocaleDateString('es-ES', { 
+                    weekday: 'short', day: 'numeric', month: 'short' 
+                  })} ({prediction.analysisData.events.nextEarnings.daysUntil} días)
+                  {prediction.analysisData.events.nextEarnings.isEstimate ? ' (estimado)' : ''}
+                </Text>
+                {prediction.analysisData.events.nextEarnings.epsEstimate && (
+                  <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                    EPS esperado: ${prediction.analysisData.events.nextEarnings.epsEstimate.toFixed(2)}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Dividendo */}
+            {prediction.analysisData.events.dividend && prediction.analysisData.events.dividend.yield && (
+              <View style={{ backgroundColor: '#254725', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                <Text style={{ fontSize: 14, color: '#e5e5e5', fontWeight: '600', marginBottom: 4 }}>
+                  💰 Dividendo
+                </Text>
+                <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                  Yield: {(prediction.analysisData.events.dividend.yield * 100).toFixed(2)}%
+                  {prediction.analysisData.events.dividend.amount && 
+                    ` ($${prediction.analysisData.events.dividend.amount.toFixed(2)}/acción)`}
+                </Text>
+                {prediction.analysisData.events.dividend.daysUntilEx && (
+                  <Text style={{ fontSize: 12, color: '#4CAF50', marginTop: 4 }}>
+                    Ex-dividendo en {prediction.analysisData.events.dividend.daysUntilEx} días
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Split */}
+            {prediction.analysisData.events.nextSplit && (
+              <View style={{ backgroundColor: '#472547', borderRadius: 8, padding: 10 }}>
+                <Text style={{ fontSize: 14, color: '#e5e5e5', fontWeight: '600', marginBottom: 4 }}>
+                  ✂️ Split
+                </Text>
+                <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+                  Ratio {prediction.analysisData.events.nextSplit.ratio} en {prediction.analysisData.events.nextSplit.daysUntil} días
+                </Text>
+              </View>
+            )}
+
+            {/* Risk Score */}
+            {prediction.analysisData.events.eventRiskScore !== 0 && (
+              <View style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                marginTop: 8,
+                paddingTop: 8,
+                borderTopWidth: 1,
+                borderTopColor: '#333'
+              }}>
+                <Text style={{ fontSize: 11, color: '#6b7280' }}>
+                  Riesgo por eventos: 
+                </Text>
+                <Text style={{ 
+                  fontSize: 11, 
+                  color: prediction.analysisData.events.eventRiskScore < -15 ? '#F44336' : 
+                         prediction.analysisData.events.eventRiskScore < 0 ? '#FF9800' : '#4CAF50',
+                  fontWeight: '600',
+                  marginLeft: 4
+                }}>
+                  {prediction.analysisData.events.eventRiskScore > 0 ? '+' : ''}{prediction.analysisData.events.eventRiskScore}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Desglose de Factores */}
       {prediction.analysisData?.factorBreakdown && (
         <View style={styles.section}>
@@ -179,23 +371,47 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                   const essentialFactors = getEssentialFactors(prediction.symbol || '');
                   const isEssential = essentialFactors.includes(factor.name);
                   
+                  // Factores que tienen modal con más detalles
+                  const hasDetailModal = ['technical', 'macro', 'sentiment', 'news', 'trend', 'competitors', 
+                                          'forex', 'institutional', 'seasonality', 'financials', 'expectations']
+                                          .includes(factor.name);
+                  
                   return (
                     <View key={index} style={styles.factorItem}>
                       <View style={styles.factorHeader}>
-                        <Text style={styles.factorName}>
-                          {factor.name === 'trend' ? '📈 Tendencia' :
-                           factor.name === 'sentiment' ? '💬 Sentimiento' :
-                           factor.name === 'news' ? '📰 Noticias' :
-                           factor.name === 'macro' ? '🌍 Macro' :
-                           factor.name === 'competitors' ? '🏭 Competidores' :
-                           factor.name === 'forex' ? '💱 Forex' :
-                           factor.name === 'institutional' ? '🏛️ Institucionales' :
-                           factor.name === 'seasonality' ? '📅 Estacionalidad' :
-                           factor.name === 'financials' ? '💰 Financieros' :
-                           factor.name === 'expectations' ? '🎯 Expectativas' :
-                           factor.name === 'technical' ? '📈 Técnico' : factor.name}
-                          {isEssential && !factor.hasData && ' ⚠️'}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          <Text style={styles.factorName}>
+                            {factor.name === 'trend' ? '📈 Tendencia' :
+                             factor.name === 'sentiment' ? '💬 Sentimiento' :
+                             factor.name === 'news' ? '📰 Noticias' :
+                             factor.name === 'macro' ? '🌍 Macro' :
+                             factor.name === 'competitors' ? '🏭 Competidores' :
+                             factor.name === 'forex' ? '💱 Forex' :
+                             factor.name === 'institutional' ? '🏛️ Institucionales' :
+                             factor.name === 'seasonality' ? '📅 Estacionalidad' :
+                             factor.name === 'financials' ? '💰 Financieros' :
+                             factor.name === 'expectations' ? '🎯 Expectativas' :
+                             factor.name === 'technical' ? '📊 Técnico' : factor.name}
+                            {isEssential && !factor.hasData && ' ⚠️'}
+                          </Text>
+                          {/* Botón para abrir modal con detalles del factor */}
+                          {hasDetailModal && (
+                            <Pressable
+                              onPress={() => setFactorModal({ 
+                                visible: true, 
+                                type: factor.name as FactorType,
+                                score: factor.hasData ? factor.score : undefined
+                              })}
+                              style={({ pressed }) => ({
+                                marginLeft: 6,
+                                opacity: pressed ? 0.7 : 1,
+                                padding: 2,
+                              })}
+                            >
+                              <Ionicons name="eye-outline" size={14} color="#6366f1" />
+                            </Pressable>
+                          )}
+                        </View>
                         <Text style={[
                           styles.factorScore,
                           { color: !factor.hasData ? '#999' :
@@ -234,6 +450,44 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
             <Text style={styles.confidenceExplanation}>
               💡 {prediction.analysisData.factorBreakdown.confidenceExplanation}
             </Text>
+            )}
+
+            {/* Ajuste por racha (mean reversion) */}
+            {prediction.analysisData?.factorBreakdown?.streakAdjustment && (
+              <View style={{ 
+                backgroundColor: '#1a1a2e', 
+                padding: 10, 
+                borderRadius: 8, 
+                marginTop: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: prediction.analysisData.factorBreakdown.streakAdjustment.adjustment > 0 ? '#4CAF50' : 
+                                 prediction.analysisData.factorBreakdown.streakAdjustment.adjustment < 0 ? '#FF9800' : '#6366f1'
+              }}>
+                <Text style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
+                  🔄 Racha actual:
+                </Text>
+                <Text style={{ fontSize: 13, color: '#e5e5e5' }}>
+                  {prediction.analysisData.factorBreakdown.streakAdjustment.days} días consecutivos {
+                    prediction.analysisData.factorBreakdown.streakAdjustment.direction === 'up' ? '📈 subiendo' : 
+                    prediction.analysisData.factorBreakdown.streakAdjustment.direction === 'down' ? '📉 bajando' : '➡️ lateral'
+                  }
+                </Text>
+                {prediction.analysisData.factorBreakdown.streakAdjustment.adjustment !== 0 ? (
+                  <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                    {prediction.analysisData.factorBreakdown.streakAdjustment.adjustment > 0 
+                      ? `✅ Ajuste +${prediction.analysisData.factorBreakdown.streakAdjustment.adjustment}% (momentum alineado)`
+                      : `⚠️ Ajuste ${prediction.analysisData.factorBreakdown.streakAdjustment.adjustment}% (posible agotamiento)`}
+                  </Text>
+                ) : (
+                  <Text style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                    {prediction.analysisData.factorBreakdown.streakAdjustment.days >= 5 
+                      ? '⚡ Racha larga - vigilar posible reversión'
+                      : prediction.analysisData.factorBreakdown.streakAdjustment.days >= 3
+                        ? '📊 Racha en desarrollo'
+                        : '📌 Sin ajuste aplicado'}
+                  </Text>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -421,7 +675,9 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
 
       {/* Sentimiento RRSS */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🌐 Sentimiento del mercado:</Text>
+        <TooltipWrapper tooltipKey="sentiment">
+          <Text style={styles.sectionTitle}>🌐 Sentimiento del mercado:</Text>
+        </TooltipWrapper>
         {prediction.analysisData?.sentiment ? (
           <View style={styles.sentimentContainer}>
             {/* Barra de sentimiento general */}
@@ -436,11 +692,14 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               ]} />
             </View>
             <View style={styles.sentimentInfo}>
-              <Text style={styles.sentimentScore}>
-                {prediction.analysisData.sentiment.score}%
-                {prediction.analysisData.sentiment.score >= 60 ? ' Bullish 🐂' :
-                 prediction.analysisData.sentiment.score >= 40 ? ' Neutro 😐' : ' Bearish 🐻'}
-              </Text>
+              <Pressable onPress={() => setActiveTooltip('bearish')}>
+                <Text style={styles.sentimentScore}>
+                  {prediction.analysisData.sentiment.score}%
+                  {prediction.analysisData.sentiment.score >= 60 ? ' Bullish 🐂' :
+                   prediction.analysisData.sentiment.score >= 40 ? ' Neutro 😐' : ' Bearish 🐻'}
+                  <Text style={{ fontSize: 10, color: '#6366f1' }}> ⓘ</Text>
+                </Text>
+              </Pressable>
               <Text style={styles.sentimentSource}>
                 Fuente: {prediction.analysisData.sentiment.source}
               </Text>
@@ -451,7 +710,9 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
               <View style={styles.institutionalSentiment}>
                 {prediction.analysisData.sentiment.vix && (
                   <View style={styles.vixContainer}>
-                    <Text style={styles.vixLabel}>📊 VIX (Índice del Miedo)</Text>
+                    <TooltipWrapper tooltipKey="vix">
+                      <Text style={styles.vixLabel}>📊 VIX (Índice del Miedo)</Text>
+                    </TooltipWrapper>
                     <Text style={[
                       styles.vixValue,
                       { color: prediction.analysisData.sentiment.vix.sentiment === 'extreme_fear' ? '#F44336' :
@@ -469,7 +730,9 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                 )}
                 {prediction.analysisData.sentiment.putCallRatio && (
                   <View style={styles.pcRatioContainer}>
-                    <Text style={styles.pcRatioLabel}>📈 Put/Call Ratio (SPX)</Text>
+                    <TooltipWrapper tooltipKey="putCallRatio">
+                      <Text style={styles.pcRatioLabel}>📈 Put/Call Ratio (SPX)</Text>
+                    </TooltipWrapper>
                     <Text style={[
                       styles.pcRatioValue,
                       { color: prediction.analysisData.sentiment.putCallRatio.sentiment === 'extreme_fear' ? '#F44336' :
@@ -486,13 +749,16 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                   </View>
                 )}
                 {prediction.analysisData.sentiment.overallScore !== undefined && (
-                  <Text style={[
-                    styles.overallSentimentScore,
-                    { color: prediction.analysisData.sentiment.overallScore > 20 ? '#4CAF50' :
-                             prediction.analysisData.sentiment.overallScore > -20 ? '#FF9800' : '#F44336' }
-                  ]}>
-                    Score institucional: {prediction.analysisData.sentiment.overallScore > 0 ? '+' : ''}{prediction.analysisData.sentiment.overallScore}
-                  </Text>
+                  <Pressable onPress={() => setActiveTooltip('overallScore')}>
+                    <Text style={[
+                      styles.overallSentimentScore,
+                      { color: prediction.analysisData.sentiment.overallScore > 20 ? '#4CAF50' :
+                               prediction.analysisData.sentiment.overallScore > -20 ? '#FF9800' : '#F44336' }
+                    ]}>
+                      Score institucional: {prediction.analysisData.sentiment.overallScore > 0 ? '+' : ''}{prediction.analysisData.sentiment.overallScore}
+                      <Text style={{ fontSize: 10, color: '#6366f1' }}> ⓘ</Text>
+                    </Text>
+                  </Pressable>
                 )}
               </View>
             )}
@@ -845,68 +1111,92 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
         </Text>
       </View>
 
-      {/* AUDITORÍA - Verificación de datos */}
+      {/* AUDITORÍA - Verificación de datos (COLAPSABLE) */}
       {prediction.analysisData?.audit && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔍 Auditoría - Verificar datos:</Text>
-          <Text style={styles.auditSubtitle}>
-            Puedes verificar cada dato haciendo clic en los enlaces:
-          </Text>
+          <Pressable 
+            style={styles.collapsibleHeader}
+            onPress={() => setAuditExpanded(!auditExpanded)}
+          >
+            <Text style={styles.sectionTitle}>🔍 Auditoría - Verificar datos</Text>
+            <Ionicons 
+              name={auditExpanded ? 'chevron-up' : 'chevron-down'} 
+              size={20} 
+              color="#9ca3af" 
+            />
+          </Pressable>
           
-          {/* Fuentes de datos */}
-          {prediction.analysisData?.audit?.dataSources && (
-          <View style={styles.auditSourcesContainer}>
-            {prediction.analysisData.audit.dataSources.map((source, index) => (
-              <View key={index} style={styles.auditSourceItem}>
-                <Text style={styles.auditSourceName}>📊 {source.name}</Text>
-                <Text style={styles.auditSourceValue}>{source.rawValue}</Text>
-                <Text 
-                  style={styles.auditSourceUrl}
-                  onPress={() => {
-                    // En React Native Web esto abre el enlace
-                    if (typeof window !== 'undefined') {
-                      window.open(source.url, '_blank');
-                    }
-                  }}
-                >
-                  🔗 Verificar →
+          {auditExpanded && (
+            <View style={styles.collapsibleContent}>
+              <Text style={styles.auditSubtitle}>
+                Puedes verificar cada dato haciendo clic en los enlaces:
+              </Text>
+              
+              {/* Fuentes de datos */}
+              {prediction.analysisData?.audit?.dataSources && (
+              <View style={styles.auditSourcesContainer}>
+                {prediction.analysisData.audit.dataSources.map((source, index) => (
+                  <View key={index} style={styles.auditSourceItem}>
+                    <Text style={styles.auditSourceName}>📊 {source.name}</Text>
+                    <Text style={styles.auditSourceValue}>{source.rawValue}</Text>
+                    <Text 
+                      style={styles.auditSourceUrl}
+                      onPress={() => {
+                        // En React Native Web esto abre el enlace
+                        if (typeof window !== 'undefined') {
+                          window.open(source.url, '_blank');
+                        }
+                      }}
+                    >
+                      🔗 Verificar →
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              )}
+
+              {/* Cálculo paso a paso */}
+              {prediction.analysisData?.audit?.calculationSteps && (
+              <>
+              <Text style={styles.auditCalcTitle}>📐 Cálculo matemático:</Text>
+              <View style={styles.auditCalcContainer}>
+                {prediction.analysisData.audit.calculationSteps.map((step, index) => (
+                  <View key={index} style={styles.auditCalcStep}>
+                    <Text style={styles.auditStepName}>{step.step}</Text>
+                    <Text style={styles.auditStepFormula}>{step.formula}</Text>
+                    <Text style={styles.auditStepResult}>= {step.result}</Text>
+                  </View>
+                ))}
+              </View>
+              </>
+              )}
+
+              {/* Fórmula final */}
+              {prediction.currentPrice && prediction.predictedChange !== undefined && (
+              <View style={styles.auditFinalFormula}>
+                <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
+                <Text style={styles.auditFormulaText}>
+                  {(() => {
+                    const basePrice = prediction.currentPrice * eurRate;
+                    const targetPrice = basePrice * (1 + prediction.predictedChange / 100);
+                    return `Precio objetivo = ${basePrice.toFixed(2)} × (1 + ${prediction.predictedChange.toFixed(2)}%) = ${targetPrice.toFixed(2)} EUR`;
+                  })()}
                 </Text>
               </View>
-            ))}
-          </View>
-          )}
-
-          {/* Cálculo paso a paso */}
-          {prediction.analysisData?.audit?.calculationSteps && (
-          <>
-          <Text style={styles.auditCalcTitle}>📐 Cálculo matemático:</Text>
-          <View style={styles.auditCalcContainer}>
-            {prediction.analysisData.audit.calculationSteps.map((step, index) => (
-              <View key={index} style={styles.auditCalcStep}>
-                <Text style={styles.auditStepName}>{step.step}</Text>
-                <Text style={styles.auditStepFormula}>{step.formula}</Text>
-                <Text style={styles.auditStepResult}>= {step.result}</Text>
-              </View>
-            ))}
-          </View>
-          </>
-          )}
-
-          {/* Fórmula final */}
-          {prediction.currentPrice && prediction.predictedChange !== undefined && (
-          <View style={styles.auditFinalFormula}>
-            <Text style={styles.auditFormulaTitle}>Fórmula del precio objetivo:</Text>
-            <Text style={styles.auditFormulaText}>
-              {(() => {
-                const basePrice = prediction.currentPrice * eurRate;
-                const targetPrice = basePrice * (1 + prediction.predictedChange / 100);
-                return `Precio objetivo = ${basePrice.toFixed(2)} × (1 + ${prediction.predictedChange.toFixed(2)}%) = ${targetPrice.toFixed(2)} EUR`;
-              })()}
-            </Text>
-          </View>
+              )}
+            </View>
           )}
         </View>
       )}
+
+      {/* Modal de detalle de factor */}
+      <FactorDetailModal
+        visible={factorModal.visible}
+        onClose={() => setFactorModal({ ...factorModal, visible: false })}
+        factorType={factorModal.type}
+        symbol={prediction.symbol}
+        score={factorModal.score}
+      />
     </View>
   );
 };

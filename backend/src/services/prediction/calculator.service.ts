@@ -8,21 +8,46 @@
  * - Si hay datos fundamentales → activa modelo fundamental
  * - Si hay datos de sentiment/news → activa modelo sentiment_driven
  * - Si solo hay datos técnicos → usa modelos momentum/mean_reversion
+ * 
+ * FACTORES SIMPLIFICADOS (8):
+ * - CORE: trend, technical, sentiment, news, institutional, financials, macro
+ * - CONDICIONALES: forex (solo si exposición internacional)
+ * - ELIMINADOS: competitors (ruido), expectations (redundante con news), seasonality (poco fiable)
+ * 
+ * AJUSTES ELIMINADOS (añadían ruido):
+ * - Market Psychology: ya capturado por VIX en sentiment
+ * - Geopolitical Events: imposible de cuantificar bien
+ * - Streak Adjustment: falacia del jugador + doble conteo con trend
  */
 
 import { logger } from '../../middleware/logger.js';
-import { predictionRepository } from '../../repositories/prediction.repository.js';
+import { predictionRepository, PredictionType } from '../../repositories/prediction.repository.js';
 import { weightsRepository } from '../../repositories/weights.repository.js';
-import { CompetitorAnalysis, competitorsService } from '../external/competitors.service.js';
-import { ExpectationsData, expectationsService } from '../external/expectations.service.js';
+import { broadMarketContextService } from '../external/broad-market-context.service.js';
+// NUEVOS SERVICIOS PARA INTRADÍA
+import { DivergenceAnalysis, divergenceService } from '../analysis/divergence.service.js';
+import { IntradayTrendData, intradayTrendService } from '../analysis/intraday-trend.service.js';
+import { MarketBreadthData, marketBreadthService } from '../analysis/market-breadth.service.js';
+import { OptionsFlowData, optionsFlowService } from '../analysis/options-flow.service.js';
+import { sectorRotationService } from '../analysis/sector-rotation.service.js';
+import { VolatilityData, volatilityService } from '../analysis/volatility.service.js';
+import { VolumeProfileData, volumeProfileService } from '../analysis/volume-profile.service.js';
+// ELIMINADOS:
+// - Calendar Effects: el efecto lunes es casi mito
+// - Competitors: no añade señal limpia
+// - Expectations: redundante con news (analyst actions ya incluidas en news)
+// - Market Psychology: ya capturado por VIX/Fear&Greed en sentiment
+// - Geopolitical Events: imposible de cuantificar direccionalmente
+// - Seasonality: poco fiable, patrones no se mantienen
+import { AssetEvents, eventsService } from '../external/events.service.js';
 import { FinancialsData, financialsService } from '../external/financials.service.js';
 import { ForexImpact, forexService } from '../external/forex.service.js';
 import { InstitutionalData, institutionalService } from '../external/institutional.service.js';
 import { MacroIndicators, macroService } from '../external/macro.service.js';
 import { newsService, NewsSummary } from '../external/news.service.js';
-import { SeasonalityAnalysis, seasonalityService } from '../external/seasonality.service.js';
 import { SentimentData, sentimentService } from '../external/sentiment.service.js';
 import { TechnicalAnalysis, technicalService } from '../external/technical.service.js';
+import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
@@ -31,6 +56,8 @@ import {
   reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
+import { commodityCorrelationService } from './commodity-correlation.service.js';
+import { commodityUnderlyingService, UnderlyingInfo } from './commodity-underlying.service.js';
 import { DataAvailability, ensembleService } from './ensemble.service.js';
 import { trackRecordService } from './track-record.service.js';
 
@@ -44,12 +71,26 @@ export interface CalculatedPrediction {
   assetType: 'stock' | 'crypto' | 'forex' | 'commodity' | 'index' | 'other';
   currentPrice: number;
   currency: string;
+  predictionType?: PredictionType; // 'close' o 'open_next_day'
   
   predictedPriceMin: number;
   predictedPriceMax: number;
   predictedChange: number;
   direction: 'up' | 'down' | 'neutral';
   confidence: number;
+  
+  // RECOMENDACIÓN INTELIGENTE
+  // Considera predicción + contexto psicológico + calendario + largo plazo
+  recommendation?: {
+    action: 'strong_buy' | 'buy' | 'hold' | 'reduce' | 'sell' | 'strong_sell' | 'wait';
+    emoji: string;
+    title: string;
+    reasoning: string;
+    timeHorizon: 'short' | 'medium' | 'long';  // Horizonte recomendado
+    riskLevel: 'low' | 'medium' | 'high' | 'extreme';
+    isContrarian: boolean;  // ¿Es una recomendación contrarian?
+    keyFactors: string[];   // Factores principales que influyen
+  };
   
   factorBreakdown: {
     assetGroup: string;
@@ -63,6 +104,10 @@ export interface CalculatedPrediction {
     assetAdjustmentApplied?: boolean;
     trackRecordAdjustment?: number;
     correlationAdjustment?: number;
+    streakAdjustment?: { days: number; direction: string; adjustment: number };
+    meanReversionAdjustment?: { recentDrop: number; todayRecovery: number; adjustment: number };
+    intradayMomentumAdjustment?: { currentChange: number; projectedContinuation: number; adjustment: number; confidenceBoost: number };
+    commodityCorrelationAdjustment?: { adjusted: boolean; reason: string | null };
     // Información de selección dinámica de modelos
     activeModels?: string[];
     modelSelectionReason?: string;
@@ -105,8 +150,66 @@ export interface CalculatedPrediction {
   news?: NewsSummary;
   macro?: MacroIndicators;
   
+  // Eventos importantes (earnings, dividendos, splits)
+  events?: {
+    hasData: boolean;
+    warnings: string[];
+    eventRiskScore: number;
+    nextEarnings?: {
+      date: Date;
+      daysUntil: number;
+      isEstimate: boolean;
+      epsEstimate?: number;
+    };
+    dividend?: {
+      yield?: number;
+      exDate?: Date;
+      daysUntilEx?: number;
+      amount?: number;
+    };
+    nextSplit?: {
+      date: Date;
+      ratio: string;
+      daysUntil: number;
+    };
+  };
+  
   timeframe: string;
   calculatedAt: Date;
+  
+  // Contexto de mercado global
+  marketContext?: {
+    condition: string;
+    severity: string;
+    predictionBias: number;
+    confidenceMultiplier: number;
+    signals: string[];
+    reasoning: string;
+    recommendation: string;
+    applied: boolean;
+  };
+  
+  // RISK FILTER: Recomienda abstención cuando hay alta incertidumbre
+  riskFilter?: {
+    shouldAbstain: boolean;           // true = mejor no operar
+    abstentionLevel: 'none' | 'caution' | 'warning' | 'critical';  // Niveles de riesgo
+    abstentionScore: number;          // 0-100, >50 = considerar abstención
+    reasons: string[];                // Por qué se recomienda abstención
+    riskFactors: {
+      vixExtreme: boolean;            // VIX > 30
+      volatilityExtreme: boolean;     // Volatilidad del activo > 50%
+      conflictingSignals: boolean;    // Factores dan señales opuestas
+      lowDataQuality: boolean;        // Pocos factores con datos
+      trendDivergence: boolean;       // Timeframes desalineados
+      earningsNear: boolean;          // Earnings en próximos 3 días
+      marketCrash: boolean;           // Mercado en caída fuerte
+    };
+  };
+  
+  // ELIMINADOS (añadían ruido sin valor):
+  // - preciousMetalsAnalysis: integrado en forex para metales
+  // - marketPsychology: ya capturado por VIX en sentiment
+  // - geopoliticalEvents: imposible de cuantificar direccionalmente
   
   audit: {
     dataSources: { name: string; url: string; fetchedAt: Date }[];
@@ -131,52 +234,62 @@ interface AssetGroupConfig {
 
 const ASSET_GROUP_CONFIGS: Record<AssetGroup, AssetGroupConfig> = {
   large_cap_stock: {
-    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'],
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'financials', 
+                      'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'],
     minFactorsForHighConfidence: 5,
     description: 'Acciones de gran capitalización',
   },
   small_cap_stock: {
-    relevantFactors: ['trend', 'technical', 'news', 'competitors', 'seasonality', 'financials'],
+    relevantFactors: ['trend', 'technical', 'news', 'financials',
+                      'intradayTrend', 'volumeProfile', 'divergences', 'marketBreadth'],
     minFactorsForHighConfidence: 3,
     description: 'Acciones pequeñas/medianas',
   },
   crypto_major: {
-    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro'],
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news', 'macro',
+                      'intradayTrend', 'volumeProfile', 'divergences', 'marketBreadth'],
     minFactorsForHighConfidence: 3,
     description: 'Criptomonedas principales (BTC, ETH)',
   },
   crypto_alt: {
-    relevantFactors: ['trend', 'technical', 'sentiment'],
+    relevantFactors: ['trend', 'technical', 'sentiment',
+                      'intradayTrend', 'volumeProfile', 'divergences'],
     minFactorsForHighConfidence: 2,
     description: 'Altcoins',
   },
   etf_index: {
-    relevantFactors: ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    relevantFactors: ['trend', 'technical', 'macro', 'forex',
+                      'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'],
     minFactorsForHighConfidence: 3,
     description: 'ETFs e índices',
   },
   commodity: {
-    relevantFactors: ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    relevantFactors: ['trend', 'technical', 'macro', 'forex',
+                      'intradayTrend', 'volumeProfile', 'divergences', 'volatilityIV'],
     minFactorsForHighConfidence: 3,
     description: 'Materias primas',
   },
   reit: {
-    relevantFactors: ['trend', 'technical', 'macro', 'financials', 'seasonality'],
+    relevantFactors: ['trend', 'technical', 'macro', 'financials',
+                      'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'marketBreadth'],
     minFactorsForHighConfidence: 3,
     description: 'REITs',
   },
   forex: {
-    relevantFactors: ['trend', 'technical', 'macro', 'news'],
+    relevantFactors: ['trend', 'technical', 'macro', 'news',
+                      'intradayTrend', 'volumeProfile', 'divergences'],
     minFactorsForHighConfidence: 3,
     description: 'Pares de divisas',
   },
   adr: {
-    relevantFactors: ['trend', 'technical', 'news', 'forex', 'macro', 'competitors', 'financials'],
+    relevantFactors: ['trend', 'technical', 'news', 'forex', 'macro', 'financials',
+                      'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'],
     minFactorsForHighConfidence: 4,
     description: 'ADRs',
   },
   default: {
-    relevantFactors: ['trend', 'technical', 'sentiment', 'news'],
+    relevantFactors: ['trend', 'technical', 'sentiment', 'news',
+                      'intradayTrend', 'volumeProfile', 'divergences', 'marketBreadth'],
     minFactorsForHighConfidence: 2,
     description: 'Activo genérico',
   },
@@ -234,87 +347,127 @@ const SYMBOL_TO_GROUP: Record<string, AssetGroup> = {
   'EURUSD=X': 'forex', 'GBPUSD=X': 'forex', 'USDJPY=X': 'forex', 'USDCHF=X': 'forex',
 };
 
-// Pesos por defecto según timeframe (11 factores)
+// Pesos por defecto según timeframe
+// INTRADÍA OPTIMIZADO: Nuevos factores de alta frecuencia
+// - intradayTrend: Reemplaza trend largo (1h/4h/day)
+// - optionsFlow: Flujo institucional en tiempo real
+// - volumeProfile: POC, Value Area
+// - divergences: RSI/MACD divergencias
+// - volatilityIV: IV vs RV spread
+// - marketBreadth: Salud del mercado
 const DEFAULT_WEIGHTS = {
   intraday: {
-    trend: 0.20, technical: 0.25, sentiment: 0.15, news: 0.16,
-    macro: 0.04, competitors: 0.04, forex: 0.04, institutional: 0.05,
-    seasonality: 0.04, financials: 0.02, expectations: 0.01
+    // Factores de ALTA FRECUENCIA (nuevos) - 55%
+    technical: 0.20,        // RSI, MACD, Bollinger, Stochastic
+    intradayTrend: 0.15,    // 1h/4h/day momentum, VWAP, Pivots
+    optionsFlow: 0.10,      // Put/Call, IV, Max Pain
+    volumeProfile: 0.05,    // POC, Value Area
+    divergences: 0.05,      // RSI/MACD divergencias
+    // Factores TRADICIONALES adaptados - 45%
+    sentiment: 0.15,        // VIX, Fear&Greed
+    news: 0.10,             // Noticias recientes
+    volatilityIV: 0.05,     // IV vs RV spread
+    marketBreadth: 0.05,    // Salud del mercado (A/D ratio)
+    // Factores de BAJA relevancia intradía - 10%
+    trend: 0.05,            // Trend largo (reducido)
+    macro: 0.03,            // Macro (casi irrelevante intradía)
+    forex: 0.02,            // FX (solo si aplica)
+    institutional: 0.00,    // Con lag, no útil intradía
+    financials: 0.00        // No aplica intradía
   },
   swing: {
-    trend: 0.12, technical: 0.18, sentiment: 0.10, news: 0.15,
-    macro: 0.08, competitors: 0.07, forex: 0.06, institutional: 0.10,
-    seasonality: 0.04, financials: 0.05, expectations: 0.05
+    // Nuevos factores intradía (peso reducido en swing)
+    intradayTrend: 0.05,    // Algo de relevancia
+    optionsFlow: 0.03,      // Menor peso
+    volumeProfile: 0.02,    // Menor peso
+    divergences: 0.05,      // Relevante también en swing
+    volatilityIV: 0.03,     // Algo de peso
+    marketBreadth: 0.04,    // Relevante
+    // Factores tradicionales
+    trend: 0.14, technical: 0.20, sentiment: 0.12, news: 0.17,
+    macro: 0.08, forex: 0.05, institutional: 0.08,
+    financials: 0.04
   },
   long: {
-    trend: 0.05, technical: 0.10, sentiment: 0.04, news: 0.07,
-    macro: 0.12, competitors: 0.10, forex: 0.08, institutional: 0.12,
-    seasonality: 0.08, financials: 0.12, expectations: 0.12
+    // Nuevos factores (mínimo peso en largo plazo)
+    intradayTrend: 0.00,    // No aplica
+    optionsFlow: 0.02,      // Algo de señal institucional
+    volumeProfile: 0.01,    // Mínimo
+    divergences: 0.03,      // Divergencias a largo plazo
+    volatilityIV: 0.02,     // Mínimo
+    marketBreadth: 0.03,    // Algo de relevancia
+    // Factores tradicionales (dominan)
+    trend: 0.06, technical: 0.09, sentiment: 0.04, news: 0.10,
+    macro: 0.15, forex: 0.07, institutional: 0.13,
+    financials: 0.25        // Mayor peso en largo plazo
   },
 };
 
 // --- MULTIPLICADORES DE PESO POR GRUPO DE ACTIVO ---
 // Diferentes tipos de activos requieren diferentes combinaciones de factores
+// Ahora incluye los nuevos factores intradía
 const ASSET_GROUP_WEIGHT_MULTIPLIERS: Record<AssetGroup, Record<string, number>> = {
   large_cap_stock: {
-    // Acciones grandes: balance de todos los factores, énfasis en institucional y financials
-    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.0,
-    macro: 1.1, competitors: 1.2, forex: 0.8, institutional: 1.4,
-    seasonality: 1.0, financials: 1.3, expectations: 1.2
+    // Factores tradicionales
+    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.2,
+    macro: 1.1, forex: 0.8, institutional: 1.4, financials: 1.5,
+    // Nuevos factores intradía
+    intradayTrend: 1.0, optionsFlow: 1.3, volumeProfile: 1.0,
+    divergences: 1.0, volatilityIV: 1.0, marketBreadth: 1.0
   },
   small_cap_stock: {
-    // Small caps: más técnico/momentum, menos institucional (poco volumen)
-    trend: 1.3, technical: 1.4, sentiment: 1.2, news: 1.3,
-    macro: 0.7, competitors: 1.0, forex: 0.5, institutional: 0.5,
-    seasonality: 0.9, financials: 1.1, expectations: 0.8
+    trend: 1.3, technical: 1.4, sentiment: 1.2, news: 1.5,
+    macro: 0.7, forex: 0.3, institutional: 0.5, financials: 1.3,
+    intradayTrend: 1.4, optionsFlow: 0.5, volumeProfile: 1.2,
+    divergences: 1.3, volatilityIV: 1.2, marketBreadth: 0.8
   },
   crypto_major: {
-    // Bitcoin/Ethereum: técnico + sentiment + macro (correlación con risk-on/off)
-    trend: 1.3, technical: 1.4, sentiment: 1.5, news: 1.2,
-    macro: 1.2, competitors: 0.3, forex: 0.8, institutional: 1.0,
-    seasonality: 0.5, financials: 0.1, expectations: 0.3
+    trend: 1.3, technical: 1.4, sentiment: 1.5, news: 1.3,
+    macro: 1.2, forex: 0.0, institutional: 1.0, financials: 0.0,
+    intradayTrend: 1.5, optionsFlow: 0.3, volumeProfile: 1.3,
+    divergences: 1.4, volatilityIV: 0.5, marketBreadth: 0.7
   },
   crypto_alt: {
-    // Altcoins: muy técnico + sentiment, casi nada de fundamentales
-    trend: 1.5, technical: 1.6, sentiment: 1.8, news: 1.0,
-    macro: 0.5, competitors: 0.2, forex: 0.3, institutional: 0.3,
-    seasonality: 0.4, financials: 0.1, expectations: 0.2
+    trend: 1.5, technical: 1.6, sentiment: 1.8, news: 1.2,
+    macro: 0.5, forex: 0.0, institutional: 0.3, financials: 0.0,
+    intradayTrend: 1.8, optionsFlow: 0.1, volumeProfile: 1.5,
+    divergences: 1.6, volatilityIV: 0.3, marketBreadth: 0.5
   },
   etf_index: {
-    // ETFs/Índices: macro domina, poco técnico individual
-    trend: 0.8, technical: 0.7, sentiment: 0.9, news: 0.8,
-    macro: 1.5, competitors: 0.4, forex: 1.2, institutional: 1.3,
-    seasonality: 1.3, financials: 0.3, expectations: 0.5
+    trend: 0.8, technical: 0.7, sentiment: 0.9, news: 1.0,
+    macro: 1.5, forex: 1.0, institutional: 1.3, financials: 0.5,
+    intradayTrend: 0.9, optionsFlow: 1.2, volumeProfile: 1.1,
+    divergences: 0.9, volatilityIV: 1.1, marketBreadth: 1.5
   },
   commodity: {
-    // Materias primas: macro + forex + seasonality dominan
-    trend: 1.0, technical: 1.1, sentiment: 0.7, news: 0.9,
-    macro: 1.6, competitors: 0.2, forex: 1.5, institutional: 0.8,
-    seasonality: 1.4, financials: 0.1, expectations: 0.3
+    trend: 1.0, technical: 1.1, sentiment: 0.7, news: 1.2,
+    macro: 1.8, forex: 1.6, institutional: 0.8, financials: 0.1,
+    intradayTrend: 1.2, optionsFlow: 0.8, volumeProfile: 1.3,
+    divergences: 1.1, volatilityIV: 1.4, marketBreadth: 0.9
   },
   reit: {
-    // REITs: macro (tasas de interés) + financials
-    trend: 0.9, technical: 0.8, sentiment: 0.6, news: 0.8,
-    macro: 1.6, competitors: 0.9, forex: 0.5, institutional: 1.2,
-    seasonality: 1.0, financials: 1.5, expectations: 1.1
+    trend: 0.9, technical: 0.8, sentiment: 0.6, news: 1.0,
+    macro: 1.6, forex: 0.3, institutional: 1.2, financials: 1.8,
+    intradayTrend: 0.7, optionsFlow: 0.9, volumeProfile: 0.8,
+    divergences: 0.8, volatilityIV: 1.0, marketBreadth: 1.1
   },
   forex: {
-    // Forex: macro absoluto + técnico
-    trend: 1.2, technical: 1.4, sentiment: 0.5, news: 1.0,
-    macro: 1.8, competitors: 0.1, forex: 0.5, institutional: 0.8,
-    seasonality: 0.8, financials: 0.1, expectations: 0.3
+    trend: 1.2, technical: 1.4, sentiment: 0.5, news: 1.2,
+    macro: 1.8, forex: 0.0, institutional: 0.8, financials: 0.0,
+    intradayTrend: 1.6, optionsFlow: 0.2, volumeProfile: 1.4,
+    divergences: 1.3, volatilityIV: 1.3, marketBreadth: 0.6
   },
   adr: {
-    // ADRs: mezcla de factores + forex importante
-    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.1,
-    macro: 1.1, competitors: 1.0, forex: 1.4, institutional: 1.0,
-    seasonality: 0.9, financials: 1.2, expectations: 1.0
+    trend: 1.0, technical: 1.0, sentiment: 0.9, news: 1.3,
+    macro: 1.1, forex: 1.6, institutional: 1.0, financials: 1.4,
+    intradayTrend: 1.0, optionsFlow: 1.0, volumeProfile: 1.0,
+    divergences: 1.0, volatilityIV: 1.0, marketBreadth: 1.0
   },
   default: {
-    // Sin ajuste
-    trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
-    macro: 1.0, competitors: 1.0, forex: 1.0, institutional: 1.0,
-    seasonality: 1.0, financials: 1.0, expectations: 1.0
+    trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.2,
+    macro: 1.0, forex: 0.5, institutional: 1.0, financials: 1.2,
+    intradayTrend: 1.0, optionsFlow: 1.0, volumeProfile: 1.0,
+    divergences: 1.0, volatilityIV: 1.0, marketBreadth: 1.0
   }
 };
 
@@ -356,23 +509,23 @@ function adjustWeightsForVolatility(
     // Baja volatilidad: priorizar fundamentales
     volatilityMultiplier = {
       trend: 0.8, technical: 0.7, sentiment: 0.6, news: 0.8,
-      macro: 1.3, competitors: 1.2, forex: 1.1, institutional: 1.4,
-      seasonality: 1.2, financials: 1.5, expectations: 1.5
+      macro: 1.3, forex: 1.1, institutional: 1.4,
+      financials: 1.5, expectations: 1.5
     };
     logger.debug(`[PredictionCalc] Low volatility (${assetVolatility.toFixed(1)}%): prioritizing fundamentals`);
   } else if (assetVolatility < 50) {
     // Volatilidad media: sin ajuste
     volatilityMultiplier = {
       trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
-      macro: 1.0, competitors: 1.0, forex: 1.0, institutional: 1.0,
-      seasonality: 1.0, financials: 1.0, expectations: 1.0
+      macro: 1.0, forex: 1.0, institutional: 1.0,
+      financials: 1.0, expectations: 1.0
     };
   } else {
     // Alta volatilidad: priorizar técnico/momentum/sentiment
     volatilityMultiplier = {
       trend: 1.4, technical: 1.5, sentiment: 1.4, news: 1.3,
-      macro: 0.7, competitors: 0.8, forex: 0.9, institutional: 0.8,
-      seasonality: 0.6, financials: 0.5, expectations: 0.5
+      macro: 0.7, forex: 0.9, institutional: 0.8,
+      financials: 0.5, expectations: 0.5
     };
     logger.debug(`[PredictionCalc] High volatility (${assetVolatility.toFixed(1)}%): prioritizing technical/sentiment`);
   }
@@ -419,9 +572,23 @@ export const predictionCalculatorService = {
         return null;
       }
 
-      // 2. Obtener datos históricos (necesarios para determinar precio base correcto)
-      const history = await yahooService.getHistory(symbol, '3mo', '1d');
+      // 2. DETECTAR SI ES ETF DE COMMODITY → USAR DATOS DEL SUBYACENTE
+      // Para ETFs de oro/plata/etc., usamos los datos del commodity real
+      // Esto garantiza que todos los ETFs del mismo commodity predigan la misma dirección
+      const commodityUnderlying = await commodityUnderlyingService.getTechnicalForETF(symbol, quote.name);
+      let underlyingInfo: UnderlyingInfo | undefined;
+      
+      // 3. Obtener datos históricos - del subyacente si es commodity ETF
+      const historySymbol = commodityUnderlying.useUnderlying && commodityUnderlying.underlying
+        ? commodityUnderlying.underlying.underlyingSymbol
+        : symbol;
+      const history = await yahooService.getHistory(historySymbol, '3mo', '1d');
       const historical = this.processHistoricalData(history);
+      
+      if (commodityUnderlying.useUnderlying && commodityUnderlying.underlying) {
+        underlyingInfo = commodityUnderlying.underlying;
+        logger.info(`[PredictionCalc] 🔗 COMMODITY ETF: ${symbol} → Using ${underlyingInfo.underlyingSymbol} (${underlyingInfo.commodityType}) historical & technical data`);
+      }
 
       // IMPORTANTE: Usar el último precio de cierre del historial como base
       // previousClose de Yahoo puede ser incorrecto para futuros/commodities
@@ -429,46 +596,97 @@ export const predictionCalculatorService = {
       let basePrice: number;
       if (history.length > 0) {
         const lastHistoricalClose = history[history.length - 1].close;
-        basePrice = lastHistoricalClose;
-        logger.info(`[PredictionCalc] Using last historical close (${basePrice}) as base price. Quote price: ${quote.price}, previousClose: ${quote.previousClose}`);
+        // Para ETFs de commodities, el basePrice debe ser del ETF (para calcular precio target correcto)
+        // pero los cambios % vienen del subyacente
+        if (commodityUnderlying.useUnderlying) {
+          basePrice = quote.previousClose || quote.price;
+          logger.info(`[PredictionCalc] Commodity ETF: Using ETF's previousClose (${basePrice}) as base, but changes from ${historySymbol}`);
+        } else {
+          basePrice = lastHistoricalClose;
+          logger.info(`[PredictionCalc] Using last historical close (${basePrice}) as base price. Quote price: ${quote.price}, previousClose: ${quote.previousClose}`);
+        }
       } else {
         // Fallback si no hay historial
         basePrice = quote.previousClose || quote.price;
         logger.warn(`[PredictionCalc] No historical data, using previousClose (${basePrice}) as fallback`);
       }
-
-      // 3. Obtener todos los datos en paralelo
+      
+      // 4. Obtener todos los datos en paralelo
+      // Factores tradicionales (siempre se obtienen)
       const [
-        technical,
+        technicalRaw,
         sentiment,
         news,
         macro,
-        seasonality,
-        expectations,
         institutional,
         forex,
         financials,
+        events,
       ] = await Promise.all([
-        technicalService.analyze(symbol),
+        // Si es commodity ETF, usar técnicos del subyacente; si no, del ETF
+        commodityUnderlying.useUnderlying && commodityUnderlying.technical
+          ? Promise.resolve(commodityUnderlying.technical)
+          : technicalService.analyze(symbol),
         sentimentService.getSentiment(symbol, type),
         newsService.getNews(symbol, type),
         macroService.getIndicators(symbol, type),
-        seasonalityService.analyze(symbol, quote.name), // Ahora es async
-        expectationsService.getExpectations(symbol),
         institutionalService.getInstitutionalActivity(symbol, type),
         forexService.analyzeForexImpact(symbol, quote.name),
         financialsService.getFinancials(symbol, quote.price),
+        eventsService.getEvents(symbol),
       ]);
 
-      // 4. Obtener análisis de competidores (necesita datos históricos)
-      const companyChange1d = historical.change30d ? historical.change30d / 30 : 0;
-      const companyChange1w = historical.change30d ? historical.change30d / 4 : 0;
-      const companyChange1m = historical.change30d || 0;
-      const competitors = await competitorsService.analyzeCompetitors(
-        symbol, companyChange1d, companyChange1w, companyChange1m
-      );
+      // 4b. NUEVOS FACTORES INTRADÍA (solo si timeframeDays <= 1)
+      // Estos factores son de alta frecuencia y relevantes para operaciones intradía
+      let intradayTrend: IntradayTrendData | null = null;
+      let optionsFlow: OptionsFlowData | null = null;
+      let volumeProfile: VolumeProfileData | null = null;
+      let divergences: DivergenceAnalysis | null = null;
+      let volatilityIV: VolatilityData | null = null;
+      let marketBreadth: MarketBreadthData | null = null;
+      let sectorRotationBias = 0;
+
+      if (timeframeDays <= 1) {
+        // Obtener todos los factores intradía en paralelo
+        logger.info(`[PredictionCalc] Fetching intraday-specific factors for ${symbol}`);
+        const [
+          intradayTrendData,
+          optionsFlowData,
+          volumeProfileData,
+          divergenceData,
+          volatilityData,
+          breadthData,
+          rotationBias,
+        ] = await Promise.all([
+          intradayTrendService.getIntradayTrend(symbol),
+          type === 'stock' ? optionsFlowService.getOptionsFlow(symbol, quote.price) : Promise.resolve(null),
+          volumeProfileService.getVolumeProfile(symbol, '5d'),
+          divergenceService.getDivergences(symbol),
+          type === 'stock' ? volatilityService.getVolatilityAnalysis(symbol) : Promise.resolve(null),
+          marketBreadthService.getMarketBreadth(),
+          type === 'stock' ? sectorRotationService.getRotationBiasForSymbol(symbol) : Promise.resolve(0),
+        ]);
+        
+        intradayTrend = intradayTrendData;
+        optionsFlow = optionsFlowData;
+        volumeProfile = volumeProfileData;
+        divergences = divergenceData;
+        volatilityIV = volatilityData;
+        marketBreadth = breadthData;
+        sectorRotationBias = rotationBias;
+        
+        logger.info(`[PredictionCalc] Intraday factors loaded: trend=${intradayTrend?.hasData}, options=${optionsFlow?.hasData}, volume=${volumeProfile?.hasData}, divergences=${divergences?.hasDivergence}, volatility=${volatilityIV?.hasData}, breadth=${marketBreadth?.hasData}, sectorBias=${sectorRotationBias.toFixed(1)}`);
+      }
+
+      // Asignar technical (ya viene del subyacente si es commodity ETF)
+      const technical = technicalRaw;
 
       // 5. Calcular predicción determinística usando basePrice (previousClose)
+      // Para commodity ETFs, usar el cambio intradía del subyacente para mejor coherencia
+      const currentDayChange = commodityUnderlying.useUnderlying && commodityUnderlying.underlyingData
+        ? commodityUnderlying.underlyingData.change1d
+        : (quote.changePercent || 0);
+      
       const prediction = await this.calculateFromData(
         symbol,
         type,
@@ -479,14 +697,20 @@ export const predictionCalculatorService = {
         sentiment,
         news,
         macro,
-        seasonality,
-        expectations,
-        competitors,
         forex,
         institutional,
         financials,
+        events,
         timeframeDays,
-        quote.name || symbol // Pasar el nombre del activo para clasificación inteligente
+        quote.name || symbol, // Pasar el nombre del activo para clasificación inteligente
+        currentDayChange, // Cambio % del día actual (del subyacente si es commodity)
+        // NUEVOS FACTORES INTRADÍA
+        intradayTrend,
+        optionsFlow,
+        volumeProfile,
+        divergences,
+        volatilityIV,
+        marketBreadth
       );
 
       // --- REINFORCEMENT LEARNING: Obtener recomendación de política ---
@@ -513,6 +737,30 @@ export const predictionCalculatorService = {
       } else if (rlRecommendation.recommendedAction === 'predict_high' && rlRecommendation.confidence > 0.6) {
         prediction.confidence = Math.min(95, prediction.confidence + 5);
         logger.info(`[PredictionCalc] RL suggests high confidence prediction (+5%)`);
+      }
+
+      // Aplicar sesgo de rotación sectorial (solo para acciones e intradía)
+      if (sectorRotationBias !== 0 && timeframeDays <= 1) {
+        const rotationAdjustment = sectorRotationBias * 0.02; // Max ±2% de ajuste
+        prediction.predictedChange += rotationAdjustment;
+        
+        // Recalcular dirección si cambió significativamente
+        if (prediction.predictedChange > 0.1) {
+          prediction.direction = 'up';
+        } else if (prediction.predictedChange < -0.1) {
+          prediction.direction = 'down';
+        }
+        
+        logger.info(`[PredictionCalc] Applied sector rotation bias: ${rotationAdjustment.toFixed(2)}%`);
+      }
+
+      // Añadir info del subyacente si es ETF de commodity
+      if (underlyingInfo) {
+        (prediction as any).commodityUnderlying = {
+          symbol: underlyingInfo.underlyingSymbol,
+          type: underlyingInfo.commodityType,
+          currency: underlyingInfo.underlyingCurrency,
+        };
       }
 
       logger.info(`[PredictionCalc] Prediction: ${prediction.direction} ${prediction.predictedChange.toFixed(2)}% (confidence: ${prediction.confidence}%)`);
@@ -558,6 +806,9 @@ export const predictionCalculatorService = {
 
   /**
    * Cálculo determinístico de la predicción
+   * FACTORES EXPANDIDOS PARA INTRADÍA:
+   * - Tradicionales: trend, technical, sentiment, news, macro, forex, institutional, financials
+   * - Nuevos intradía: intradayTrend, optionsFlow, volumeProfile, divergences, volatilityIV, marketBreadth
    */
   async calculateFromData(
     symbol: string,
@@ -569,27 +820,38 @@ export const predictionCalculatorService = {
     sentiment: SentimentData,
     news: NewsSummary,
     macro: MacroIndicators,
-    seasonality: SeasonalityAnalysis,
-    expectations: ExpectationsData | null,
-    competitors: CompetitorAnalysis,
     forex: ForexImpact,
     institutional: InstitutionalData,
     financials: FinancialsData | null,
+    events: AssetEvents,
     timeframeDays: number,
-    assetName: string = '' // Nombre del activo para clasificación inteligente
+    assetName: string = '', // Nombre del activo para clasificación inteligente
+    intradayChange: number = 0, // Cambio % intradía para detectar caídas extremas
+    // NUEVOS FACTORES INTRADÍA
+    intradayTrend: IntradayTrendData | null = null,
+    optionsFlow: OptionsFlowData | null = null,
+    volumeProfile: VolumeProfileData | null = null,
+    divergences: DivergenceAnalysis | null = null,
+    volatilityIV: VolatilityData | null = null,
+    marketBreadth: MarketBreadthData | null = null
   ): Promise<CalculatedPrediction> {
-    // FLAGS de datos disponibles
+    // FLAGS de datos disponibles - Factores tradicionales
     const hasHistoricalData = historical.hasData && (historical.change30d !== 0 || historical.change90d !== 0);
     const hasTechnicalData = technical.hasData;
     const hasSentimentData = sentiment.hasData;
     const hasNewsData = news.hasNews;
     const hasMacroData = macro.hasData;
-    const hasSeasonalityData = seasonality.hasData;
-    const hasExpectationsData = expectations?.hasData || false;
-    const hasCompetitorsData = competitors.hasData;
     const hasForexData = forex.hasData;
     const hasInstitutionalData = institutional.hasData;
     const hasFinancialsData = financials?.hasData || false;
+    
+    // FLAGS de datos disponibles - Nuevos factores intradía
+    const hasIntradayTrendData = intradayTrend?.hasData || false;
+    const hasOptionsFlowData = optionsFlow?.hasData || false;
+    const hasVolumeProfileData = volumeProfile?.hasData || false;
+    const hasDivergencesData = divergences?.hasDivergence || false;
+    const hasVolatilityIVData = volatilityIV?.hasData || false;
+    const hasMarketBreadthData = marketBreadth?.hasData || false;
 
     // Objeto de disponibilidad de datos para el ensemble
     const dataAvailability: DataAvailability = {
@@ -598,32 +860,38 @@ export const predictionCalculatorService = {
       sentiment: hasSentimentData,
       news: hasNewsData,
       macro: hasMacroData,
-      competitors: hasCompetitorsData,
       forex: hasForexData,
       institutional: hasInstitutionalData,
-      seasonality: hasSeasonalityData,
       financials: hasFinancialsData,
-      expectations: hasExpectationsData,
     };
 
     // Log de disponibilidad de datos
-    const availableCount = Object.values(dataAvailability).filter(Boolean).length;
-    logger.info(`[PredictionCalc] Data availability: ${availableCount}/11 factors`);
+    const traditionalCount = Object.values(dataAvailability).filter(Boolean).length;
+    const intradayFactorsCount = [hasIntradayTrendData, hasOptionsFlowData, hasVolumeProfileData, hasDivergencesData, hasVolatilityIVData, hasMarketBreadthData].filter(Boolean).length;
+    logger.info(`[PredictionCalc] Data availability: ${traditionalCount}/8 traditional, ${intradayFactorsCount}/6 intraday factors`);
 
-    // Scores de cada factor (-100 a +100)
+    // Scores de factores TRADICIONALES (-100 a +100)
     const trendScore = hasHistoricalData ? this.calculateTrendScore(historical.change30d, historical.change90d) : 0;
     const technicalScore = hasTechnicalData ? technical.technicalScore : 0;
     const sentimentScore = hasSentimentData ? sentiment.overallScore : 0;
     const newsScore = hasNewsData ? news.sentimentScore : 0;
     const macroScore = hasMacroData ? macro.macroScore : 0;
-    const seasonalityScore = hasSeasonalityData ? seasonality.seasonalScore : 0;
-    const expectationsScore = hasExpectationsData ? expectations!.expectationsScore : 0;
-    const competitorsScore = hasCompetitorsData ? competitors.competitorScore : 0;
     const forexScore = hasForexData ? forex.forexScore : 0;
     const institutionalScore = hasInstitutionalData ? institutional.institutionalScore : 0;
     const financialsScore = hasFinancialsData ? financials!.financialsScore : 0;
+    
+    // Scores de NUEVOS FACTORES INTRADÍA (-100 a +100)
+    const intradayTrendScore = hasIntradayTrendData ? intradayTrend!.intradayTrendScore : 0;
+    const optionsFlowScore = hasOptionsFlowData ? this.calculateOptionsFlowScore(optionsFlow!) : 0;
+    const volumeProfileScore = hasVolumeProfileData ? this.calculateVolumeProfileScore(volumeProfile!) : 0;
+    const divergencesScore = hasDivergencesData ? this.calculateDivergencesScore(divergences!) : 0;
+    const volatilityIVScore = hasVolatilityIVData ? this.calculateVolatilityScore(volatilityIV!) : 0;
+    const marketBreadthScore = hasMarketBreadthData ? this.calculateMarketBreadthScore(marketBreadth!) : 0;
 
-    logger.info(`[PredictionCalc] Scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}, macro=${macroScore}, seasonality=${seasonalityScore}, expectations=${expectationsScore}, competitors=${competitorsScore}, forex=${forexScore}, institutional=${institutionalScore}, financials=${financialsScore}`);
+    logger.info(`[PredictionCalc] Traditional scores: trend=${trendScore}, technical=${technicalScore}, sentiment=${sentimentScore}, news=${newsScore}`);
+    if (timeframeDays <= 1) {
+      logger.info(`[PredictionCalc] Intraday scores: intradayTrend=${intradayTrendScore}, optionsFlow=${optionsFlowScore}, volumeProfile=${volumeProfileScore}, divergences=${divergencesScore}, volatilityIV=${volatilityIVScore}, breadth=${marketBreadthScore}`);
+    }
 
     // Obtener pesos (aprendidos o por defecto)
     type WeightsType = { trend: number; technical: number; sentiment: number; news: number; macro: number };
@@ -658,20 +926,33 @@ export const predictionCalculatorService = {
     
     logger.debug(`[PredictionCalc] Weights: group=${assetGroup}, volatility=${assetVolatility.toFixed(1)}%`);
 
-    // Definir los 11 factores
-    const factors = [
-      { name: 'trend', score: trendScore, hasData: hasHistoricalData, weight: weights.trend },
-      { name: 'technical', score: technicalScore, hasData: hasTechnicalData, weight: weights.technical },
-      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, weight: weights.sentiment },
-      { name: 'news', score: newsScore, hasData: hasNewsData, weight: weights.news },
-      { name: 'macro', score: macroScore, hasData: hasMacroData, weight: weights.macro },
-      { name: 'competitors', score: competitorsScore, hasData: hasCompetitorsData, weight: weights.competitors },
-      { name: 'forex', score: forexScore, hasData: hasForexData, weight: weights.forex },
-      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, weight: weights.institutional },
-      { name: 'seasonality', score: seasonalityScore, hasData: hasSeasonalityData, weight: weights.seasonality },
-      { name: 'financials', score: financialsScore, hasData: hasFinancialsData, weight: weights.financials },
-      { name: 'expectations', score: expectationsScore, hasData: hasExpectationsData, weight: weights.expectations },
+    // Definir los 8 factores (competitors, expectations y seasonality eliminados)
+    // Definir TODOS los factores (tradicionales + intradía)
+    const allFactors = [
+      // Factores TRADICIONALES
+      { name: 'trend', score: trendScore, hasData: hasHistoricalData, weight: weights.trend || 0 },
+      { name: 'technical', score: technicalScore, hasData: hasTechnicalData, weight: weights.technical || 0 },
+      { name: 'sentiment', score: sentimentScore, hasData: hasSentimentData, weight: weights.sentiment || 0 },
+      { name: 'news', score: newsScore, hasData: hasNewsData, weight: weights.news || 0 },
+      { name: 'macro', score: macroScore, hasData: hasMacroData, weight: weights.macro || 0 },
+      { name: 'forex', score: forexScore, hasData: hasForexData, weight: weights.forex || 0 },
+      { name: 'institutional', score: institutionalScore, hasData: hasInstitutionalData, weight: weights.institutional || 0 },
+      { name: 'financials', score: financialsScore, hasData: hasFinancialsData, weight: weights.financials || 0 },
+      // NUEVOS FACTORES INTRADÍA (solo tienen peso en intradía)
+      { name: 'intradayTrend', score: intradayTrendScore, hasData: hasIntradayTrendData, weight: weights.intradayTrend || 0 },
+      { name: 'optionsFlow', score: optionsFlowScore, hasData: hasOptionsFlowData, weight: weights.optionsFlow || 0 },
+      { name: 'volumeProfile', score: volumeProfileScore, hasData: hasVolumeProfileData, weight: weights.volumeProfile || 0 },
+      { name: 'divergences', score: divergencesScore, hasData: hasDivergencesData, weight: weights.divergences || 0 },
+      { name: 'volatilityIV', score: volatilityIVScore, hasData: hasVolatilityIVData, weight: weights.volatilityIV || 0 },
+      { name: 'marketBreadth', score: marketBreadthScore, hasData: hasMarketBreadthData, weight: weights.marketBreadth || 0 },
     ];
+
+    // FILTRAR factores por los relevantes para este grupo de activo
+    // Esto es CRÍTICO: crypto no debe usar financials, etc.
+    const groupConfig = ASSET_GROUP_CONFIGS[assetGroup];
+    const factors = allFactors.filter(f => groupConfig.relevantFactors.includes(f.name));
+    
+    logger.info(`[PredictionCalc] Factors for ${assetGroup}: ${factors.map(f => f.name).join(', ')} (filtered from ${allFactors.length})`);
 
     const availableFactors = factors.filter(f => f.hasData);
     
@@ -714,8 +995,7 @@ export const predictionCalculatorService = {
     if (combinedScore > 5) direction = 'up';
     else if (combinedScore < -5) direction = 'down';
 
-    // Calcular confianza (assetGroup ya detectado arriba)
-    const groupConfig = ASSET_GROUP_CONFIGS[assetGroup];
+    // Calcular confianza (assetGroup y groupConfig ya definidos arriba)
     const { confidence, signalSummary, confidenceExplanation } = this.calculateConfidence(
       factors, availableFactors, groupConfig
     );
@@ -785,6 +1065,181 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Direction adjustment (${direction}): ${oldConfidence}% → ${finalConfidence}%`);
     }
     
+    // --- AJUSTE POR VOLATILIDAD EXTREMA ---
+    // Activos con volatilidad >40% son menos predecibles
+    // PERO: solo penalizar moderadamente, no destruir la confianza
+    if (assetVolatility > 60) {
+      const oldConf = finalConfidence;
+      finalConfidence = Math.round(finalConfidence * 0.85); // -15% (antes era -40%)
+      logger.info(`[PredictionCalc] Extreme volatility penalty (${assetVolatility.toFixed(0)}%): ${oldConf}% → ${finalConfidence}%`);
+    } else if (assetVolatility > 40) {
+      const oldConf = finalConfidence;
+      finalConfidence = Math.round(finalConfidence * 0.90); // -10% (antes era -25%)
+      logger.info(`[PredictionCalc] High volatility penalty (${assetVolatility.toFixed(0)}%): ${oldConf}% → ${finalConfidence}%`);
+    }
+    
+    // --- AJUSTE POR MOVIMIENTO INTRADÍA EXTREMO ---
+    // CORREGIDO: Solo penalizar si la predicción CONTRADICE el movimiento actual
+    // Si el activo cae -5% y predecimos bajista, eso CONFIRMA la predicción (no penalizar)
+    // Si el activo cae -5% y predecimos alcista, eso CONTRADICE (sí penalizar)
+    const predictionDirection = expectedChange > 0 ? 'up' : expectedChange < 0 ? 'down' : 'neutral';
+    const intradayDirection = intradayChange > 0.5 ? 'up' : intradayChange < -0.5 ? 'down' : 'neutral';
+    const movementConfirms = (predictionDirection === intradayDirection) || intradayDirection === 'neutral';
+    
+    if (intradayChange < -10) {
+      if (movementConfirms) {
+        // Crash confirma predicción bajista → AUMENTAR confianza
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 10);
+        logger.info(`[PredictionCalc] CRASH confirms bearish prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        // Crash contradice predicción alcista → penalizar fuerte
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.5);
+        expectedChange = expectedChange * 0.3;
+        logger.info(`[PredictionCalc] CRASH contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
+    } else if (intradayChange < -5) {
+      if (movementConfirms) {
+        // Caída fuerte confirma predicción bajista
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 5);
+        logger.info(`[PredictionCalc] Severe drop confirms bearish (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        // Caída fuerte contradice predicción alcista
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.65);
+        expectedChange = expectedChange * 0.5;
+        logger.info(`[PredictionCalc] Severe drop contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
+    } else if (intradayChange < -3) {
+      if (!movementConfirms) {
+        // Solo penalizar si contradice
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.85);
+        logger.info(`[PredictionCalc] Significant drop contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
+    }
+    // También para subidas fuertes
+    else if (intradayChange > 10) {
+      if (movementConfirms) {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 10);
+        logger.info(`[PredictionCalc] RALLY confirms bullish prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.5);
+        expectedChange = expectedChange * 0.3;
+        logger.info(`[PredictionCalc] RALLY contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
+    } else if (intradayChange > 5) {
+      if (movementConfirms) {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.min(95, finalConfidence + 5);
+        logger.info(`[PredictionCalc] Strong rally confirms bullish (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      } else {
+        const oldConf = finalConfidence;
+        finalConfidence = Math.round(finalConfidence * 0.65);
+        expectedChange = expectedChange * 0.5;
+        logger.info(`[PredictionCalc] Strong rally contradicts prediction (${intradayChange.toFixed(1)}%): conf ${oldConf}% → ${finalConfidence}%`);
+      }
+    }
+    
+    // --- AJUSTE POR MEAN REVERSION DESPUÉS DE CAÍDA FUERTE (SIMPLIFICADO) ---
+    // Solo aplicar si: caída >5% reciente + VIX >25 (mercado en estrés real)
+    // Elimina falsos positivos de correcciones menores
+    let recentDropReboundInfo: { recentDrop: number; todayRecovery: number; adjustment: number } | undefined;
+    const vixLevel = sentiment?.vix?.value || 15; // VIX por defecto 15 si no hay datos
+    
+    try {
+      const trendData = await trendsService.analyzeTrend(symbol);
+      if (trendData?.stats && trendData.currentStreak) {
+        const worstDayRecent = trendData.stats.worst_day_30d?.change || 0;
+        const streak = trendData.currentStreak;
+        
+        // CONDICIÓN ESTRICTA: Solo aplicar si hay estrés real del mercado
+        const severeDropRecent = streak.direction === 'down' && (streak.totalChange || 0) < -5;
+        const marketStressed = vixLevel > 25;
+        
+        if (severeDropRecent && marketStressed && intradayChange > -1 && intradayChange < 3) {
+          const dropIntensity = Math.abs(streak.totalChange || 0);
+          let reboundAdjustment = 0.15; // +15% ajuste fijo por mean reversion
+          
+          // Si hoy ya está rebotando, confirma el movimiento
+          if (intradayChange > 0.5) {
+            reboundAdjustment += 0.10;
+            logger.info(`[PredictionCalc] Rebound confirmed: +${intradayChange.toFixed(1)}% today after drop`);
+          }
+          
+          // Aplicar ajuste hacia arriba
+          const oldChange = expectedChange;
+          if (expectedChange < 0) {
+            expectedChange = expectedChange * (1 - reboundAdjustment) + (reboundAdjustment * Math.abs(expectedChange) * 0.5);
+          } else {
+            expectedChange = expectedChange * (1 + reboundAdjustment * 0.5);
+          }
+          
+          recentDropReboundInfo = {
+            recentDrop: streak.totalChange || worstDayRecent,
+            todayRecovery: intradayChange,
+            adjustment: Math.round((expectedChange - oldChange) * 100) / 100,
+          };
+          
+          logger.info(`[PredictionCalc] Mean reversion (VIX=${vixLevel.toFixed(0)}, drop=${dropIntensity.toFixed(1)}%): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%`);
+        }
+      }
+    } catch (e) {
+      logger.debug(`[PredictionCalc] Could not analyze mean reversion: ${(e as Error).message}`);
+    }
+    
+    // --- AJUSTE POR MOMENTUM INTRADÍA (SIMPLIFICADO) ---
+    // Solo aplicar si movimiento >3% (movimientos menores son ruido)
+    // Los movimientos pequeños (<3%) no tienen persistencia estadística
+    let intradayMomentumInfo: { currentChange: number; projectedContinuation: number; adjustment: number; confidenceBoost: number } | undefined;
+    if (Math.abs(intradayChange) >= 3.0) { // Umbral aumentado a 3%
+      let momentumMultiplier = 0;
+      let confidenceBoost = 0;
+      
+      // Solo 3 niveles simples
+      if (Math.abs(intradayChange) >= 8) {
+        // Movimiento extremo: posible agotamiento
+        momentumMultiplier = 0.15;
+        confidenceBoost = 5;
+      } else if (Math.abs(intradayChange) >= 5) {
+        // Movimiento fuerte
+        momentumMultiplier = 0.25;
+        confidenceBoost = 8;
+      } else { // 3-5%
+        // Movimiento moderado-fuerte
+        momentumMultiplier = 0.20;
+        confidenceBoost = 6;
+      }
+      
+      const projectedContinuation = intradayChange * momentumMultiplier;
+      const oldChange = expectedChange;
+      const oldConfidence = finalConfidence;
+      
+      // Si momentum confirma predicción
+      if ((expectedChange > 0 && intradayChange > 0) || (expectedChange < 0 && intradayChange < 0)) {
+        expectedChange = expectedChange + projectedContinuation * 0.5;
+        finalConfidence = Math.min(90, finalConfidence + confidenceBoost);
+        logger.info(`[PredictionCalc] Intraday momentum confirms: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%`);
+      }
+      // Si conflicto, dar más peso al momentum actual
+      else {
+        expectedChange = expectedChange * 0.5 + projectedContinuation;
+        finalConfidence = Math.max(30, finalConfidence - confidenceBoost);
+        logger.info(`[PredictionCalc] Intraday momentum conflicts: ${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%`);
+      }
+      
+      intradayMomentumInfo = {
+        currentChange: intradayChange,
+        projectedContinuation,
+        adjustment: Math.round((expectedChange - oldChange) * 100) / 100,
+        confidenceBoost: finalConfidence - oldConfidence,
+      };
+    }
+    
     // --- AJUSTE POR CORRELACIÓN DE FACTORES (ML) ---
     // Detecta double-counting y ajusta confianza según coherencia de señales
     const factorScores: Record<string, number> = {};
@@ -796,6 +1251,96 @@ export const predictionCalculatorService = {
       logger.info(`[PredictionCalc] Factor correlation adjustment: ${diff > 0 ? '+' : ''}${diff}% (${correlationAdjustment.reasons.join(', ')})`);
     }
     
+    // --- STREAK INFO (SOLO INFORMATIVO, NO MODIFICA PREDICCIÓN) ---
+    // Razón: Las rachas no tienen valor predictivo estadístico demostrable
+    // Se mantiene solo para mostrar contexto al usuario
+    let streakAdjustmentInfo: { days: number; direction: string; adjustment: number } | undefined;
+    try {
+      const trendAnalysis = await trendsService.analyzeTrend(symbol);
+      if (trendAnalysis?.currentStreak) {
+        const streak = trendAnalysis.currentStreak;
+        if (streak.days >= 2 && streak.direction !== 'sideways') {
+          streakAdjustmentInfo = {
+            days: streak.days,
+            direction: streak.direction,
+            adjustment: 0, // No se aplica ajuste, solo info
+          };
+          logger.debug(`[PredictionCalc] Current streak (info only): ${streak.days}d ${streak.direction}`);
+        }
+      }
+    } catch (e) {
+      logger.debug(`[PredictionCalc] Could not get streak data: ${(e as Error).message}`);
+    }
+    
+    // --- AJUSTE POR CONTEXTO DE MERCADO GLOBAL (NUEVO) ---
+    // Detecta correcciones, crashes, burbujas y ajusta predicciones en consecuencia
+    // MEJORADO: Pasa el combinedScore para que el bias se reduzca si hay señales individuales fuertes
+    let marketContextInfo: CalculatedPrediction['marketContext'];
+    try {
+      const marketContext = await broadMarketContextService.getCurrentContext();
+      
+      if (marketContext.condition !== 'neutral') {
+        const contextAdjustment = broadMarketContextService.applyToPredicti(
+          expectedChange,
+          finalConfidence,
+          this.inferAssetType(symbol, type),
+          combinedScore // Pasar score individual para ajustar el bias
+        );
+        
+        if (contextAdjustment.contextApplied) {
+          const oldChange = expectedChange;
+          const oldConfidence = finalConfidence;
+          
+          expectedChange = contextAdjustment.adjustedChange;
+          finalConfidence = contextAdjustment.adjustedConfidence;
+          
+          logger.info(`[PredictionCalc] Market context (${marketContext.condition}): change ${oldChange.toFixed(2)}% → ${expectedChange.toFixed(2)}%, confidence ${oldConfidence}% → ${finalConfidence}%`);
+          
+          marketContextInfo = {
+            condition: marketContext.condition,
+            severity: marketContext.severity,
+            predictionBias: marketContext.predictionBias,
+            confidenceMultiplier: marketContext.confidenceMultiplier,
+            signals: marketContext.signals,
+            reasoning: marketContext.reasoning,
+            recommendation: marketContext.recommendation,
+            applied: true,
+          };
+        }
+      }
+      
+      // Si no se aplicó ajuste, guardar info de contexto de todas formas
+      if (!marketContextInfo) {
+        marketContextInfo = {
+          condition: marketContext.condition,
+          severity: marketContext.severity,
+          predictionBias: 0,
+          confidenceMultiplier: 1.0,
+          signals: marketContext.signals,
+          reasoning: marketContext.reasoning,
+          recommendation: marketContext.recommendation,
+          applied: false,
+        };
+      }
+    } catch (e) {
+      logger.warn(`[PredictionCalc] Could not get market context: ${(e as Error).message}`);
+      marketContextInfo = {
+        condition: 'unknown',
+        severity: 'mild',
+        predictionBias: 0,
+        confidenceMultiplier: 1.0,
+        signals: ['Error obteniendo contexto de mercado'],
+        reasoning: 'No disponible',
+        recommendation: 'Predicción basada solo en factores individuales',
+        applied: false,
+      };
+    }
+    
+    // NOTA: Servicios eliminados por añadir ruido sin valor predictivo demostrable:
+    // - preciousMetalsUSDService → Lógica integrada en forexService
+    // - marketPsychologyService → Redundante con sentiment y technical
+    // - geopoliticalEventsService → Shocks impredecibles, efecto ya reflejado en precio
+    
     // --- MODELO PROBABILÍSTICO ---
     // Genera distribución de probabilidad e intervalos de confianza
     const probabilisticResult = await probabilisticModelService.generateProbabilisticPrediction(
@@ -805,19 +1350,82 @@ export const predictionCalculatorService = {
       historical.volatility || 20
     );
     
-    // Recalcular dirección DESPUÉS de todos los ajustes para que coincida con predictedChange
-    // UMBRAL AJUSTADO: 0.2% para evitar mostrar como neutral predicciones con dirección clara
-    const DIRECTION_THRESHOLD = 0.2;
-    if (expectedChange > DIRECTION_THRESHOLD) direction = 'up';
-    else if (expectedChange < -DIRECTION_THRESHOLD) direction = 'down';
-    else direction = 'neutral';
+    // Recalcular dirección DESPUÉS de todos los ajustes
+    // UMBRAL AUMENTADO: 0.5% es más realista para evitar falsos positivos
+    // Datos históricos: laterales tienen 46.6% de error, hay que ser más estricto
+    const DIRECTION_THRESHOLD = 0.5;
     
-    // NUEVO: Si hay señal clara de dirección pero cambio pequeño, amplificar
-    // Esto evita predicciones en la "zona gris" que casi siempre fallan
-    if (direction !== 'neutral' && Math.abs(expectedChange) < 0.3) {
-      const sign = expectedChange >= 0 ? 1 : -1;
-      expectedChange = sign * 0.3; // Mínimo 0.3% para direcciones claras
-      logger.info(`[PredictionCalc] Amplified small prediction to avoid neutral zone: ${expectedChange.toFixed(2)}%`);
+    // NUEVO: Zona de incertidumbre ampliada (0.3% a 0.7%)
+    // Si está en zona gris, preferir NEUTRAL para reducir errores
+    if (expectedChange > DIRECTION_THRESHOLD) {
+      direction = 'up';
+    } else if (expectedChange < -DIRECTION_THRESHOLD) {
+      direction = 'down';
+    } else {
+      // Zona lateral: ser más conservador
+      direction = 'neutral';
+      // Reducir confianza para laterales (histórico: solo 46.6% acierto)
+      finalConfidence = Math.min(finalConfidence, 55);
+      logger.info(`[PredictionCalc] Lateral prediction (${expectedChange.toFixed(2)}%), capping confidence at 55%`);
+    }
+    
+    // NOTA: Ya NO se penaliza automáticamente las predicciones bajistas.
+    // El ajuste por dirección del track-record ya considera el accuracy histórico.
+    // Si las señales son fuertes (signalSummary=coherent_bearish), la confianza debe ser alta.
+    
+    // --- PENALIZACIÓN POR MAGNITUD EXTREMA ---
+    // Predicciones muy grandes (>3% intradía, >6% swing) son estadísticamente improbables
+    // Reducir confianza proporcionalmente para reflejar la incertidumbre
+    const magnitudeThreshold = timeframeDays <= 1 ? 3.0 : 6.0;
+    const absChange = Math.abs(expectedChange);
+    if (absChange > magnitudeThreshold) {
+      const excessRatio = (absChange - magnitudeThreshold) / magnitudeThreshold;
+      const confidencePenalty = Math.min(25, Math.round(excessRatio * 20)); // Max -25%
+      const oldConfidence = finalConfidence;
+      finalConfidence = Math.max(15, finalConfidence - confidencePenalty);
+      logger.info(`[PredictionCalc] Extreme magnitude penalty (${absChange.toFixed(2)}% > ${magnitudeThreshold}%): confidence ${oldConfidence}% → ${finalConfidence}%`);
+    }
+    
+    // --- LÓGICA DE CONFIANZA BAJA = NEUTRAL (MEJORADA) ---
+    // Si la confianza es < 50% Y el cambio predicho es pequeño, usar neutral
+    // PERO: si el cambio predicho es significativo (>1%), mantener la dirección
+    // Razón: La confianza baja ya comunica incertidumbre. Cambiar dirección a neutral
+    // cuando predecimos +4% causa inconsistencia y scores incorrectos al verificar.
+    const LOW_CONFIDENCE_THRESHOLD = 50;
+    const SIGNIFICANT_CHANGE_THRESHOLD = 1.0; // 1% es un cambio significativo
+    const absExpectedChange = Math.abs(expectedChange);
+    
+    if (finalConfidence < LOW_CONFIDENCE_THRESHOLD && direction !== 'neutral') {
+      // Solo forzar neutral si el cambio predicho es pequeño
+      if (absExpectedChange < SIGNIFICANT_CHANGE_THRESHOLD) {
+        logger.info(`[PredictionCalc] Low confidence (${finalConfidence}%) + small change (${expectedChange.toFixed(2)}%) - changing to 'neutral'`);
+        direction = 'neutral';
+      } else {
+        // Mantener dirección pero advertir que la confianza es baja
+        logger.info(`[PredictionCalc] Low confidence (${finalConfidence}%) but significant change (${expectedChange.toFixed(2)}%) - keeping direction '${direction}'`);
+      }
+    }
+    
+    // --- CORRELACIÓN DE COMMODITIES (NUEVO) ---
+    // Si es un commodity (oro, plata, etc.), ajustar para coherencia con el futuro base
+    // SSLN.L, PHAG.MI, ISLN.L deben seguir la dirección de SI=F (plata)
+    let commodityCorrelationInfo: { adjusted: boolean; reason: string | null } | undefined;
+    const commodityAdjustment = await commodityCorrelationService.adjustPrediction(
+      symbol,
+      assetName,
+      direction,
+      expectedChange,
+      finalConfidence
+    );
+    if (commodityAdjustment.adjusted) {
+      direction = commodityAdjustment.newDirection;
+      expectedChange = commodityAdjustment.newChange;
+      finalConfidence = commodityAdjustment.newConfidence;
+      commodityCorrelationInfo = {
+        adjusted: true,
+        reason: commodityAdjustment.reason,
+      };
+      logger.info(`[PredictionCalc] Commodity correlation adjustment: ${commodityAdjustment.reason}`);
     }
     
     logger.info(`[PredictionCalc] Scale factor: ${scaleFactor}, Expected change: ${expectedChange.toFixed(2)}%, Direction: ${direction}`);
@@ -832,6 +1440,41 @@ export const predictionCalculatorService = {
                         timeframeDays <= 7 ? `${timeframeDays} días` : 
                         `${Math.round(timeframeDays / 7)} semanas`;
 
+    // --- GENERAR RECOMENDACIÓN INTELIGENTE ---
+    // Considera: predicción + tendencia largo plazo + técnico + fundamental
+    const recommendation = this.generateSmartRecommendation({
+      direction,
+      predictedChange: expectedChange,
+      confidence: finalConfidence,
+      change30d: historical.change30d || 0,
+      change90d: historical.change90d || 0,
+      volatility: historical.volatility || 20,
+      intradayChange: intradayChange || 0,
+      calendarRiskScore: 0, // Calendar Effects eliminado
+      calendarDangerousCombination: false,
+      technicalScore: technical?.technicalScore || 0,
+      fundamentalScore: financials?.financialsScore || 0, // financialsScore es el nombre real
+      targetVsCurrent: financials?.targetVsCurrent || 0,
+    });
+
+    // --- RISK FILTER: Calcular si se recomienda abstención ---
+    const riskFilterResult = this.calculateRiskFilter({
+      vixValue: sentiment?.vix?.value || 15,
+      assetVolatility: assetVolatility,
+      factorScores: factorScores,
+      availableFactorsCount: availableFactors.length,
+      totalFactorsCount: factors.length,
+      signalSummary: signalSummary,
+      earningsDaysUntil: events.nextEarnings?.daysUntil,
+      marketCondition: marketContextInfo?.condition || 'neutral',
+      intradayChange: intradayChange,
+      trendAgreement: undefined, // TODO: integrar del trends.service cuando esté listo
+    });
+    
+    if (riskFilterResult.shouldAbstain) {
+      logger.info(`[PredictionCalc] RISK FILTER: Abstención recomendada (${riskFilterResult.abstentionLevel}) - ${riskFilterResult.reasons.join(', ')}`);
+    }
+
     return {
       asset: quote?.name || symbol,
       symbol,
@@ -843,6 +1486,7 @@ export const predictionCalculatorService = {
       predictedChange: expectedChange,
       direction,
       confidence: finalConfidence,
+      recommendation,
       factorBreakdown: {
         assetGroup,
         assetGroupDescription: groupConfig.description,
@@ -855,6 +1499,10 @@ export const predictionCalculatorService = {
         assetAdjustmentApplied: assetAdjustment.wasAdjusted,
         trackRecordAdjustment,
         correlationAdjustment: correlationAdjustment.adjustedConfidence - correlationAdjustment.originalConfidence,
+        streakAdjustment: streakAdjustmentInfo,
+        meanReversionAdjustment: recentDropReboundInfo,
+        intradayMomentumAdjustment: intradayMomentumInfo,
+        commodityCorrelationAdjustment: commodityCorrelationInfo,
         // Información de selección dinámica de modelos
         activeModels: ensembleResult.activeModels,
         modelSelectionReason: ensembleResult.modelSelectionReason,
@@ -890,8 +1538,30 @@ export const predictionCalculatorService = {
       technical: hasTechnicalData ? technical : undefined,
       news: hasNewsData ? news : undefined,
       macro: hasMacroData ? macro : undefined,
+      events: events.hasData ? {
+        hasData: true,
+        warnings: events.warnings,
+        eventRiskScore: events.eventRiskScore,
+        nextEarnings: events.nextEarnings ? {
+          date: events.nextEarnings.date,
+          daysUntil: events.nextEarnings.daysUntil,
+          isEstimate: events.nextEarnings.isEstimate,
+          epsEstimate: events.nextEarnings.epsEstimate,
+        } : undefined,
+        dividend: events.dividend ? {
+          yield: events.dividend.yield,
+          exDate: events.dividend.exDate,
+          daysUntilEx: events.dividend.daysUntilEx,
+          amount: events.dividend.amount,
+        } : undefined,
+        nextSplit: events.nextSplit,
+      } : undefined,
       timeframe: timeframeStr,
       calculatedAt: new Date(),
+      marketContext: marketContextInfo,
+      riskFilter: riskFilterResult,
+      // ELIMINADOS: preciousMetalsAnalysis, marketPsychology, geopoliticalEvents
+      // Razón: Añadían ruido sin valor predictivo demostrable
       audit: {
         dataSources: [
           ...(hasHistoricalData ? [{ name: 'Yahoo Finance (Historical)', url: `https://finance.yahoo.com/quote/${symbol}/history`, fetchedAt: new Date() }] : []),
@@ -914,12 +1584,26 @@ export const predictionCalculatorService = {
 
   /**
    * Calcula score de tendencia histórica
+   * CORREGIDO: Reducir amplificación para evitar sesgo alcista por momentum
+   * También considera mean reversion para tendencias extremas
    */
   calculateTrendScore(change30d: number, change90d: number): number {
-    // Combinar tendencias de corto y largo plazo
-    const shortTermScore = Math.max(-100, Math.min(100, change30d * 3));
-    const longTermScore = Math.max(-100, Math.min(100, change90d));
-    return (shortTermScore * 0.7 + longTermScore * 0.3);
+    // Amplificación reducida: de 3x a 2x para evitar sesgo momentum
+    // Aplicar mean reversion si tendencia muy extrema (>20% en 30d)
+    let shortTermScore: number;
+    if (Math.abs(change30d) > 20) {
+      // Tendencia extrema: aplicar mean reversion parcial
+      shortTermScore = Math.max(-100, Math.min(100, change30d * 1.0));
+      logger.debug(`[PredictionCalc] Extreme trend detected (${change30d.toFixed(1)}%), applying mean reversion`);
+    } else if (Math.abs(change30d) > 10) {
+      // Tendencia fuerte: amplificación moderada
+      shortTermScore = Math.max(-100, Math.min(100, change30d * 1.5));
+    } else {
+      // Tendencia normal: amplificación estándar (reducida de 3 a 2)
+      shortTermScore = Math.max(-100, Math.min(100, change30d * 2));
+    }
+    const longTermScore = Math.max(-100, Math.min(100, change90d * 0.8)); // Reducido de 1 a 0.8
+    return (shortTermScore * 0.6 + longTermScore * 0.4); // Más peso a largo plazo
   },
 
   /**
@@ -1028,23 +1712,54 @@ export const predictionCalculatorService = {
     }
 
     // Calcular coherencia de señales
-    const positiveFactors = availableFactors.filter(f => f.score > 15);
-    const negativeFactors = availableFactors.filter(f => f.score < -15);
+    // UMBRALES AJUSTADOS: ±10 para capturar señales moderadas (antes ±15)
+    // Un técnico de -14 DEBE contar como bajista, no neutral
+    const SIGNAL_THRESHOLD = 10;
+    const positiveFactors = availableFactors.filter(f => f.score > SIGNAL_THRESHOLD);
+    const negativeFactors = availableFactors.filter(f => f.score < -SIGNAL_THRESHOLD);
+    const neutralFactors = availableFactors.filter(f => f.score >= -SIGNAL_THRESHOLD && f.score <= SIGNAL_THRESHOLD);
+    
+    // Factores con señal clara (no neutrales)
+    const signalFactors = positiveFactors.length + negativeFactors.length;
     
     let signalSummary: 'coherent_bullish' | 'coherent_bearish' | 'mixed' | 'neutral' | 'insufficient';
     let signalCoherence = 50;
 
-    if (positiveFactors.length > 0 && negativeFactors.length > 0) {
-      signalSummary = 'mixed';
-      signalCoherence = 40;
-    } else if (positiveFactors.length === availableFactors.length && positiveFactors.length >= 2) {
+    if (signalFactors === 0) {
+      // Todos los factores son neutrales
+      signalSummary = 'neutral';
+      signalCoherence = 45;
+    } else if (positiveFactors.length > 0 && negativeFactors.length > 0) {
+      // Hay factores en ambas direcciones - evaluar proporción
+      const bullishRatio = positiveFactors.length / signalFactors;
+      const bearishRatio = negativeFactors.length / signalFactors;
+      
+      if (bullishRatio >= 0.7) {
+        // 70%+ alcistas → coherent_bullish (aunque haya alguno bajista)
+        signalSummary = 'coherent_bullish';
+        signalCoherence = 65 + (bullishRatio - 0.7) * 30; // 65-74
+      } else if (bearishRatio >= 0.7) {
+        // 70%+ bajistas → coherent_bearish
+        signalSummary = 'coherent_bearish';
+        signalCoherence = 65 + (bearishRatio - 0.7) * 30;
+      } else {
+        // Realmente mixto (ni alcistas ni bajistas dominan claramente)
+        signalSummary = 'mixed';
+        signalCoherence = 40;
+      }
+    } else if (positiveFactors.length >= 2) {
+      // Solo factores positivos (y posiblemente neutrales)
       signalSummary = 'coherent_bullish';
       signalCoherence = 75;
-    } else if (negativeFactors.length === availableFactors.length && negativeFactors.length >= 2) {
+    } else if (negativeFactors.length >= 2) {
+      // Solo factores negativos (y posiblemente neutrales)
       signalSummary = 'coherent_bearish';
       signalCoherence = 75;
-    } else if (positiveFactors.length > 0 || negativeFactors.length > 0) {
-      signalSummary = availableFactors.length === 1 ? 'neutral' : 'mixed';
+    } else if (positiveFactors.length === 1) {
+      signalSummary = neutralFactors.length > 0 ? 'neutral' : 'coherent_bullish';
+      signalCoherence = 55;
+    } else if (negativeFactors.length === 1) {
+      signalSummary = neutralFactors.length > 0 ? 'neutral' : 'coherent_bearish';
       signalCoherence = 55;
     } else {
       signalSummary = 'neutral';
@@ -1065,11 +1780,19 @@ export const predictionCalculatorService = {
     // Generar explicación
     let confidenceExplanation = '';
     if (signalSummary === 'coherent_bullish') {
-      confidenceExplanation = `${positiveFactors.length} factores coinciden en señal alcista: ${positiveFactors.map(f => f.name).join(', ')}.`;
+      if (negativeFactors.length > 0) {
+        confidenceExplanation = `${positiveFactors.length}/${signalFactors} factores alcistas: ${positiveFactors.map(f => f.name).join(', ')}. Minoritarios bajistas: ${negativeFactors.map(f => f.name).join(', ')}.`;
+      } else {
+        confidenceExplanation = `${positiveFactors.length} factores coinciden en señal alcista: ${positiveFactors.map(f => f.name).join(', ')}.`;
+      }
     } else if (signalSummary === 'coherent_bearish') {
-      confidenceExplanation = `${negativeFactors.length} factores coinciden en señal bajista: ${negativeFactors.map(f => f.name).join(', ')}.`;
+      if (positiveFactors.length > 0) {
+        confidenceExplanation = `${negativeFactors.length}/${signalFactors} factores bajistas: ${negativeFactors.map(f => f.name).join(', ')}. Minoritarios alcistas: ${positiveFactors.map(f => f.name).join(', ')}.`;
+      } else {
+        confidenceExplanation = `${negativeFactors.length} factores coinciden en señal bajista: ${negativeFactors.map(f => f.name).join(', ')}.`;
+      }
     } else if (signalSummary === 'mixed') {
-      confidenceExplanation = `Señales mixtas: ${positiveFactors.map(f => f.name).join(', ')} alcistas vs ${negativeFactors.map(f => f.name).join(', ')} bajistas.`;
+      confidenceExplanation = `Señales divididas: ${positiveFactors.map(f => f.name).join(', ')} alcistas vs ${negativeFactors.map(f => f.name).join(', ')} bajistas.`;
     } else {
       confidenceExplanation = 'Señales mayormente neutrales.';
     }
@@ -1090,8 +1813,10 @@ export const predictionCalculatorService = {
 
   /**
    * Guarda una predicción en la base de datos
+   * @param prediction - La predicción calculada
+   * @param predictionType - 'close' para cierre del día, 'open_next_day' para apertura del día siguiente
    */
-  async savePrediction(prediction: CalculatedPrediction): Promise<{ id: string }> {
+  async savePrediction(prediction: CalculatedPrediction, predictionType?: PredictionType): Promise<{ id: string }> {
     const result = await predictionRepository.create({
       symbol: prediction.symbol,
       asset: prediction.asset,
@@ -1099,6 +1824,7 @@ export const predictionCalculatorService = {
       direction: prediction.direction,
       confidence: prediction.confidence,
       timeframe: prediction.timeframe,
+      predictionType: predictionType || prediction.predictionType || 'close',
       predictedChange: prediction.predictedChange,
       currentPrice: prediction.currentPrice,
       predictedPriceMin: prediction.predictedPriceMin,
@@ -1113,6 +1839,556 @@ export const predictionCalculatorService = {
     });
 
     return { id: result.id };
+  },
+
+  /**
+   * Guarda ambas predicciones: cierre del día y apertura del día siguiente
+   * @returns IDs de ambas predicciones
+   */
+  async saveBothPredictions(prediction: CalculatedPrediction): Promise<{ closeId: string; openNextDayId: string }> {
+    // Guardar predicción de cierre del día
+    const closePrediction = await this.savePrediction(prediction, 'close');
+    
+    // Guardar predicción de apertura del día siguiente
+    const openPrediction = await this.savePrediction(prediction, 'open_next_day');
+    
+    logger.info(`[PredictionCalc] Saved both predictions for ${prediction.symbol}: close=${closePrediction.id}, open_next_day=${openPrediction.id}`);
+    
+    return {
+      closeId: closePrediction.id,
+      openNextDayId: openPrediction.id,
+    };
+  },
+
+  /**
+   * Genera una recomendación inteligente basada en múltiples factores
+   * SIMPLIFICADO: Eliminados psychology, precious metals, calendar effects
+   */
+  generateSmartRecommendation(params: {
+    direction: 'up' | 'down' | 'neutral';
+    predictedChange: number;
+    confidence: number;
+    change30d: number;
+    change90d: number;
+    volatility: number;
+    intradayChange: number;
+    calendarRiskScore: number;
+    calendarDangerousCombination: boolean;
+    technicalScore: number;
+    fundamentalScore: number;
+    targetVsCurrent: number;
+  }): CalculatedPrediction['recommendation'] {
+    const {
+      direction, predictedChange, confidence, change30d, change90d,
+      volatility, intradayChange,
+      technicalScore, fundamentalScore, targetVsCurrent,
+    } = params;
+
+    let action: 'strong_buy' | 'buy' | 'hold' | 'reduce' | 'sell' | 'strong_sell' | 'wait' = 'hold';
+    let reasoning = '';
+    let timeHorizon: 'short' | 'medium' | 'long' = 'medium';
+    let riskLevel: 'low' | 'medium' | 'high' | 'extreme' = 'medium';
+    let isContrarian = false;
+    const keyFactors: string[] = [];
+
+    // === CASO 1: CAÍDA FUERTE CON BUENOS FUNDAMENTALES === 
+    // Oportunidad contrarian si el activo tiene buenos fundamentales
+    if (intradayChange < -5 && (fundamentalScore > 20 || targetVsCurrent > 10)) {
+      keyFactors.push(`Caída fuerte hoy (${intradayChange.toFixed(1)}%)`);
+      
+      action = 'buy';
+      isContrarian = true;
+      reasoning = `Caída significativa pero los fundamentales son sólidos. `;
+      reasoning += `Históricamente, comprar en caídas con buenos fundamentales da buenos resultados a medio/largo plazo.`;
+      timeHorizon = 'long';
+      riskLevel = 'high';
+      keyFactors.push('Buenos fundamentales');
+      if (targetVsCurrent > 10) keyFactors.push(`Target analistas +${targetVsCurrent.toFixed(0)}%`);
+    }
+    
+    // === CASO 2: PREDICCIÓN ALCISTA CON ALTA CONFIANZA ===
+    else if (direction === 'up' && confidence >= 65 && predictedChange > 1) {
+      keyFactors.push(`Predicción alcista +${predictedChange.toFixed(1)}%`);
+      keyFactors.push(`Confianza ${confidence}%`);
+      
+      if (technicalScore > 30 && fundamentalScore > 20) {
+        action = 'strong_buy';
+        reasoning = `Señales técnicas y fundamentales alineadas. Alta probabilidad de subida a corto/medio plazo.`;
+        timeHorizon = 'medium';
+        riskLevel = 'low';
+        keyFactors.push('Técnico y fundamental alineados');
+      } else if (technicalScore > 20 || change30d > 0) {
+        action = 'buy';
+        reasoning = `Tendencia favorable con buena confianza. Considerar entrada o aumentar posición.`;
+        timeHorizon = 'medium';
+        riskLevel = 'medium';
+      } else {
+        action = 'hold';
+        reasoning = `Predicción positiva pero señales mixtas. Mantener si ya tienes posición.`;
+        timeHorizon = 'medium';
+        riskLevel = 'medium';
+      }
+    }
+    
+    // === CASO 5: PREDICCIÓN BAJISTA CON ALTA CONFIANZA ===
+    else if (direction === 'down' && confidence >= 60 && predictedChange < -1) {
+      keyFactors.push(`Predicción bajista ${predictedChange.toFixed(1)}%`);
+      
+      if (technicalScore < -30 && fundamentalScore < -20) {
+        action = 'strong_sell';
+        reasoning = `Señales técnicas y fundamentales negativas. Considerar salir o reducir significativamente.`;
+        timeHorizon = 'short';
+        riskLevel = 'high';
+        keyFactors.push('Deterioro técnico y fundamental');
+      } else if (change30d < -10) {
+        action = 'sell';
+        reasoning = `Tendencia bajista establecida. Considerar reducir exposición.`;
+        timeHorizon = 'short';
+        riskLevel = 'high';
+      } else {
+        action = 'reduce';
+        reasoning = `Perspectiva negativa a corto plazo. Considerar reducir posición o ajustar stop-loss.`;
+        timeHorizon = 'short';
+        riskLevel = 'medium';
+      }
+    }
+    
+    // === CASO 6: ALTA VOLATILIDAD ===
+    else if (volatility > 50) {
+      keyFactors.push(`Volatilidad extrema (${volatility.toFixed(0)}%)`);
+      
+      action = 'wait';
+      reasoning = `Volatilidad muy alta (${volatility.toFixed(0)}%). En estas condiciones, las predicciones son menos fiables. `;
+      reasoning += `Considera reducir tamaño de posición o esperar a que se estabilice.`;
+      timeHorizon = 'short';
+      riskLevel = 'extreme';
+    }
+    
+    // === CASO 7: NEUTRAL / SIN SEÑAL CLARA ===
+    else if (direction === 'neutral' || confidence < 50) {
+      action = 'hold';
+      reasoning = `Sin señal clara de dirección. El mercado está indeciso. Mantener posición actual y seguir plan.`;
+      timeHorizon = 'medium';
+      riskLevel = 'medium';
+      keyFactors.push('Señal neutral');
+    }
+    
+    // === CASO DEFAULT ===
+    else {
+      action = 'hold';
+      reasoning = `Condiciones mixtas. Mantener estrategia actual y revisar si cambian las condiciones.`;
+      timeHorizon = 'medium';
+      riskLevel = 'medium';
+    }
+
+    // Determinar emoji
+    const actionEmojis: Record<string, string> = {
+      strong_buy: '🚀',
+      buy: '💚',
+      hold: '🤝',
+      reduce: '⚡',
+      sell: '🔴',
+      strong_sell: '🚨',
+      wait: '⏳',
+    };
+
+    const actionTitles: Record<string, string> = {
+      strong_buy: 'Compra Fuerte',
+      buy: 'Comprar',
+      hold: 'Mantener',
+      reduce: 'Reducir',
+      sell: 'Vender',
+      strong_sell: 'Venta Urgente',
+      wait: 'Esperar',
+    };
+
+    return {
+      action,
+      emoji: actionEmojis[action],
+      title: actionTitles[action],
+      reasoning,
+      timeHorizon,
+      riskLevel,
+      isContrarian,
+      keyFactors,
+    };
+  },
+
+  /**
+   * RISK FILTER: Calcula si se recomienda abstención basándose en múltiples indicadores de riesgo
+   * Devuelve un score de 0-100 donde >50 sugiere considerar abstención
+   */
+  calculateRiskFilter(params: {
+    vixValue: number;
+    assetVolatility: number;
+    factorScores: Record<string, number>;
+    availableFactorsCount: number;
+    totalFactorsCount: number;
+    signalSummary: string;
+    earningsDaysUntil?: number;
+    marketCondition: string;
+    intradayChange: number;
+    trendAgreement?: 'aligned_bullish' | 'aligned_bearish' | 'divergent' | 'neutral';
+  }): NonNullable<CalculatedPrediction['riskFilter']> {
+    const {
+      vixValue,
+      assetVolatility,
+      factorScores,
+      availableFactorsCount,
+      totalFactorsCount,
+      signalSummary,
+      earningsDaysUntil,
+      marketCondition,
+      intradayChange,
+      trendAgreement,
+    } = params;
+
+    const reasons: string[] = [];
+    let abstentionScore = 0;
+
+    // === FACTOR 1: VIX Extremo (miedo del mercado) ===
+    const vixExtreme = vixValue > 30;
+    if (vixExtreme) {
+      abstentionScore += 25;
+      reasons.push(`VIX elevado (${vixValue.toFixed(1)}) - mercado en modo pánico`);
+    } else if (vixValue > 25) {
+      abstentionScore += 10;
+      reasons.push(`VIX moderadamente alto (${vixValue.toFixed(1)})`);
+    }
+
+    // === FACTOR 2: Volatilidad del activo extrema ===
+    const volatilityExtreme = assetVolatility > 50;
+    if (volatilityExtreme) {
+      abstentionScore += 20;
+      reasons.push(`Volatilidad del activo extrema (${assetVolatility.toFixed(0)}%)`);
+    } else if (assetVolatility > 35) {
+      abstentionScore += 10;
+      reasons.push(`Volatilidad alta del activo (${assetVolatility.toFixed(0)}%)`);
+    }
+
+    // === FACTOR 3: Señales conflictivas entre factores ===
+    const scores = Object.values(factorScores).filter(s => s !== 0);
+    const positiveScores = scores.filter(s => s > 10).length;
+    const negativeScores = scores.filter(s => s < -10).length;
+    const conflictingSignals = positiveScores >= 2 && negativeScores >= 2;
+    if (conflictingSignals) {
+      abstentionScore += 20;
+      reasons.push(`Señales conflictivas (${positiveScores} alcistas vs ${negativeScores} bajistas)`);
+    }
+
+    // === FACTOR 4: Poca calidad de datos ===
+    const dataQualityRatio = availableFactorsCount / totalFactorsCount;
+    const lowDataQuality = dataQualityRatio < 0.5;
+    if (lowDataQuality) {
+      abstentionScore += 15;
+      reasons.push(`Pocos datos disponibles (${availableFactorsCount}/${totalFactorsCount} factores)`);
+    } else if (dataQualityRatio < 0.7) {
+      abstentionScore += 5;
+    }
+
+    // === FACTOR 5: Divergencia de tendencias (si está disponible) ===
+    const trendDivergence = trendAgreement === 'divergent';
+    if (trendDivergence) {
+      abstentionScore += 15;
+      reasons.push('Divergencia entre timeframes (corto/medio/largo no alineados)');
+    }
+
+    // === FACTOR 6: Earnings inminentes ===
+    const earningsNear = earningsDaysUntil !== undefined && earningsDaysUntil <= 3;
+    if (earningsNear) {
+      abstentionScore += 25;
+      reasons.push(`Earnings en ${earningsDaysUntil} día(s) - alta incertidumbre`);
+    } else if (earningsDaysUntil !== undefined && earningsDaysUntil <= 7) {
+      abstentionScore += 10;
+      reasons.push(`Earnings próximos (${earningsDaysUntil} días)`);
+    }
+
+    // === FACTOR 7: Mercado en crash ===
+    const marketCrash = marketCondition === 'crash' || marketCondition === 'severe_correction';
+    if (marketCrash) {
+      abstentionScore += 30;
+      reasons.push(`Mercado en ${marketCondition === 'crash' ? 'crash' : 'corrección severa'}`);
+    } else if (marketCondition === 'correction') {
+      abstentionScore += 10;
+      reasons.push('Mercado en corrección');
+    }
+
+    // === FACTOR 8: Movimiento intradía extremo ===
+    if (Math.abs(intradayChange) > 8) {
+      abstentionScore += 15;
+      reasons.push(`Movimiento intradía extremo (${intradayChange > 0 ? '+' : ''}${intradayChange.toFixed(1)}%)`);
+    } else if (Math.abs(intradayChange) > 5) {
+      abstentionScore += 5;
+    }
+
+    // === FACTOR 9: Signal summary indica datos insuficientes ===
+    if (signalSummary === 'insufficient') {
+      abstentionScore += 20;
+      reasons.push('Datos insuficientes para predicción confiable');
+    } else if (signalSummary === 'mixed') {
+      abstentionScore += 5;
+    }
+
+    // Limitar score a 100
+    abstentionScore = Math.min(100, abstentionScore);
+
+    // Determinar nivel de abstención
+    let abstentionLevel: 'none' | 'caution' | 'warning' | 'critical';
+    let shouldAbstain: boolean;
+
+    if (abstentionScore >= 60) {
+      abstentionLevel = 'critical';
+      shouldAbstain = true;
+    } else if (abstentionScore >= 40) {
+      abstentionLevel = 'warning';
+      shouldAbstain = true;
+    } else if (abstentionScore >= 20) {
+      abstentionLevel = 'caution';
+      shouldAbstain = false;
+    } else {
+      abstentionLevel = 'none';
+      shouldAbstain = false;
+    }
+
+    return {
+      shouldAbstain,
+      abstentionLevel,
+      abstentionScore,
+      reasons: reasons.length > 0 ? reasons : ['Sin factores de riesgo significativos'],
+      riskFactors: {
+        vixExtreme,
+        volatilityExtreme,
+        conflictingSignals,
+        lowDataQuality,
+        trendDivergence,
+        earningsNear,
+        marketCrash,
+      },
+    };
+  },
+
+  // ============================================================================
+  // FUNCIONES HELPER PARA NUEVOS FACTORES INTRADÍA
+  // ============================================================================
+
+  /**
+   * Calcula score del Options Flow (-100 a +100)
+   * Put/Call < 0.7 = muy bullish, > 1.3 = muy bearish
+   */
+  calculateOptionsFlowScore(data: OptionsFlowData): number {
+    if (!data.hasData) return 0;
+    
+    let score = 0;
+    
+    // Put/Call Ratio: <0.7 bullish (+40), >1.3 bearish (-40)
+    if (data.putCallRatio < 0.5) score += 50;
+    else if (data.putCallRatio < 0.7) score += 30;
+    else if (data.putCallRatio < 0.85) score += 15;
+    else if (data.putCallRatio > 1.3) score -= 40;
+    else if (data.putCallRatio > 1.1) score -= 25;
+    else if (data.putCallRatio > 1.0) score -= 10;
+    
+    // IV Signal: extreme IV = contrarian opportunity
+    if (data.ivSignal === 'extreme') {
+      // IV extrema puede indicar movimiento esperado - añadir incertidumbre
+      score *= 0.8;
+    } else if (data.ivSignal === 'low') {
+      // IV baja = mercado confiado
+      score += 10;
+    }
+    
+    // Max Pain: si precio lejos del max pain, esperar regresión
+    if (data.maxPainDistance !== null) {
+      if (data.maxPainDistance > 5) score -= 10; // Precio muy arriba del max pain
+      else if (data.maxPainDistance < -5) score += 10; // Precio muy abajo del max pain
+    }
+    
+    // Unusual Activity
+    if (data.unusualActivity) {
+      // Actividad inusual aumenta la señal en la dirección del overall signal
+      const boost = data.overallSignal === 'bullish' ? 15 : data.overallSignal === 'bearish' ? -15 : 0;
+      score += boost;
+    }
+    
+    return Math.max(-100, Math.min(100, score));
+  },
+
+  /**
+   * Calcula score del Volume Profile (-100 a +100)
+   * Precio en Value Area = neutral, arriba/abajo = direccional
+   */
+  calculateVolumeProfileScore(data: VolumeProfileData): number {
+    if (!data.hasData) return 0;
+    
+    let score = 0;
+    
+    // Posición respecto al Value Area
+    switch (data.priceLocation) {
+      case 'above_va':
+        score += 30; // Bullish: rompió arriba
+        break;
+      case 'below_va':
+        score -= 30; // Bearish: rompió abajo
+        break;
+      case 'at_poc':
+        score += 5; // Ligeramente bullish: en zona de equilibrio
+        break;
+      case 'in_va':
+        score += 0; // Neutral
+        break;
+    }
+    
+    // Ajustar por señal del servicio
+    if (data.signal === 'bullish') score += 15;
+    else if (data.signal === 'bearish') score -= 15;
+    
+    // High Volume Nodes cercanos pueden actuar como soporte/resistencia
+    for (const hvn of data.highVolumeNodes) {
+      const distance = ((data.currentPrice - hvn.price) / data.currentPrice) * 100;
+      if (hvn.type === 'support' && distance > 0 && distance < 2) {
+        score += 10; // Soporte cercano por debajo
+      } else if (hvn.type === 'resistance' && distance < 0 && distance > -2) {
+        score -= 10; // Resistencia cercana por arriba
+      }
+    }
+    
+    return Math.max(-100, Math.min(100, score));
+  },
+
+  /**
+   * Calcula score de Divergencias (-100 a +100)
+   * Divergencia alcista = +score, bajista = -score
+   */
+  calculateDivergencesScore(data: DivergenceAnalysis): number {
+    if (!data.hasDivergence || data.signals.length === 0) return 0;
+    
+    let totalScore = 0;
+    
+    for (const signal of data.signals) {
+      let signalScore = 0;
+      
+      // Base score según tipo
+      signalScore = signal.type === 'bullish' ? signal.confidence * 0.6 : -signal.confidence * 0.6;
+      
+      // Ajustar por fuerza de la divergencia
+      switch (signal.strength) {
+        case 'strong': signalScore *= 1.3; break;
+        case 'moderate': signalScore *= 1.0; break;
+        case 'weak': signalScore *= 0.7; break;
+      }
+      
+      // Ponderar por indicador (RSI más confiable, luego MACD, luego Stochastic)
+      switch (signal.indicator) {
+        case 'RSI': signalScore *= 1.2; break;
+        case 'MACD': signalScore *= 1.0; break;
+        case 'Stochastic': signalScore *= 0.8; break;
+      }
+      
+      totalScore += signalScore;
+    }
+    
+    // Promedio si hay múltiples señales, pero dar bonus por confirmación
+    if (data.signals.length > 1) {
+      totalScore = (totalScore / data.signals.length) * 1.2; // 20% bonus por confirmación
+    }
+    
+    return Math.max(-100, Math.min(100, totalScore));
+  },
+
+  /**
+   * Calcula score de Volatilidad IV/RV (-100 a +100)
+   * IV > RV = opciones caras (posible sobrecompra), IV < RV = opciones baratas
+   */
+  calculateVolatilityScore(data: VolatilityData): number {
+    if (!data.hasData) return 0;
+    
+    let score = 0;
+    
+    // IV vs RV Spread: contrarian indicator
+    // IV muy alta respecto a RV puede indicar techo (miedo excesivo)
+    // IV muy baja respecto a RV puede indicar suelo (complacencia)
+    const spread = data.ivRvSpread;
+    
+    if (spread > 20) {
+      // IV mucho mayor que RV: mercado espera volatilidad, potencial contrarian bullish
+      score += 15;
+    } else if (spread > 10) {
+      score += 8;
+    } else if (spread < -20) {
+      // RV mucho mayor que IV: mercado complaciente, potencial contrarian bearish
+      score -= 15;
+    } else if (spread < -10) {
+      score -= 8;
+    }
+    
+    // IV Percentile: extremos son contrarian
+    if (data.ivPercentile > 90) {
+      score += 20; // IV en máximos históricos = posible suelo
+    } else if (data.ivPercentile > 70) {
+      score += 10;
+    } else if (data.ivPercentile < 10) {
+      score -= 20; // IV en mínimos históricos = posible techo
+    } else if (data.ivPercentile < 30) {
+      score -= 10;
+    }
+    
+    // Régimen de volatilidad
+    switch (data.volatilityRegime) {
+      case 'extreme': score *= 0.7; break; // Reducir confianza en extremos
+      case 'high': score *= 0.85; break;
+      case 'normal': break;
+      case 'low': score *= 0.9; break;
+    }
+    
+    return Math.max(-100, Math.min(100, score));
+  },
+
+  /**
+   * Calcula score del Market Breadth (-100 a +100)
+   * A/D ratio alto = mercado sano, bajo = divergencia peligrosa
+   */
+  calculateMarketBreadthScore(data: MarketBreadthData): number {
+    if (!data.hasData) return 0;
+    
+    let score = 0;
+    
+    // Advance/Decline Ratio
+    if (data.advanceDeclineRatio > 2.0) score += 40;
+    else if (data.advanceDeclineRatio > 1.5) score += 25;
+    else if (data.advanceDeclineRatio > 1.2) score += 15;
+    else if (data.advanceDeclineRatio < 0.5) score -= 40;
+    else if (data.advanceDeclineRatio < 0.7) score -= 25;
+    else if (data.advanceDeclineRatio < 0.85) score -= 15;
+    
+    // % Above 200MA: salud a largo plazo
+    if (data.percentAbove200MA > 70) score += 15;
+    else if (data.percentAbove200MA > 50) score += 5;
+    else if (data.percentAbove200MA < 30) score -= 15;
+    else if (data.percentAbove200MA < 50) score -= 5;
+    
+    // Divergencia mercado: peligrosa si SPY sube pero pocas acciones suben
+    switch (data.divergence) {
+      case 'bullish_divergence':
+        score += 20; // Mercado baja pero breadth mejora
+        break;
+      case 'bearish_divergence':
+        score -= 25; // Mercado sube pero breadth empeora (peligroso)
+        break;
+      case 'confirmed':
+        score += 10; // Movimiento confirmado por breadth
+        break;
+    }
+    
+    // Market Health
+    switch (data.marketHealth) {
+      case 'excellent': score += 15; break;
+      case 'good': score += 8; break;
+      case 'fair': break;
+      case 'weak': score -= 10; break;
+      case 'critical': score -= 20; break;
+    }
+    
+    return Math.max(-100, Math.min(100, score));
   },
 };
 

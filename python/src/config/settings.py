@@ -14,29 +14,58 @@ PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
 WEIGHTS_FILE = CODE_DIR / "config" / "learned_weights.json"
 TRAINING_LOG_FILE = DATA_DIR / "training_log.json"
 
-# Factores del modelo (en orden)
+# Factores del modelo (9 factores - competitors y expectations eliminados)
+# Seasonality: solo como bias suave para activos cíclicos
+# Forex: solo para activos con exposición internacional significativa
 FACTORS = [
     'trend', 'technical', 'sentiment', 'news', 'macro',
-    'competitors', 'forex', 'institutional', 'seasonality',
-    'financials', 'expectations'
+    'forex', 'institutional', 'seasonality', 'financials'
 ]
 
-# Pesos por defecto por timeframe
+# Factores relevantes por grupo de activo
+# CRÍTICO: Cada grupo solo usa los factores que tienen sentido para ese tipo de activo
+ASSET_GROUP_FACTORS = {
+    'large_cap_stock': ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'seasonality', 'financials'],
+    'small_cap_stock': ['trend', 'technical', 'news', 'seasonality', 'financials'],
+    'crypto_major': ['trend', 'technical', 'sentiment', 'news', 'macro'],
+    'crypto_alt': ['trend', 'technical', 'sentiment'],
+    'etf_index': ['trend', 'technical', 'macro', 'seasonality', 'forex'],
+    'commodity': ['trend', 'technical', 'macro', 'forex'],  # SIN seasonality - no es fiable para commodities
+    'reit': ['trend', 'technical', 'macro', 'financials', 'seasonality'],
+    'forex': ['trend', 'technical', 'macro', 'news'],
+    'adr': ['trend', 'technical', 'news', 'forex', 'macro', 'financials'],
+    'default': ['trend', 'technical', 'sentiment', 'news'],
+}
+
+
+def get_relevant_factors(asset_group: str) -> list:
+    """
+    Obtiene los factores relevantes para un grupo de activo.
+    
+    Args:
+        asset_group: Tipo de activo (large_cap_stock, commodity, crypto_major, etc.)
+    
+    Returns:
+        Lista de factores relevantes para ese grupo
+    """
+    return ASSET_GROUP_FACTORS.get(asset_group, ASSET_GROUP_FACTORS['default'])
+
+# Pesos por defecto por timeframe (9 factores)
 DEFAULT_WEIGHTS = {
     'intraday': {
-        'trend': 0.20, 'technical': 0.25, 'sentiment': 0.15, 'news': 0.18,
-        'macro': 0.04, 'competitors': 0.04, 'forex': 0.04, 'institutional': 0.05,
-        'seasonality': 0.02, 'financials': 0.02, 'expectations': 0.01
+        'trend': 0.22, 'technical': 0.27, 'sentiment': 0.16, 'news': 0.19,
+        'macro': 0.05, 'forex': 0.05, 'institutional': 0.05,
+        'seasonality': 0.01, 'financials': 0.00
     },
     'swing': {
-        'trend': 0.12, 'technical': 0.18, 'sentiment': 0.10, 'news': 0.15,
-        'macro': 0.08, 'competitors': 0.07, 'forex': 0.06, 'institutional': 0.10,
-        'seasonality': 0.04, 'financials': 0.05, 'expectations': 0.05
+        'trend': 0.14, 'technical': 0.20, 'sentiment': 0.12, 'news': 0.20,
+        'macro': 0.10, 'forex': 0.06, 'institutional': 0.10,
+        'seasonality': 0.02, 'financials': 0.06
     },
     'long': {
-        'trend': 0.05, 'technical': 0.08, 'sentiment': 0.04, 'news': 0.08,
-        'macro': 0.12, 'competitors': 0.10, 'forex': 0.08, 'institutional': 0.12,
-        'seasonality': 0.08, 'financials': 0.13, 'expectations': 0.12
+        'trend': 0.06, 'technical': 0.10, 'sentiment': 0.05, 'news': 0.12,
+        'macro': 0.15, 'forex': 0.08, 'institutional': 0.14,
+        'seasonality': 0.04, 'financials': 0.26
     }
 }
 

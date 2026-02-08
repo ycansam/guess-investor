@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { styles } from './quick-actions.styles';
@@ -5,14 +6,27 @@ import { styles } from './quick-actions.styles';
 interface QuickAction {
   label: string;
   emoji: string;
-  prompt: string;
+  prompt?: string;
+  route?: string;
+  action?: string; // Para acciones especiales como abrir modal
 }
 
 interface QuickActionsProps {
   onAction: (prompt: string) => void;
+  onSpecialAction?: (action: string) => void;
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
+  {
+    label: 'Alertas',
+    emoji: '🔔',
+    action: 'alerts',
+  },
+  {
+    label: 'Comparar',
+    emoji: '📊',
+    route: '/compare',
+  },
   {
     label: 'Bitcoin',
     emoji: '🪙',
@@ -20,7 +34,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
   {
     label: 'S&P 500',
-    emoji: '📊',
+    emoji: '📈',
     prompt: 'Analiza el índice S&P 500 y dame tu predicción',
   },
   {
@@ -45,10 +59,22 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
 ];
 
-export const QuickActions: React.FC<QuickActionsProps> = ({ onAction }) => {
+export const QuickActions: React.FC<QuickActionsProps> = ({ onAction, onSpecialAction }) => {
+  const router = useRouter();
+
+  const handleAction = (action: QuickAction) => {
+    if (action.route) {
+      router.push(action.route as any);
+    } else if (action.action && onSpecialAction) {
+      onSpecialAction(action.action);
+    } else if (action.prompt) {
+      onAction(action.prompt);
+    }
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>⚡ Análisis Rápido</Text>
+      <Text style={styles.title}>⚡ Acciones Rápidas</Text>
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -57,8 +83,12 @@ export const QuickActions: React.FC<QuickActionsProps> = ({ onAction }) => {
         {QUICK_ACTIONS.map((action, index) => (
           <TouchableOpacity
             key={index}
-            style={styles.actionButton}
-            onPress={() => onAction(action.prompt)}
+            style={[
+              styles.actionButton,
+              action.route && { backgroundColor: '#1a1a3e', borderColor: '#6366f1', borderWidth: 1 },
+              action.action && { backgroundColor: '#2d1f0f', borderColor: '#FF9800', borderWidth: 1 }
+            ]}
+            onPress={() => handleAction(action)}
           >
             <Text style={styles.actionEmoji}>{action.emoji}</Text>
             <Text style={styles.actionLabel}>{action.label}</Text>
