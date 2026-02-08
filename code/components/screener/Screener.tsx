@@ -1,5 +1,5 @@
 /**
- * Screener Screen
+ * Screener Component
  * 
  * Filtrar predicciones por criterios:
  * - Dirección (alcista/bajista)
@@ -22,8 +22,8 @@ import {
     View,
 } from 'react-native';
 
-import { apiClient } from '../services/api-client';
-import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../services/training-cache-service';
+import { apiClient } from '../../services/api-client';
+import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../../services/training-cache-service';
 
 // Colores
 const COLORS = {
@@ -224,10 +224,14 @@ const PredictionCard = ({
 };
 
 // ============================================================================
-// PANTALLA PRINCIPAL
+// COMPONENTE PRINCIPAL
 // ============================================================================
 
-export default function ScreenerScreen() {
+interface ScreenerProps {
+  onClose: () => void;
+}
+
+export function Screener({ onClose }: ScreenerProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -390,6 +394,12 @@ export default function ScreenerScreen() {
     return { bullish, bearish, avgConfidence, highConfidence, total: filteredPredictions.length };
   }, [filteredPredictions]);
 
+  // Navegar al asset y cerrar modal
+  const handleAssetPress = (symbol: string) => {
+    onClose();
+    router.push(`/asset/${symbol}`);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -421,7 +431,7 @@ export default function ScreenerScreen() {
             >
               <Ionicons name="options" size={20} color={COLORS.text} />
             </Pressable>
-            <Pressable onPress={() => router.back()} style={styles.closeButton}>
+            <Pressable onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color={COLORS.text} />
             </Pressable>
           </View>
@@ -547,7 +557,7 @@ export default function ScreenerScreen() {
             <PredictionCard
               key={`${prediction.symbol}-${prediction.timeframe}`}
               prediction={prediction}
-              onPress={() => router.push(`/asset/${prediction.symbol}`)}
+              onPress={() => handleAssetPress(prediction.symbol)}
             />
           ))
         ) : (
@@ -602,7 +612,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 60,
+    paddingTop: 16,
     paddingBottom: 16,
   },
   headerRight: {
