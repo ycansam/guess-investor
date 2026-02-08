@@ -26,6 +26,7 @@ import {
     View,
 } from 'react-native';
 
+import { useMenu } from '../components/_shared/menu-context';
 import {
     CreateNoteInput,
     InvestmentNote,
@@ -537,6 +538,7 @@ const ResultModal = ({
 
 export default function NotesScreen() {
   const router = useRouter();
+  const { openMenu } = useMenu();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notesData, setNotesData] = useState<NotesData | null>(null);
@@ -659,10 +661,12 @@ export default function NotesScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>📝 Mis Notas</Text>
+          <View style={styles.headerLeft}>
+            <Pressable onPress={openMenu} style={styles.menuButton}>
+              <Ionicons name="menu" size={24} color={COLORS.text} />
+            </Pressable>
+            <Text style={styles.headerTitle}>📝 Mis Notas</Text>
+          </View>
           <Pressable style={styles.addButton} onPress={openCreateModal}>
             <Ionicons name="add" size={24} color={COLORS.text} />
           </Pressable>
@@ -757,7 +761,12 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 16,
   },
-  backButton: {
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuButton: {
     width: 44,
     height: 44,
     justifyContent: 'center',

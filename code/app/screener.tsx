@@ -22,6 +22,7 @@ import {
     View,
 } from 'react-native';
 
+import { useMenu } from '../components/_shared/menu-context';
 import { apiClient } from '../services/api-client';
 import { trainingCacheService, TrainingPrediction, TrainingTimeframe } from '../services/training-cache-service';
 
@@ -229,6 +230,7 @@ const PredictionCard = ({
 
 export default function ScreenerScreen() {
   const router = useRouter();
+  const { openMenu } = useMenu();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [predictions, setPredictions] = useState<(TrainingPrediction & { currentPrice?: number; dayChange?: number })[]>([]);
@@ -413,10 +415,12 @@ export default function ScreenerScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>🎯 Screener</Text>
+          <View style={styles.headerLeft}>
+            <Pressable onPress={openMenu} style={styles.menuButton}>
+              <Ionicons name="menu" size={24} color={COLORS.text} />
+            </Pressable>
+            <Text style={styles.headerTitle}>🎯 Screener</Text>
+          </View>
           <Pressable
             style={[styles.filterToggle, showFilters && styles.filterToggleActive]}
             onPress={() => setShowFilters(!showFilters)}
@@ -603,7 +607,12 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 16,
   },
-  backButton: {
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuButton: {
     width: 44,
     height: 44,
     justifyContent: 'center',

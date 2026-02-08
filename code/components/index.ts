@@ -1,5 +1,6 @@
 // Shared components
 export { Header } from './_shared';
+export { MenuProvider, useMenu } from './_shared/menu-context';
 
 // Feature components
 export { FactorDetailModal, type FactorType } from './factor-detail-modal';

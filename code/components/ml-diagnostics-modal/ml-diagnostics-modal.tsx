@@ -3,20 +3,22 @@
  * Muestra pesos aprendidos, clasificadores de activos y estado del sistema ML
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { colors } from '../../config/theme';
 import { apiClient, MLModelsStatus, MLWeightsStatus, WeightComparison } from '../../services/api-client';
+import { useMenu } from '../_shared/menu-context';
 
 interface MLDiagnosticsModalProps {
   visible?: boolean;
@@ -47,6 +49,7 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const [isRetrainingClassifiers, setIsRetrainingClassifiers] = useState(false);
   const [retrainClassifiersResult, setRetrainClassifiersResult] = useState<string | null>(null);
   const router = useRouter();
+  const menuContext = asPage ? useMenu() : null;
 
   useEffect(() => {
     if (visible || asPage) {
@@ -610,12 +613,16 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
     return (
       <SafeAreaView style={styles.pageContainer}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={styles.pageHeader}>
+          <View style={styles.pageHeaderLeft}>
+            <TouchableOpacity onPress={() => menuContext?.openMenu()} style={styles.menuButton}>
+              <Ionicons name="menu" size={24} color="#ffffff" />
+            </TouchableOpacity>
+            <Text style={styles.title}>🧠 Diagnóstico ML</Text>
+          </View>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Text style={styles.backText}>← Atrás</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>🧠 Diagnóstico ML</Text>
-          <View style={styles.closeButton} />
         </View>
 
         {renderContent()}
@@ -1175,6 +1182,22 @@ const styles = StyleSheet.create({
   pageContainer: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  pageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pageHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuButton: {
+    padding: 8,
   },
   backButton: {
     padding: 8,

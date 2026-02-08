@@ -55,7 +55,10 @@ export type { TrackedPrediction, TrackingStats } from './prediction-tracking-ser
 export { notesService } from './notes-service';
 export type {
     CreateNoteInput,
-    InvestmentNote, NotesData, NoteStatus, UpdateNoteInput
+    InvestmentNote,
+    NotesData,
+    ResultadoTipo,
+    WalletTotals
 } from './notes-service';
 
 // =============================================================================
