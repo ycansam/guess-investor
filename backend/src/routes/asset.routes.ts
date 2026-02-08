@@ -15,6 +15,9 @@ router.get('/search', assetController.search);
 // GET /api/assets/cache/stats - Estadísticas del caché (ANTES de :symbol)
 router.get('/cache/stats', assetController.getCacheStats);
 
+// POST /api/assets/quotes/batch - Cotizaciones batch (múltiples símbolos)
+router.post('/quotes/batch', assetController.getQuotesBatch);
+
 // DELETE /api/assets/cache - Limpiar todo el caché
 router.delete('/cache', assetController.clearAllCache);
 

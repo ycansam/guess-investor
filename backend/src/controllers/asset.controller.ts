@@ -118,6 +118,36 @@ export const assetController = {
   }),
 
   /**
+   * POST /api/assets/quotes/batch
+   * Obtener cotizaciones de múltiples símbolos en una sola llamada
+   */
+  getQuotesBatch: asyncHandler(async (req: Request, res: Response) => {
+    const { symbols } = req.body;
+    
+    if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'symbols must be a non-empty array',
+      });
+      return;
+    }
+
+    // Limitar a 50 símbolos por request
+    const limitedSymbols = symbols.slice(0, 50).map((s: string) => s.toUpperCase());
+    
+    const quotes = await yahooService.getQuotesBatch(limitedSymbols);
+
+    res.json({
+      success: true,
+      data: quotes,
+      meta: {
+        requested: limitedSymbols.length,
+        returned: Object.values(quotes).filter(q => q !== null).length,
+      },
+    });
+  }),
+
+  /**
    * GET /api/assets/:symbol/history
    * Obtener datos históricos
    */

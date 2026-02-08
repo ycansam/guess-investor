@@ -501,6 +501,13 @@ export const apiClient = {
   },
 
   /**
+   * Obtener cotizaciones de múltiples activos en una sola llamada
+   */
+  getQuotesBatch: (symbols: string[]): Promise<Record<string, AssetQuote | null>> => {
+    return post('/assets/quotes/batch', { symbols });
+  },
+
+  /**
    * Obtener datos históricos
    */
   getHistory: async (
