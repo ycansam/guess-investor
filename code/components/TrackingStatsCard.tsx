@@ -3,17 +3,23 @@
  * Muestra precisión histórica, predicciones pendientes y verificadas
  */
 
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiClient } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
 import { trainingCacheService } from '../services/training-cache-service';
+import { useMenu } from './_shared/menu-context';
 
 interface TrackingStatsCardProps {
   onClose?: () => void;
+  asPage?: boolean;
 }
 
-export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose }) => {
+export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose, asPage = false }) => {
+  const router = useRouter();
+  const menuContext = asPage ? useMenu() : null;
   const [stats, setStats] = useState<TrackingStats | null>(null);
   const [pendingPredictions, setPendingPredictions] = useState<any[]>([]);
   const [activePredictions, setActivePredictions] = useState<any[]>([]);
@@ -93,36 +99,50 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
     setConfirmReset(false);
   };
 
+  // Page header for asPage mode
+  const renderPageHeader = () => (
+    <View style={styles.pageHeader}>
+      <View style={styles.pageHeaderLeft}>
+        <TouchableOpacity onPress={() => menuContext?.openMenu()} style={styles.menuButton}>
+          <Ionicons name="menu" size={24} color="#ffffff" />
+        </TouchableOpacity>
+        <Text style={styles.title}>📊 Estadísticas ML</Text>
+      </View>
+      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <Text style={styles.backText}>← Atrás</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Modal header
+  const renderModalHeader = () => (
+    <View style={styles.header}>
+      <Text style={styles.title}>📊 Estadísticas ML</Text>
+      {onClose && (
+        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+          <Text style={styles.closeText}>✕</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   if (loading) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>📊 Estadísticas ML</Text>
-          {onClose && (
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeText}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+    const content = (
+      <View style={asPage ? styles.pageContainer : styles.container}>
+        {asPage ? renderPageHeader() : renderModalHeader()}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3b82f6" />
           <Text style={styles.loadingText}>Cargando estadísticas...</Text>
         </View>
       </View>
     );
+    return asPage ? <SafeAreaView style={styles.safeArea}>{content}</SafeAreaView> : content;
   }
 
   if (!stats || stats.total === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>📊 Estadísticas ML</Text>
-          {onClose && (
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeText}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+    const content = (
+      <View style={asPage ? styles.pageContainer : styles.container}>
+        {asPage ? renderPageHeader() : renderModalHeader()}
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>📭</Text>
           <Text style={styles.emptyText}>Sin predicciones registradas</Text>
@@ -132,19 +152,11 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
         </View>
       </View>
     );
+    return asPage ? <SafeAreaView style={styles.safeArea}>{content}</SafeAreaView> : content;
   }
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>📊 Estadísticas ML</Text>
-        {onClose && (
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeText}>✕</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
+  const mainContent = (
+    <>
       {/* Tabs */}
       <View style={styles.tabs}>
         <TouchableOpacity
@@ -366,6 +378,28 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose })
       ) : (
         <HistoryView predictions={historyPredictions} />
       )}
+    </>
+  );
+
+  // Page mode
+  if (asPage) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.pageContainer}>
+          {renderPageHeader()}
+          <ScrollView style={styles.scrollContent}>
+            {mainContent}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Modal mode
+  return (
+    <ScrollView style={styles.container}>
+      {renderModalHeader()}
+      {mainContent}
     </ScrollView>
   );
 };
@@ -736,6 +770,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1f2937',
+    padding: 16,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#111827',
+  },
+  pageContainer: {
+    flex: 1,
+    backgroundColor: '#1f2937',
+  },
+  pageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#111827',
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+  },
+  pageTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  backButton: {
+    padding: 8,
+  },
+  menuButton: {
+    padding: 8,
+  },
+  scrollContent: {
+    flex: 1,
     padding: 16,
   },
   header: {

@@ -54,6 +54,7 @@ export function SideMenu({
   const isOnHome = pathname === '/';
   const isOnPortfolio = pathname === '/portfolio';
   const isOnMLDiagnostics = pathname === '/ml-diagnostics';
+  const isOnMLStats = pathname === '/ml-stats';
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -226,6 +227,26 @@ export function SideMenu({
               </Text>
               {isOnMLDiagnostics && (
                 <View style={[styles.activeIndicator, { backgroundColor: '#8b5cf6' }]} />
+              )}
+            </TouchableOpacity>
+
+            {/* Estadísticas ML */}
+            <TouchableOpacity
+              style={[styles.menuItem, isOnMLStats && styles.menuItemActive]}
+              onPress={() => {
+                onClose();
+                router.push('/ml-stats');
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, isOnMLStats && { backgroundColor: '#10b98120' }]}>
+                <Text style={{ fontSize: 18 }}>📊</Text>
+              </View>
+              <Text style={[styles.menuItemText, isOnMLStats && { color: '#10b981' }]}>
+                Estadísticas ML
+              </Text>
+              {isOnMLStats && (
+                <View style={[styles.activeIndicator, { backgroundColor: '#10b981' }]} />
               )}
             </TouchableOpacity>
           </View>
