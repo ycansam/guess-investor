@@ -410,51 +410,104 @@ const IMPACT_RULES: ImpactRule[] = [
 
 // ===== SERVICIO PRINCIPAL =====
 
+// Fuentes RSS financieras gratuitas y confiables
+interface RSSSource {
+  name: string;
+  url: string;
+  priority: number; // 1 = más confiable
+}
+
+const RSS_SOURCES: RSSSource[] = [
+  // Yahoo Finance - muy confiable
+  { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/news/rssindex', priority: 1 },
+  { name: 'Yahoo Finance Top', url: 'https://finance.yahoo.com/rss/topstories', priority: 1 },
+  
+  // MarketWatch - excelente cobertura
+  { name: 'MarketWatch Top', url: 'https://feeds.marketwatch.com/marketwatch/topstories/', priority: 1 },
+  { name: 'MarketWatch Markets', url: 'https://feeds.marketwatch.com/marketwatch/marketpulse/', priority: 1 },
+  { name: 'MarketWatch Stocks', url: 'https://feeds.marketwatch.com/marketwatch/StockstoWatch/', priority: 2 },
+  
+  // CNBC - noticias rápidas
+  { name: 'CNBC Top', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html', priority: 1 },
+  { name: 'CNBC Markets', url: 'https://www.cnbc.com/id/20910258/device/rss/rss.html', priority: 2 },
+  { name: 'CNBC Earnings', url: 'https://www.cnbc.com/id/15839135/device/rss/rss.html', priority: 2 },
+  
+  // Investing.com
+  { name: 'Investing News', url: 'https://www.investing.com/rss/news.rss', priority: 2 },
+  { name: 'Investing Stock', url: 'https://www.investing.com/rss/stock_news.rss', priority: 2 },
+  
+  // Seeking Alpha
+  { name: 'Seeking Alpha', url: 'https://seekingalpha.com/market_currents.xml', priority: 2 },
+  
+  // Reuters (si disponible)
+  { name: 'Reuters Business', url: 'https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best', priority: 1 },
+  
+  // Google News como fallback
+  { name: 'Google Finance', url: 'https://news.google.com/rss/search?q=stock+market&hl=en-US&gl=US&ceid=US:en', priority: 3 },
+];
+
 class MarketImpactNewsService {
-  private readonly GOOGLE_NEWS_RSS = 'https://news.google.com/rss/search';
-  private readonly NEWSDATA_API = 'https://newsdata.io/api/1/news';
+  private cachedNews: MarketImpactNews[] = [];
+  private lastFetchTime: number = 0;
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutos de caché
   
   /**
-   * Obtiene noticias de impacto de mercado
+   * Obtiene noticias de impacto de mercado desde múltiples fuentes RSS
    */
   async getMarketImpactNews(): Promise<MarketImpactNews[]> {
+    // Usar caché si es reciente
+    const now = Date.now();
+    if (this.cachedNews.length > 0 && (now - this.lastFetchTime) < this.CACHE_DURATION) {
+      logger.debug('[MarketImpactNews] Returning cached news');
+      return this.cachedNews;
+    }
+    
     try {
-      // Buscar noticias de múltiples categorías
-      const searchTerms = [
-        'stock market news',
-        'federal reserve',
-        'tariffs trade',
-        'trump policy',
-        'biden policy',
-        'SEC regulation',
-        'oil prices',
-        'inflation data',
-        'earnings report',
-        'antitrust tech',
-        'immigration policy',
-        'china us trade',
-      ];
-      
       const allNews: MarketImpactNews[] = [];
+      const seenHeadlines = new Set<string>();
       
-      // Buscar en paralelo
-      const newsPromises = searchTerms.slice(0, 5).map(term => 
-        this.fetchNewsForTerm(term).catch(() => [])
-      );
+      // Ordenar fuentes por prioridad
+      const sortedSources = [...RSS_SOURCES].sort((a, b) => a.priority - b.priority);
       
-      const results = await Promise.all(newsPromises);
-      
-      for (const newsItems of results) {
-        for (const item of newsItems) {
-          const analyzed = this.analyzeNewsImpact(item);
-          if (analyzed && (analyzed.bullishAssets.length > 0 || analyzed.bearishAssets.length > 0)) {
-            allNews.push(analyzed);
+      // Fetch de todas las fuentes en paralelo (en batches para no saturar)
+      const batchSize = 5;
+      for (let i = 0; i < sortedSources.length; i += batchSize) {
+        const batch = sortedSources.slice(i, i + batchSize);
+        const promises = batch.map(source => 
+          this.fetchFromRSSSource(source).catch(err => {
+            logger.debug(`[MarketImpactNews] Failed ${source.name}:`, err.message);
+            return [];
+          })
+        );
+        
+        const results = await Promise.all(promises);
+        
+        for (const newsItems of results) {
+          for (const item of newsItems) {
+            // Evitar duplicados por headline similar
+            const normalizedHeadline = item.title.toLowerCase().substring(0, 50);
+            if (seenHeadlines.has(normalizedHeadline)) continue;
+            seenHeadlines.add(normalizedHeadline);
+            
+            const analyzed = this.analyzeNewsImpact(item);
+            if (analyzed && (analyzed.bullishAssets.length > 0 || analyzed.bearishAssets.length > 0)) {
+              allNews.push(analyzed);
+            }
           }
         }
+        
+        // Si ya tenemos suficientes noticias, parar
+        if (allNews.length >= 15) break;
+      }
+      
+      // Si no hay noticias de RSS, usar mock como fallback
+      if (allNews.length === 0) {
+        logger.warn('[MarketImpactNews] No news from RSS feeds, using mock data');
+        return this.getMockNews();
       }
       
       // Ordenar por urgencia e impacto
-      return allNews
+      const sortedNews = allNews
         .sort((a, b) => {
           const urgencyOrder = { breaking: 0, important: 1, normal: 2 };
           const magnitudeOrder = { high: 0, medium: 1, low: 2 };
@@ -464,73 +517,124 @@ class MarketImpactNewsService {
           }
           return magnitudeOrder[a.impactMagnitude] - magnitudeOrder[b.impactMagnitude];
         })
-        .slice(0, 20); // Top 20 noticias
+        .slice(0, 20);
+      
+      // Actualizar caché
+      this.cachedNews = sortedNews;
+      this.lastFetchTime = now;
+      
+      logger.info(`[MarketImpactNews] Fetched ${sortedNews.length} impactful news items`);
+      return sortedNews;
         
     } catch (error) {
       logger.error('[MarketImpactNews] Error fetching news:', error);
-      return this.getMockNews(); // Fallback a noticias mock para demo
+      return this.cachedNews.length > 0 ? this.cachedNews : this.getMockNews();
     }
   }
   
   /**
-   * Busca noticias para un término específico usando RSS
+   * Fetch noticias desde una fuente RSS específica
    */
-  private async fetchNewsForTerm(term: string): Promise<RawNewsItem[]> {
+  private async fetchFromRSSSource(source: RSSSource): Promise<RawNewsItem[]> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+    
     try {
-      const encodedTerm = encodeURIComponent(term);
-      const url = `${this.GOOGLE_NEWS_RSS}?q=${encodedTerm}&hl=en-US&gl=US&ceid=US:en`;
-      
-      const response = await fetch(url, {
+      const response = await fetch(source.url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
         },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeout);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
       
       const xml = await response.text();
-      return this.parseRSSFeed(xml);
-    } catch (error) {
-      logger.debug(`[MarketImpactNews] Failed to fetch news for "${term}":`, error);
-      return [];
+      const items = this.parseRSSFeed(xml, source.name);
+      
+      logger.debug(`[MarketImpactNews] ${source.name}: ${items.length} items`);
+      return items;
+      
+    } catch (error: any) {
+      clearTimeout(timeout);
+      throw error;
     }
   }
   
   /**
-   * Parsea feed RSS de Google News
+   * Parsea feed RSS genérico (compatible con múltiples fuentes)
    */
-  private parseRSSFeed(xml: string): RawNewsItem[] {
+  private parseRSSFeed(xml: string, sourceName: string): RawNewsItem[] {
     const items: RawNewsItem[] = [];
     
-    // Regex simple para extraer items del RSS
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-    const titleRegex = /<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/;
-    const linkRegex = /<link>(.*?)<\/link>/;
-    const pubDateRegex = /<pubDate>(.*?)<\/pubDate>/;
-    const sourceRegex = /<source.*?>(.*?)<\/source>/;
+    // Regex flexible para extraer items del RSS/Atom
+    const itemRegex = /<item>([\s\S]*?)<\/item>|<entry>([\s\S]*?)<\/entry>/g;
+    const titleRegex = /<title><!\[CDATA\[(.*?)\]\]><\/title>|<title[^>]*>(.*?)<\/title>/;
+    const linkRegex = /<link[^>]*href="([^"]*)"[^>]*\/>|<link[^>]*>(.*?)<\/link>|<guid[^>]*>(.*?)<\/guid>/;
+    const pubDateRegex = /<pubDate>(.*?)<\/pubDate>|<published>(.*?)<\/published>|<dc:date>(.*?)<\/dc:date>|<updated>(.*?)<\/updated>/;
+    const sourceRegex = /<source.*?>(.*?)<\/source>|<dc:creator>(.*?)<\/dc:creator>|<author>(.*?)<\/author>/;
+    const descRegex = /<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>|<summary[^>]*>(.*?)<\/summary>/;
     
     let match;
     while ((match = itemRegex.exec(xml)) !== null) {
-      const itemXml = match[1];
+      const itemXml = match[1] || match[2];
       
       const titleMatch = titleRegex.exec(itemXml);
       const linkMatch = linkRegex.exec(itemXml);
       const dateMatch = pubDateRegex.exec(itemXml);
       const sourceMatch = sourceRegex.exec(itemXml);
+      const descMatch = descRegex.exec(itemXml);
       
-      if (titleMatch && linkMatch) {
+      if (titleMatch) {
+        const title = (titleMatch[1] || titleMatch[2] || '').trim();
+        // Filtrar títulos vacíos o muy cortos
+        if (title.length < 10) continue;
+        
+        const link = linkMatch 
+          ? (linkMatch[1] || linkMatch[2] || linkMatch[3] || '').trim()
+          : '';
+          
+        const dateStr = dateMatch 
+          ? (dateMatch[1] || dateMatch[2] || dateMatch[3] || dateMatch[4])
+          : null;
+          
+        const source = sourceMatch 
+          ? (sourceMatch[1] || sourceMatch[2] || sourceMatch[3] || '').trim()
+          : sourceName;
+        
         items.push({
-          title: (titleMatch[1] || titleMatch[2] || '').trim(),
-          link: linkMatch[1].trim(),
-          publishedAt: dateMatch ? new Date(dateMatch[1]) : new Date(),
-          source: sourceMatch ? sourceMatch[1].trim() : 'Unknown',
+          title: this.cleanHtmlEntities(title),
+          link: link,
+          publishedAt: dateStr ? new Date(dateStr) : new Date(),
+          source: source || sourceName,
+          description: descMatch 
+            ? this.cleanHtmlEntities((descMatch[1] || descMatch[2] || descMatch[3] || '').substring(0, 200))
+            : undefined,
         });
       }
     }
     
-    return items.slice(0, 10); // Máximo 10 por búsqueda
+    return items.slice(0, 15); // Máximo 15 por fuente
+  }
+  
+  /**
+   * Limpia entidades HTML del texto
+   */
+  private cleanHtmlEntities(text: string): string {
+    return text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .replace(/<[^>]+>/g, '') // Remover tags HTML
+      .trim();
   }
   
   /**
@@ -786,6 +890,7 @@ interface RawNewsItem {
   link: string;
   publishedAt: Date;
   source: string;
+  description?: string;
 }
 
 export const marketImpactNewsService = new MarketImpactNewsService();
