@@ -55,6 +55,7 @@ export function SideMenu({
   const isOnPortfolio = pathname === '/portfolio';
   const isOnMLDiagnostics = pathname === '/ml-diagnostics';
   const isOnMLStats = pathname === '/ml-stats';
+  const isOnMarketNews = pathname === '/market-news';
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -247,6 +248,26 @@ export function SideMenu({
               </Text>
               {isOnMLStats && (
                 <View style={[styles.activeIndicator, { backgroundColor: '#10b981' }]} />
+              )}
+            </TouchableOpacity>
+
+            {/* Noticias Impacto */}
+            <TouchableOpacity
+              style={[styles.menuItem, isOnMarketNews && styles.menuItemActive]}
+              onPress={() => {
+                onClose();
+                router.push('/market-news');
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, isOnMarketNews && { backgroundColor: '#f5970820' }]}>
+                <Text style={{ fontSize: 18 }}>📰</Text>
+              </View>
+              <Text style={[styles.menuItemText, isOnMarketNews && { color: '#f59708' }]}>
+                Noticias Impacto
+              </Text>
+              {isOnMarketNews && (
+                <View style={[styles.activeIndicator, { backgroundColor: '#f59708' }]} />
               )}
             </TouchableOpacity>
           </View>

@@ -444,6 +444,51 @@ export interface MLModelsStatus {
   temporalCrossValidation: { status: string };
 }
 
+// Market Impact News types
+export type ImpactDirection = 'bullish' | 'bearish' | 'neutral';
+export type ImpactMagnitude = 'high' | 'medium' | 'low';
+export type NewsCategory = 
+  | 'political'
+  | 'economic'
+  | 'trade'
+  | 'regulation'
+  | 'geopolitical'
+  | 'technology'
+  | 'energy'
+  | 'healthcare'
+  | 'earnings'
+  | 'commodities'
+  | 'crypto';
+
+export interface AffectedAsset {
+  symbol: string;
+  name: string;
+  sector: string;
+  impact: ImpactDirection;
+  magnitude: ImpactMagnitude;
+  reasoning: string;
+  confidence: number;
+}
+
+export interface MarketImpactNews {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string;
+  publishedAt: string;
+  category: NewsCategory;
+  subcategory: string;
+  overallSentiment: ImpactDirection;
+  impactMagnitude: ImpactMagnitude;
+  urgency: 'breaking' | 'important' | 'normal';
+  bullishAssets: AffectedAsset[];
+  bearishAssets: AffectedAsset[];
+  bullishSectors: string[];
+  bearishSectors: string[];
+  detectedKeywords: string[];
+  reasoning: string;
+}
+
 // ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
@@ -956,6 +1001,17 @@ export const apiClient = {
       name: name || symbol,
       assetType: type
     });
+  },
+
+  // -------------------------------------------------------------------------
+  // MARKET IMPACT NEWS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener noticias de alto impacto con activos afectados
+   */
+  getMarketImpactNews: (): Promise<MarketImpactNews[]> => {
+    return get('/news/market-impact');
   },
 
   // -------------------------------------------------------------------------

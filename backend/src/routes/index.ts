@@ -3,6 +3,7 @@ import { analysisRoutes } from './analysis.routes.js';
 import { assetRoutes } from './asset.routes.js';
 import { favoriteRoutes } from './favorite.routes.js';
 import mlRoutes from './ml.routes.js';
+import { newsRoutes } from './news.routes.js';
 import { notesRoutes } from './notes.routes.js';
 import { predictionRoutes } from './prediction.routes.js';
 import { trainingRoutes } from './training.routes.js';
@@ -18,6 +19,7 @@ router.get('/health', (_req, res) => {
 router.use('/assets', assetRoutes);
 router.use('/favorites', favoriteRoutes);
 router.use('/notes', notesRoutes);
+router.use('/news', newsRoutes);
 router.use('/predictions', predictionRoutes);
 router.use('/analysis', analysisRoutes);
 router.use('/training', trainingRoutes);
