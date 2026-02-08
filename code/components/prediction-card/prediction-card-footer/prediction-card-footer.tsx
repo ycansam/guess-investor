@@ -5,10 +5,9 @@ import { styles } from './prediction-card-footer.styles';
 interface PredictionCardFooterProps {
   createdAt: Date;
   onAnalysis?: () => void;
-  onAlert?: () => void;
 }
 
-export const PredictionCardFooter: React.FC<PredictionCardFooterProps> = ({ createdAt, onAnalysis, onAlert }) => {
+export const PredictionCardFooter: React.FC<PredictionCardFooterProps> = ({ createdAt, onAnalysis }) => {
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('es-ES', {
       day: '2-digit',
@@ -26,11 +25,6 @@ export const PredictionCardFooter: React.FC<PredictionCardFooterProps> = ({ crea
         <Text style={styles.timestamp}>{formatDate(createdAt)}</Text>
       </View>
       <View style={styles.actions}>
-        {onAlert && (
-          <TouchableOpacity style={styles.alertButton} onPress={onAlert}>
-            <Text style={styles.alertButtonText}>🔔</Text>
-          </TouchableOpacity>
-        )}
         {onAnalysis && (
           <TouchableOpacity style={styles.analysisButton} onPress={onAnalysis}>
             <Text style={styles.analysisButtonText}>🔍 Análisis</Text>

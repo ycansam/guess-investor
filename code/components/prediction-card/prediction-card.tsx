@@ -13,10 +13,9 @@ interface PredictionCardProps {
   prediction: InvestmentPrediction;
   onRemove?: (id: string) => void;
   onAnalysis?: (prediction: InvestmentPrediction) => void;
-  onAlert?: (prediction: InvestmentPrediction) => void;
 }
 
-export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onRemove, onAnalysis, onAlert }) => {
+export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onRemove, onAnalysis }) => {
   const changePercent = calculateChangePercent(
     prediction.currentPrice,
     prediction.predictedPriceMin,
@@ -51,7 +50,6 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onRe
       <PredictionCardFooter 
         createdAt={prediction.createdAt} 
         onAnalysis={onAnalysis ? () => onAnalysis(prediction) : undefined} 
-        onAlert={onAlert ? () => onAlert(prediction) : undefined}
       />
     </View>
   );

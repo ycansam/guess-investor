@@ -4,7 +4,6 @@ import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
-import { AlertsModal } from '../alerts-modal';
 import { MLDiagnosticsModal } from '../ml-diagnostics-modal';
 import { TopTrendsTab } from '../top-trends';
 import { TrackingStatsCard } from '../TrackingStatsCard';
@@ -18,7 +17,6 @@ export function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('predictions');
   const [showTracking, setShowTracking] = useState(false);
   const [showMLDiagnostics, setShowMLDiagnostics] = useState(false);
-  const [showAlerts, setShowAlerts] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
@@ -85,7 +83,6 @@ export function Home() {
         onMenuPress={() => setShowMenu(true)}
         actions={[
           { icon: '🎯', onPress: () => router.push('/screener') },
-          { icon: '', onPress: () => setShowAlerts(true) },
           { icon: '🧠', onPress: () => setShowMLDiagnostics(true) },
         ]}
         actionIcon="📊"
@@ -102,13 +99,7 @@ export function Home() {
         favoritesCount={favoritesCount}
       />
 
-      {/* Modal de Alertas */}
-      <AlertsModal
-        visible={showAlerts}
-        onClose={() => setShowAlerts(false)}
-      />
-
-      {/* Modal de Diagnóstico ML */}
+      {/* Modal de Diagnóstico ML */
       <MLDiagnosticsModal
         visible={showMLDiagnostics}
         onClose={() => setShowMLDiagnostics(false)}
