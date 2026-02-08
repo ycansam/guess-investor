@@ -4,7 +4,6 @@ import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
-import { MLDiagnosticsModal } from '../ml-diagnostics-modal';
 import { TopTrendsTab } from '../top-trends';
 import { TrackingStatsCard } from '../TrackingStatsCard';
 import { FavoritesList } from './favorites-list';
@@ -16,7 +15,6 @@ export function Home() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('predictions');
   const [showTracking, setShowTracking] = useState(false);
-  const [showMLDiagnostics, setShowMLDiagnostics] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
@@ -83,7 +81,6 @@ export function Home() {
         onMenuPress={() => setShowMenu(true)}
         actions={[
           { icon: '🎯', onPress: () => router.push('/screener') },
-          { icon: '🧠', onPress: () => setShowMLDiagnostics(true) },
         ]}
         actionIcon="📊"
         onActionPress={() => setShowTracking(true)}
@@ -97,13 +94,7 @@ export function Home() {
         onTabChange={handleTabChange}
         predictionsCount={predictionsCount}
         favoritesCount={favoritesCount}
-      />
-
-      {/* Modal de Diagnóstico ML */}
-      <MLDiagnosticsModal
-        visible={showMLDiagnostics}
-        onClose={() => setShowMLDiagnostics(false)}
-      />
+            />
 
       {/* Modal de Tracking Stats */}
       <Modal

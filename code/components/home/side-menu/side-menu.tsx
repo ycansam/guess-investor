@@ -193,6 +193,23 @@ export function SideMenu({
                 Portfolio
               </Text>
             </TouchableOpacity>
+
+            {/* Diagnóstico ML */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                onClose();
+                router.push('/ml-diagnostics');
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: '#8b5cf620' }]}>
+                <Text style={{ fontSize: 18 }}>🧠</Text>
+              </View>
+              <Text style={[styles.menuItemText, { color: '#6b7280' }]}>
+                Diagnóstico ML
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Footer del menú */}
