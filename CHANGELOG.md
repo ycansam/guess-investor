@@ -1,7 +1,68 @@
 # Changelog - Guess Investor
 
-**Última actualización:** 22 de enero de 2026  
-**Versión:** `1.5.0`
+**Última actualización:** 8 de febrero de 2026  
+**Versión:** `1.6.0`
+
+---
+
+## [1.6.0] - 8 de febrero de 2026
+
+### ✨ Nuevas Funcionalidades
+
+#### 🏷️ Clasificador de Commodities Mejorado
+- **50+ símbolos commodity**: Detección expandida para GLD, SLV, PPFB.DE, EGLN.L, PHAG.MI, SGLD.L, SIVR, USO, UNG, WEAT, CORN, SOYB, DBA, DBC, etc.
+- **Patrones de nombre**: Detección automática por nombre (gold, silver, palladium, copper, oil, natural gas, wheat, corn, soybean, etc.)
+- **Backfill actualizado**: Script `backfill-factor-breakdown.ts` procesa TODAS las predicciones para corregir assetGroup
+- **Muestras multiplicadas**: Commodity pasó de 15 a 107 muestras de entrenamiento
+
+#### 🎨 UX Desktop Mejorada
+- **Paginación desktop**: Carga 42 activos por página (grid 3x14) en lugar de 20
+- **Filtrado inteligente**: Los activos sin datos de precio válido se ocultan automáticamente
+- **Scroll infinito optimizado**: Debounce de 300ms + throttling para evitar cargas duplicadas
+- **Footer informativo**: Muestra progreso de carga (ej: "42/523 activos")
+
+#### 🧠 ML Mejorado
+- **Evolutivo fix**: El optimizador inicializa automáticamente factores faltantes desde DEFAULT_WEIGHTS
+- **Factor cleanup**: Eliminados `seasonality`, `competitors`, `expectations` (sin valor predictivo demostrable)
+- **6 factores intradía**: IntradayTrend, OptionsFlow, VolumeProfile, Divergences, VolatilityIV, MarketBreadth
+
+### 🐛 Correcciones
+
+- **Factores obsoletos**: Eliminados factores sin valor predictivo antes de causar errores en entrenamiento
+- **Activos sin datos**: Activos como RDSA.L, PPLT.MI que no devuelven precio ya no aparecen en las listas
+- **Scroll errático**: Corregido comportamiento de scroll que cargaba cantidades inconsistentes
+- **Classifier 15 muestras**: Corregido problema donde commodity solo mostraba 15 muestras pese a 600+ predicciones totales
+
+### 🔧 Cambios Técnicos
+
+#### Backend
+- `backfill-factor-breakdown.ts`: Expandido SYMBOL_TO_GROUP con 50+ commodity symbols
+- `backfill-factor-breakdown.ts`: Añadidos COMMODITY_NAME_PATTERNS (20+ patrones)
+- `backfill-factor-breakdown.ts`: detectAssetGroup() mejorado para detectar commodities antes de ETFs
+- `backfill-factor-breakdown.ts`: main() procesa TODAS las predicciones, no solo las sin factorBreakdown
+- `market-data-service.ts`: `BATCH_SIZE` cambiado de 20 a 42
+
+#### Frontend
+- `market-predictions.tsx`: Filtro `withValidData` para excluir activos sin precio
+- `predictions-list-content.tsx`: Sistema de paginación basado en páginas con debounce
+
+#### Python
+- `evolutionary_optimizer.py`: Inicializa factores faltantes en `__init__`
+- `learned_weights.json`: Actualizado con 14 factores (8 tradicionales + 6 intradía)
+
+---
+
+## [2.0.0] - 5 de febrero de 2026
+
+### ✨ Nuevas Funcionalidades
+
+#### 🎯 Sistema de Predicción v2
+- **Risk Filter**: Sistema de abstención para condiciones de alta incertidumbre
+- **Forex v2.0**: 50+ exchanges, VIX integration, risk-on/risk-off sentiment
+- **News v2.0**: 200+ keywords EN/ES, urgencia, amplificadores, 40+ fuentes
+- **Trend Agreement**: Detección de alineación entre timeframes
+- **Volume Direccional**: Volumen confirma/contradice movimiento
+- **Commodity Correlation**: ETFs siguen dirección del futuro base
 
 ---
 

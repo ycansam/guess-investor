@@ -153,30 +153,38 @@ router.get('/weights/status', asyncHandler(async (_req: Request, res: Response) 
   const fs = await import('fs');
   const path = await import('path');
   
-  // Pesos base (hardcoded - 9 factores, competitors y expectations eliminados)
+  // Pesos base - 14 factores (8 tradicionales + 6 intradía)
+  // seasonality, competitors, expectations ELIMINADOS
   const BASE_WEIGHTS = {
-    trend: 0.22,
-    technical: 0.27,
-    sentiment: 0.16,
-    news: 0.19, // absorbe expectations
-    macro: 0.04,
-    forex: 0.03,
-    institutional: 0.05,
-    seasonality: 0.02, // reducido (bias suave)
-    financials: 0.02,
+    // Factores tradicionales
+    technical: 0.20,
+    sentiment: 0.15,
+    news: 0.10,
+    trend: 0.05,
+    macro: 0.03,
+    forex: 0.02,
+    institutional: 0.00,
+    financials: 0.00,
+    // Factores intradía (nuevos v1.6.0)
+    intradayTrend: 0.15,
+    optionsFlow: 0.10,
+    volumeProfile: 0.05,
+    divergences: 0.05,
+    volatilityIV: 0.05,
+    marketBreadth: 0.05,
   };
 
-  // Multiplicadores por grupo de activo (competitors eliminado)
+  // Multiplicadores por grupo de activo (actualizados v1.6.0)
   const ASSET_GROUP_MULTIPLIERS = {
-    large_cap_stock: { sentiment: 0.85, institutional: 1.3, financials: 1.2 },
-    small_cap_stock: { sentiment: 1.2, technical: 1.15, institutional: 0.7 },
-    crypto_major: { sentiment: 1.3, technical: 1.2, macro: 1.0, financials: 0.1 },
-    crypto_alt: { sentiment: 1.5, technical: 1.3, news: 1.2, macro: 0.5, financials: 0.05 },
-    etf_index: { macro: 1.5, institutional: 1.2, financials: 0.3 },
-    commodity: { macro: 1.5, forex: 2.0, seasonality: 1.5, sentiment: 0.7, financials: 0.1 },
-    reit: { macro: 1.3, institutional: 1.2, financials: 1.5, sentiment: 0.8 },
-    forex: { macro: 1.8, forex: 0.5, sentiment: 0.6, financials: 0.1 },
-    adr: { forex: 1.5, macro: 1.3, sentiment: 0.9 },
+    large_cap_stock: { financials: 1.5, institutional: 1.4, optionsFlow: 1.3, news: 1.2 },
+    small_cap_stock: { technical: 1.4, intradayTrend: 1.4, trend: 1.3, divergences: 1.3 },
+    crypto_major: { sentiment: 1.5, intradayTrend: 1.5, technical: 1.4, volumeProfile: 1.3 },
+    crypto_alt: { sentiment: 1.8, intradayTrend: 1.8, technical: 1.6, divergences: 1.6 },
+    etf_index: { macro: 1.5, marketBreadth: 1.5, institutional: 1.3, optionsFlow: 1.2 },
+    commodity: { macro: 1.8, forex: 1.6, volatilityIV: 1.4, volumeProfile: 1.3 },
+    reit: { financials: 1.8, macro: 1.6, marketBreadth: 1.1 },
+    forex: { macro: 1.8, intradayTrend: 1.6, technical: 1.4, volumeProfile: 1.4 },
+    adr: { forex: 1.6, financials: 1.4 },
     default: {},
   };
 

@@ -1,7 +1,7 @@
 # 🎯 Guess Investor
 
-**Última actualización:** 5 de febrero de 2026  
-**Versión:** 2.0.0
+**Última actualización:** 8 de febrero de 2026  
+**Versión:** 1.6.0
 
 **Aplicación de predicción de inversiones con IA híbrida** que combina análisis cuantitativo en tiempo real con machine learning para generar predicciones de precios de activos financieros.
 
@@ -9,7 +9,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-Backend-green?logo=node.js)
 ![Python](https://img.shields.io/badge/Python-ML_Server-green?logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Version](https://img.shields.io/badge/version-2.0.0-brightgreen)
+![Version](https://img.shields.io/badge/version-1.6.0-brightgreen)
 
 ---
 
@@ -32,11 +32,11 @@ Esto inicia los 3 servicios en terminales divididas:
 
 ## 📋 Descripción
 
-Guess Investor analiza **9 factores** diferentes para cada activo financiero y genera predicciones de precio con niveles de confianza. La aplicación aprende de sus propios errores mediante un sistema de machine learning que ajusta los pesos de cada factor basándose en el historial de predicciones verificadas.
+Guess Investor analiza **14 factores** diferentes (8 tradicionales + 6 intradía) para cada activo financiero y genera predicciones de precio con niveles de confianza. La aplicación aprende de sus propios errores mediante un sistema de machine learning que ajusta los pesos de cada factor basándose en el historial de predicciones verificadas.
 
 ### ✨ Características principales
 
-- 📊 **9 Factores de análisis**: Trend, Technical, Sentiment, News, Macro, Forex, Institutional, Seasonality, Financials
+- 📊 **14 Factores de análisis**: 8 tradicionales + 6 intradía (trend, technical, sentiment, news, macro, forex, institutional, financials, intradayTrend, optionsFlow, volumeProfile, divergences, volatilityIV, marketBreadth)
 - 🤖 **IA Híbrida**: Análisis determinista + Machine Learning adaptativo + Red Neuronal con Gradient Descent
 - 🎯 **Ensemble de 7 Modelos**: Global, Symbol, Regime, Momentum, Mean Reversion, Fundamental, Sentiment
 - 🔄 **Selección Dinámica**: Activa/desactiva modelos según datos disponibles
@@ -65,7 +65,7 @@ Guess Investor analiza **9 factores** diferentes para cada activo financiero y g
 │     │          │ Greed    │          │          │          │               │
 │     └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬─────┘               │
 │          │          │          │          │          │                      │
-│  2. CÁLCULO DE 9 FACTORES                                                   │
+│  2. CÁLCULO DE 14 FACTORES                                                  │
 │     ┌────▼─────┬────▼─────┬────▼─────┬────▼─────┬────▼─────┐               │
 │     │ Trend    │ Technical│ Sentiment│ News     │ Macro    │               │
 │     │ Score    │ Score    │ Score    │ Score    │ Score    │               │
@@ -131,7 +131,9 @@ Guess Investor analiza **9 factores** diferentes para cada activo financiero y g
 
 ---
 
-## 📊 Los 9 Factores de Análisis
+## 📊 Los 14 Factores de Análisis
+
+### 8 Factores Tradicionales
 
 | # | Factor | Fuente | Score Range | Descripción |
 |---|--------|--------|-------------|-------------|
@@ -142,18 +144,30 @@ Guess Investor analiza **9 factores** diferentes para cada activo financiero y g
 | 5 | **Macro** | Trading Economics | -100 a +100 | GDP, Inflación, Desempleo, Tipos de interés |
 | 6 | **Forex** | Yahoo Finance | -100 a +100 | 50+ exchanges, VIX, risk-on/risk-off, commodities |
 | 7 | **Institutional** | SEC/Finviz | -100 a +100 | Insider trading, institutional ownership |
-| 8 | **Seasonality** | Histórico | -100 a +100 | Patrones estacionales con detección de cambios |
-| 9 | **Financials** | Yahoo Finance | -100 a +100 | P/E, Revenue growth, Target price analistas |
+| 8 | **Financials** | Yahoo Finance | -100 a +100 | P/E, Revenue growth, Target price analistas |
+
+### 6 Factores Intradía (nuevos en v1.6.0)
+
+| # | Factor | Fuente | Score Range | Descripción |
+|---|--------|--------|-------------|-------------|
+| 9 | **IntradayTrend** | Yahoo 1h/4h | -100 a +100 | Momentum corto plazo, VWAP, Pivots |
+| 10 | **OptionsFlow** | Yahoo Options | -100 a +100 | Put/Call ratio, IV, Max Pain |
+| 11 | **VolumeProfile** | Yahoo Volume | -100 a +100 | POC, Value Area, Volume Clusters |
+| 12 | **Divergences** | Cálculo interno | -100 a +100 | RSI/MACD divergencias alcistas/bajistas |
+| 13 | **VolatilityIV** | Yahoo Options | -100 a +100 | IV vs RV spread, volatilidad implícita |
+| 14 | **MarketBreadth** | Yahoo Market | -100 a +100 | A/D ratio, salud del mercado |
+
+> **Nota**: Los factores `seasonality`, `competitors` y `expectations` fueron eliminados por añadir ruido sin valor predictivo demostrable.
 
 ---
 
 ## ⏱️ Timeframes Soportados
 
-| Timeframe | Días | Pesos Dominantes | Límite Cambio |
-|-----------|------|------------------|---------------|
-| **Intraday** | ≤1 | Technical (27%), Trend (22%), News (19%) | ±8% |
-| **Swing** | 2-7 | Technical (20%), News (20%), Trend (14%) | ±15% |
-| **Long** | >7 | Financials (26%), Macro (15%), Institutional (14%) | ±15% |
+| Timeframe | Días | Factores Dominantes | Límite Cambio |
+|-----------|------|---------------------|---------------|
+| **Intraday** | ≤1 | Technical (20%), IntradayTrend (15%), Sentiment (15%) | ±8% |
+| **Swing** | 2-7 | Technical (20%), News (17%), Trend (14%) | ±15% |
+| **Long** | >7 | Financials (25%), Macro (15%), Institutional (13%) | ±15% |
 
 ---
 
@@ -163,15 +177,15 @@ El sistema detecta automáticamente el tipo de activo y ajusta los pesos:
 
 | Grupo | Ejemplos | Factores Prioritarios |
 |-------|----------|----------------------|
-| Large Cap | AAPL, MSFT, GOOGL | Institutional, Financials, News |
-| Small Cap | - | Technical, Trend, News |
-| Crypto Major | BTC, ETH | Sentiment, Technical, Trend |
-| Crypto Alt | SOL, ADA, DOGE | Sentiment, Technical |
-| ETF/Index | SPY, QQQ, ^GSPC | Macro, Institutional, Forex |
-| Commodity | GC=F, GLD, SI=F | Macro, Forex, Seasonality |
-| REIT | O, AMT, VNQ | Macro, Financials |
-| Forex | EURUSD=X | Macro, Technical |
-| ADR | BABA, TSM | Forex, News, Financials |
+| Large Cap | AAPL, MSFT, GOOGL | Institutional ×1.4, Financials ×1.5, OptionsFlow ×1.3 |
+| Small Cap | - | Technical ×1.4, IntradayTrend ×1.4, Trend ×1.3 |
+| Crypto Major | BTC, ETH | Sentiment ×1.5, IntradayTrend ×1.5, Technical ×1.4 |
+| Crypto Alt | SOL, ADA, DOGE | Sentiment ×1.8, IntradayTrend ×1.8, Technical ×1.6 |
+| ETF/Index | SPY, QQQ, ^GSPC | Macro ×1.5, MarketBreadth ×1.5, Institutional ×1.3 |
+| Commodity | GC=F, GLD, SI=F | Macro ×1.8, Forex ×1.6, VolatilityIV ×1.4 |
+| REIT | O, AMT, VNQ | Financials ×1.8, Macro ×1.6 |
+| Forex | EURUSD=X | Macro ×1.8, IntradayTrend ×1.6, Technical ×1.4 |
+| ADR | BABA, TSM | Forex ×1.6, Financials ×1.4 |
 
 ---
 
@@ -240,14 +254,34 @@ python server.py  # Puerto 8765
 
 ---
 
-## 📈 Novedades v2.0.0
+## 📈 Novedades v1.6.0
 
-### Mejoras en Factores
+### Clasificador de Commodities Mejorado
 
-- **Forex v2.0**: 50+ exchanges, VIX integration, risk-on/risk-off, commodity currencies
-- **News v2.0**: 200+ keywords (EN/ES), urgencia, amplificadores, 40+ fuentes con credibilidad
-- **Technical v2.0**: Volumen direccional (+12/-12 puntos según confirma/contradice)
-- **Trends**: Trend Agreement (alineación corto/medio/largo plazo)
+- **50+ símbolos commodity**: Detección expandida para GLD, SLV, PPFB.DE, EGLN.L, etc.
+- **Patrones de nombre**: Detección automática por nombre (gold, silver, palladium, etc.)
+- **Muestras multiplicadas**: Commodity pasó de 15 a 107 muestras de entrenamiento
+
+### Mejoras en UX
+
+- **Filtrado inteligente**: Los activos sin datos de precio no se muestran
+- **Paginación desktop**: Carga 42 activos por página (3x14 grid)
+- **Scroll infinito optimizado**: Debounce y throttling mejorado
+- **Evolutivo ML**: El optimizador inicializa factores faltantes automáticamente
+
+### 14 Factores de Análisis
+
+- **8 Tradicionales**: Trend, Technical, Sentiment, News, Macro, Forex, Institutional, Financials
+- **6 Intradía**: IntradayTrend, OptionsFlow, VolumeProfile, Divergences, VolatilityIV, MarketBreadth
+- **Eliminados**: Seasonality, Competitors, Expectations (añadían ruido sin valor predictivo)
+
+### Forex v2.0
+
+- 50+ exchanges, VIX integration, risk-on/risk-off, commodity currencies
+
+### News v2.0
+
+- 200+ keywords (EN/ES), urgencia, amplificadores, 40+ fuentes con credibilidad
 
 ### Risk Filter (Nuevo)
 
@@ -327,21 +361,33 @@ cd code
 
 ## 🧠 Sistema de Predicción
 
-### Los 11 Factores
+### Los 14 Factores
+
+#### 8 Factores Tradicionales
 
 | # | Factor | Descripción |
 |---|--------|-------------|
 | 1 | **Trend** | Tendencias de precio y momentum (30d, 90d, volatilidad) |
-| 2 | **Technical** | SMA, EMA, RSI, MACD, Bollinger, Cruces Dorado/Mortal |
-| 3 | **Sentiment** | StockTwits, Reddit, Fear & Greed, VIX, Put/Call Ratio |
-| 4 | **News** | Yahoo News, earnings calendar, acciones de analistas |
-| 5 | **Macro** | CPI, GDP, NFP, PMI, tasas de bancos centrales |
-| 6 | **Competitors** | Rendimiento relativo vs sector y competidores |
-| 7 | **Forex** | Impacto de divisas en activos internacionales |
-| 8 | **Institutional** | COT Report, flujos ETF, Dark Pools, ownership |
-| 9 | **Seasonality** | Festivos, eventos comerciales, patrones estacionales |
-| 10 | **Financials** | Ingresos, márgenes, P/E, deuda, rating analistas |
-| 11 | **Expectations** | EPS surprise, revisiones de analistas, beat rate |
+| 2 | **Technical** | SMA, EMA, RSI, MACD, Bollinger, ATR, Stochastic |
+| 3 | **Sentiment** | VIX, Fear & Greed Index, Put/Call Ratio |
+| 4 | **News** | Yahoo News, 200+ keywords EN/ES, urgencia, credibilidad |
+| 5 | **Macro** | CPI, GDP, NFP, tasas de bancos centrales |
+| 6 | **Forex** | 50+ exchanges, risk-on/risk-off, commodity currencies |
+| 7 | **Institutional** | Insider trading, institutional ownership, SEC filings |
+| 8 | **Financials** | P/E, Revenue, márgenes, deuda, Target price analistas |
+
+#### 6 Factores Intradía (nuevos v1.6.0)
+
+| # | Factor | Descripción |
+|---|--------|-------------|
+| 9 | **IntradayTrend** | Momentum 1h/4h, VWAP, Pivot Points |
+| 10 | **OptionsFlow** | Put/Call ratio en tiempo real, IV, Max Pain |
+| 11 | **VolumeProfile** | POC, Value Area, Volume Clusters |
+| 12 | **Divergences** | RSI/MACD divergencias alcistas/bajistas |
+| 13 | **VolatilityIV** | IV vs RV spread, volatilidad implícita |
+| 14 | **MarketBreadth** | Advance/Decline ratio, salud del mercado |
+
+> **Eliminados**: `Competitors`, `Seasonality`, `Expectations` (añadían ruido sin valor predictivo)
 
 ### Machine Learning
 
@@ -354,7 +400,7 @@ El sistema utiliza un **ensemble de 7 modelos dinámicos** que se activan según
 | **Regime** | Ajuste por régimen de mercado | Hay datos técnicos |
 | **Momentum** | Prioriza tendencias fuertes | Hay trend + technical |
 | **Mean Reversion** | Modelo contrarian | Hay technical |
-| **Fundamental** | Análisis fundamental | Hay financials + (macro/expectations) |
+| **Fundamental** | Análisis fundamental | Hay financials + macro |
 | **Sentiment** | Noticias y sentimiento | Hay sentiment |
 
 #### Clasificador de Activos (Python ML)

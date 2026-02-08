@@ -1,9 +1,21 @@
 # 🧠 Sistema de Aprendizaje Automático - Guess Investor
 
-**Última actualización:** 5 de febrero de 2026  
-**Versión:** 2.0.0
+**Última actualización:** 8 de febrero de 2026  
+**Versión:** 1.6.0
 
 Este sistema permite que la app aprenda de sus errores y mejore las predicciones con el tiempo.
+
+## 🆕 Novedades v1.6.0
+
+### 🧠 Evolutivo ML Mejorado
+- **Auto-inicialización de factores**: El optimizador inicializa automáticamente factores faltantes desde DEFAULT_WEIGHTS
+- **Factor cleanup**: Eliminados `seasonality`, `competitors`, `expectations` (sin valor predictivo)
+- **Debounce training**: Evita entrenamientos duplicados
+
+### 🏷️ Clasificador de Activos Mejorado
+- **50+ commodity symbols**: GLD, SLV, PPFB.DE, EGLN.L, PHAG.MI, SGLD.L, etc.
+- **Patrones de detección**: gold, silver, palladium, copper, oil, natural gas, wheat...
+- **Muestras commodity**: Pasó de 15 a 107 muestras de entrenamiento
 El proceso es **completamente automático** - el backend sincroniza predicciones y entrena sin intervención del usuario.
 
 ## Arquitectura
@@ -12,7 +24,7 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         BACKEND Node.js (Puerto 3001)               │
 ├─────────────────────────────────────────────────────────────────────┤
-│  1. Hace predicción con 9 factores + ensemble de 7 modelos         │
+│  1. Hace predicción con 14 factores + ensemble de 7 modelos        │
 │  2. Registra predicción en base de datos (Prisma/SQLite)            │
 │  3. Verifica predicciones cuando pasa fecha objetivo                │
 │  4. Sincroniza datos verificados con Python server                  │
@@ -54,7 +66,9 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Los 9 Factores
+## Los 14 Factores
+
+### 8 Factores Tradicionales
 
 | Factor | Descripción |
 |--------|-------------|
@@ -65,10 +79,20 @@ El proceso es **completamente automático** - el backend sincroniza predicciones
 | **macro** | Indicadores macroeconómicos (PIB, inflación, tipos interés) |
 | **forex** | Impacto de divisas (50+ exchanges, risk-on/risk-off) |
 | **institutional** | Movimientos de inversores institucionales |
-| **seasonality** | Patrones estacionales con detección de cambios |
 | **financials** | Datos financieros fundamentales (P/E, Revenue, Target price) |
 
-> **Nota**: Los factores `competitors` y `expectations` fueron eliminados por añadir ruido sin valor predictivo demostrable.
+### 6 Factores Intradía (nuevos v1.6.0)
+
+| Factor | Descripción |
+|--------|-------------|
+| **intradayTrend** | Momentum corto plazo (1h/4h), VWAP, Pivots |
+| **optionsFlow** | Put/Call ratio, IV, Max Pain |
+| **volumeProfile** | POC, Value Area, Volume Clusters |
+| **divergences** | RSI/MACD divergencias alcistas/bajistas |
+| **volatilityIV** | IV vs RV spread, volatilidad implícita |
+| **marketBreadth** | A/D ratio, salud del mercado |
+
+> **Eliminados**: `seasonality`, `competitors` y `expectations` (añadían ruido sin valor predictivo).
 
 ## Clasificador de Activos
 
@@ -182,34 +206,18 @@ Los pesos se guardan automáticamente en:
 - `data/learned_weights.json` (para la app)
 - `data/training_history.json` (historial de entrenamientos)
 
-## Los 9 Factores
-
-| Factor | Descripción |
-|--------|-------------|
-| **trend** | Tendencia histórica de precios (30d, 90d) con mean reversion |
-| **technical** | Indicadores técnicos (RSI, MACD, SMA, Bollinger, ATR, Volume) |
-| **sentiment** | Sentimiento de mercado (VIX, Fear & Greed Index) |
-| **news** | Impacto de noticias (200+ keywords EN/ES, urgencia, credibilidad) |
-| **macro** | Indicadores macroeconómicos (PIB, inflación, tipos interés) |
-| **forex** | Impacto de divisas (50+ exchanges, risk-on/risk-off) |
-| **institutional** | Movimientos de inversores institucionales |
-| **seasonality** | Patrones estacionales con detección de cambios |
-| **financials** | Datos financieros fundamentales (P/E, Revenue, Target price) |
-
-> **Nota**: Los factores `competitors` y `expectations` fueron eliminados por añadir ruido sin valor predictivo demostrable.
-
 ## Pesos por Timeframe
 
 Los pesos varían según el horizonte temporal:
 
 ### Intradía (≤1 día)
-Dominan: `technical` (27%), `trend` (22%), `news` (19%), `sentiment` (16%)
+Dominan: `technical` (20%), `intradayTrend` (15%), `sentiment` (15%), `optionsFlow` (10%), `news` (10%)
 
 ### Swing (2-7 días)  
-Balance: `technical` (18%), `news` (15%), `trend` (12%), `institutional` (10%)
+Balance: `technical` (20%), `news` (17%), `trend` (14%), `sentiment` (12%), `institutional` (8%)
 
 ### Largo plazo (>7 días)
-Dominan: `financials` (13%), `macro` (12%), `institutional` (12%), `expectations` (12%)
+Dominan: `financials` (25%), `macro` (15%), `institutional` (13%), `news` (10%), `technical` (9%)
 
 ## Función de Pérdida
 

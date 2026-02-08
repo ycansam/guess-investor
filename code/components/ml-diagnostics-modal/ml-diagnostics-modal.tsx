@@ -267,17 +267,17 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
       default: { emoji: '📋', description: 'Clasificación genérica' },
     };
 
-    // Multiplicadores base estáticos (los iniciales del código)
+    // Multiplicadores base estáticos (actualizados v1.6.0 - 14 factores)
     const BASE_STATIC_MULTIPLIERS: Record<string, Record<string, number>> = {
-      large_cap_stock: { financials: 1.3, institutional: 1.2, expectations: 1.3, forex: 0.8 },
-      small_cap_stock: { technical: 1.3, sentiment: 1.2, news: 1.3, institutional: 0.7, financials: 0.8 },
-      crypto_major: { sentiment: 1.5, news: 1.3, macro: 1.2, financials: 0.1, competitors: 0.3, expectations: 0.2 },
-      crypto_alt: { sentiment: 1.8, technical: 1.3, news: 1.4, financials: 0.05, competitors: 0.2, macro: 0.7, expectations: 0.1 },
-      etf_index: { macro: 1.4, trend: 1.2, forex: 1.1, financials: 0.3, competitors: 0.4, expectations: 0.5 },
-      commodity: { macro: 1.5, forex: 2.0, seasonality: 1.5, sentiment: 0.7, financials: 0.1, competitors: 0.2, expectations: 0.3 },
-      reit: { macro: 1.4, institutional: 1.3, financials: 1.2, forex: 0.6, competitors: 0.7 },
-      forex: { macro: 1.8, sentiment: 1.3, news: 1.2, financials: 0.1, competitors: 0.1, institutional: 0.3, expectations: 0.2 },
-      adr: { forex: 1.5, macro: 1.3, sentiment: 1.2, competitors: 0.8 },
+      large_cap_stock: { financials: 1.5, institutional: 1.4, optionsFlow: 1.3, news: 1.2 },
+      small_cap_stock: { technical: 1.4, intradayTrend: 1.4, trend: 1.3, divergences: 1.3 },
+      crypto_major: { sentiment: 1.5, intradayTrend: 1.5, technical: 1.4, volumeProfile: 1.3 },
+      crypto_alt: { sentiment: 1.8, intradayTrend: 1.8, technical: 1.6, divergences: 1.6 },
+      etf_index: { macro: 1.5, marketBreadth: 1.5, institutional: 1.3, optionsFlow: 1.2 },
+      commodity: { macro: 1.8, forex: 1.6, volatilityIV: 1.4, volumeProfile: 1.3 },
+      reit: { financials: 1.8, macro: 1.6, marketBreadth: 1.1 },
+      forex: { macro: 1.8, intradayTrend: 1.6, technical: 1.4, volumeProfile: 1.4 },
+      adr: { forex: 1.6, financials: 1.4 },
       default: {},
     };
 
@@ -285,7 +285,11 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
     const multipliers = weightsData.assetGroupMultipliers[selectedAssetGroup] || {};
     const baseMultipliers = BASE_STATIC_MULTIPLIERS[selectedAssetGroup] || {};
     const stats = weightsData.assetGroupStats?.[selectedAssetGroup];
-    const allFactors = ['trend', 'technical', 'sentiment', 'news', 'macro', 'competitors', 'forex', 'institutional', 'seasonality', 'financials', 'expectations'];
+    // 14 factores: 8 tradicionales + 6 intradía
+    const allFactors = [
+      'trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'financials',
+      'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'
+    ];
 
     const getMultiplierColor = (mult: number) => {
       if (mult > 1.3) return colors.success;

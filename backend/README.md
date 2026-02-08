@@ -1,9 +1,25 @@
 # Guess Investor Backend
 
-**Última actualización:** 5 de febrero de 2026  
-**Versión:** 2.0.0
+**Última actualización:** 8 de febrero de 2026  
+**Versión:** 1.6.0
 
 API REST para el servicio de predicción de inversiones con ML avanzado, ensemble de 7 modelos dinámicos y soporte multi-timeframe (Intraday, Swing, Long).
+
+## 🆕 Novedades v1.6.0
+
+### 🏷️ Clasificador de Commodities Mejorado
+- **50+ símbolos commodity**: GLD, SLV, PPFB.DE, EGLN.L, PHAG.MI, SGLD.L, SIVR, USO, UNG, etc.
+- **Detección por nombre**: Patrones para gold, silver, oil, palladium, copper, natural gas, wheat, etc.
+- **Backfill corregido**: Script actualizado para reprocesar predicciones con assetGroup correcto
+- **Classifier muestras**: Commodity pasó de 15 a 107 muestras de entrenamiento
+
+### 📊 UX Desktop
+- **Paginación mejorada**: 42 activos por página para grid 3x14 en desktop
+- **Filtrado de activos**: Solo devuelve activos con datos de precio válidos
+
+### 🧠 ML Fixes
+- **Evolutivo ML fix**: El optimizador inicializa factores faltantes automáticamente
+- **Factor cleanup**: Eliminados `seasonality`, `competitors`, `expectations` (sin valor predictivo)
 
 ## 🆕 Novedades v2.0.0
 
@@ -58,7 +74,9 @@ backend/
 
 ## 🧮 Sistema de Predicción
 
-### Los 9 Factores
+### Los 14 Factores
+
+#### 8 Factores Tradicionales
 
 | Factor | Score | Fuente | Descripción |
 |--------|-------|--------|-------------|
@@ -69,16 +87,40 @@ backend/
 | **Macro** | -100/+100 | Trading Economics | GDP, Inflación, Tipos interés |
 | **Forex** | -100/+100 | Yahoo | 50+ exchanges, risk-on/risk-off |
 | **Institutional** | -100/+100 | SEC/Finviz | Insider trading, ownership |
-| **Seasonality** | -100/+100 | Histórico | Patrones estacionales |
 | **Financials** | -100/+100 | Yahoo | P/E, Revenue, Target price |
+
+#### 6 Factores Intradía (nuevos v1.6.0)
+
+| Factor | Score | Fuente | Descripción |
+|--------|-------|--------|-------------|
+| **IntradayTrend** | -100/+100 | Yahoo 1h/4h | Momentum corto, VWAP, Pivots |
+| **OptionsFlow** | -100/+100 | Yahoo Options | Put/Call, IV, Max Pain |
+| **VolumeProfile** | -100/+100 | Yahoo | POC, Value Area |
+| **Divergences** | -100/+100 | Interno | RSI/MACD divergencias |
+| **VolatilityIV** | -100/+100 | Yahoo Options | IV vs RV spread |
+| **MarketBreadth** | -100/+100 | Yahoo | A/D ratio, salud mercado |
+
+> **Eliminados**: `seasonality`, `competitors`, `expectations` (ruido sin valor predictivo)
 
 ### Pesos por Timeframe
 
 ```typescript
 DEFAULT_WEIGHTS = {
-  intraday: { trend: 0.22, technical: 0.27, sentiment: 0.16, news: 0.19, macro: 0.05, forex: 0.05, institutional: 0.05, seasonality: 0.01, financials: 0.00 },
-  swing:    { trend: 0.14, technical: 0.20, sentiment: 0.12, news: 0.20, macro: 0.10, forex: 0.06, institutional: 0.10, seasonality: 0.02, financials: 0.06 },
-  long:     { trend: 0.06, technical: 0.10, sentiment: 0.05, news: 0.12, macro: 0.15, forex: 0.08, institutional: 0.14, seasonality: 0.04, financials: 0.26 },
+  intraday: {
+    technical: 0.20, intradayTrend: 0.15, optionsFlow: 0.10, sentiment: 0.15, news: 0.10,
+    volumeProfile: 0.05, divergences: 0.05, volatilityIV: 0.05, marketBreadth: 0.05,
+    trend: 0.05, macro: 0.03, forex: 0.02, institutional: 0.00, financials: 0.00
+  },
+  swing: {
+    technical: 0.20, news: 0.17, trend: 0.14, sentiment: 0.12, institutional: 0.08, macro: 0.08,
+    forex: 0.05, intradayTrend: 0.05, divergences: 0.05, marketBreadth: 0.04, financials: 0.04,
+    volatilityIV: 0.03, optionsFlow: 0.03, volumeProfile: 0.02
+  },
+  long: {
+    financials: 0.25, macro: 0.15, institutional: 0.13, news: 0.10, technical: 0.09, forex: 0.07,
+    trend: 0.06, sentiment: 0.04, divergences: 0.03, marketBreadth: 0.03, volatilityIV: 0.02,
+    optionsFlow: 0.02, volumeProfile: 0.01, intradayTrend: 0.00
+  }
 }
 ```
 
@@ -88,14 +130,14 @@ Los pesos se ajustan automáticamente según el tipo de activo:
 
 | Grupo | Factores Prioritarios |
 |-------|----------------------|
-| `large_cap_stock` | Institutional ×1.4, Financials ×1.5 |
-| `small_cap_stock` | Technical ×1.4, Trend ×1.3 |
-| `crypto_major` | Sentiment ×1.5, Technical ×1.4 |
-| `crypto_alt` | Sentiment ×1.8, Technical ×1.6 |
-| `etf_index` | Macro ×1.5, Institutional ×1.3 |
-| `commodity` | Macro ×1.8, Forex ×1.6, Seasonality ×1.2 |
-| `reit` | Macro ×1.6, Financials ×1.8 |
-| `forex` | Macro ×1.8, Technical ×1.4 |
+| `large_cap_stock` | Financials ×1.5, Institutional ×1.4, OptionsFlow ×1.3 |
+| `small_cap_stock` | Technical ×1.4, IntradayTrend ×1.4, Trend ×1.3 |
+| `crypto_major` | Sentiment ×1.5, IntradayTrend ×1.5, Technical ×1.4 |
+| `crypto_alt` | Sentiment ×1.8, IntradayTrend ×1.8, Technical ×1.6 |
+| `etf_index` | Macro ×1.5, MarketBreadth ×1.5, Institutional ×1.3 |
+| `commodity` | Macro ×1.8, Forex ×1.6, VolatilityIV ×1.4 |
+| `reit` | Financials ×1.8, Macro ×1.6, MarketBreadth ×1.1 |
+| `forex` | Macro ×1.8, IntradayTrend ×1.6, Technical ×1.4 |
 | `adr` | Forex ×1.6, Financials ×1.4 |
 
 ## 📡 API Endpoints
@@ -139,7 +181,7 @@ POST   /api/ml/correlation/analyze   # Análisis de correlación
 
 | Servicio | Descripción |
 |----------|-------------|
-| `calculator.service.ts` | Motor principal - 9 factores + ajustes |
+| `calculator.service.ts` | Motor principal - 14 factores + ajustes |
 | `ensemble.service.ts` | Combina 7 modelos dinámicos |
 | `track-record.service.ts` | Historial de performance por símbolo |
 | `asset-adjustment.service.ts` | Correcciones por activo problemático |
@@ -265,7 +307,7 @@ GET    /api/health                   # Estado del servidor
 ### Prediction Services (`services/prediction/`)
 | Servicio | Descripción |
 |----------|-------------|
-| `calculator.service.ts` | Motor principal de predicción con 11 factores |
+| `calculator.service.ts` | Motor principal de predicción con 14 factores |
 | `asset-adjustment.service.ts` | Ajustes por activo (TSLA, NVDA, crypto) |
 | `accuracy-predictor.service.ts` | Predice accuracy esperado |
 | `confidence-calibration.service.ts` | Calibra confianza vs accuracy real |

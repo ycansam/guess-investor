@@ -1,17 +1,31 @@
 # Guess Investor - App React Native
 
-**Última actualización:** 5 de febrero de 2026  
-**Versión:** 2.0.0
+**Última actualización:** 8 de febrero de 2026  
+**Versión:** 1.6.0
 
 Aplicación móvil de predicción de inversiones construida con [Expo](https://expo.dev) y React Native.
+
+## 🆕 Novedades v1.6.0
+
+### 📊 UX Desktop
+- **Paginación desktop**: Carga 42 activos por página (grid 3x14)
+- **Filtrado inteligente**: Los activos sin datos de precio válido no se muestran
+- **Scroll infinito mejorado**: Debounce de 300ms y throttling optimizado
+- **Footer informativo**: Muestra progreso de carga (ej: 42/523)
+
+### 🧠 ML Diagnostics
+- **Classifier samples actualizados**: Commodity muestra 107 muestras (antes 15)
+- **Mejor detección**: 50+ commodity ETFs detectados correctamente
 
 ## 🆕 Novedades v2.0.0
 
 - **Risk Filter UI**: Muestra advertencias de abstención
-- **9 Factores**: Trend, Technical, Sentiment, News, Macro, Forex, Institutional, Seasonality, Financials
+- **14 Factores**: 8 tradicionales + 6 intradía (trend, technical, sentiment, news, macro, forex, institutional, financials, intradayTrend, optionsFlow, volumeProfile, divergences, volatilityIV, marketBreadth)
 - **Intervalos de Confianza**: Visualización de CI 50/80/95%
 - **Commodity ETFs**: Detección automática y sincronización con futuro base
 - **Forex mejorado**: 50+ exchanges con indicadores de riesgo
+
+> **Eliminados**: Seasonality, Competitors, Expectations (ruido sin valor predictivo)
 
 ## 🚀 Get Started
 

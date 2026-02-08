@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "updated_at": "2026-02-07T10:00:00.000Z",
+  "updated_at": "2026-02-08T12:00:00.000Z",
   "training_samples": 213,
   "weights": {
     "intraday": {
@@ -17,9 +17,7 @@
       "macro": 0.03,
       "forex": 0.02,
       "institutional": 0.00,
-      "financials": 0.00,
-      "seasonality": 0.01,
-      "expectations": 0.00
+      "financials": 0.00
     },
     "swing": {
       "trend": 0.14,
@@ -35,9 +33,7 @@
       "volumeProfile": 0.02,
       "divergences": 0.05,
       "volatilityIV": 0.03,
-      "marketBreadth": 0.04,
-      "seasonality": 0.02,
-      "expectations": 0.00
+      "marketBreadth": 0.04
     },
     "long": {
       "trend": 0.06,
@@ -53,9 +49,7 @@
       "volumeProfile": 0.01,
       "divergences": 0.03,
       "volatilityIV": 0.02,
-      "marketBreadth": 0.03,
-      "seasonality": 0.04,
-      "expectations": 0.00
+      "marketBreadth": 0.03
     }
   },
   "metadata": {

@@ -7,30 +7,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    FlatList,
-    PanResponder,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  FlatList,
+  PanResponder,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
