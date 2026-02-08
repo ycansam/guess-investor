@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import {
   Animated,
@@ -47,7 +47,13 @@ export function SideMenu({
   favoritesCount = 0,
 }: SideMenuProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const slideAnim = useRef(new Animated.Value(-MENU_WIDTH)).current;
+  
+  // Detectar si estamos en home para remarcar las tabs correctamente
+  const isOnHome = pathname === '/';
+  const isOnPortfolio = pathname === '/portfolio';
+  const isOnMLDiagnostics = pathname === '/ml-diagnostics';
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -141,8 +147,11 @@ export function SideMenu({
 
           {/* Items del menú */}
           <View style={styles.menuContent}>
+            {/* Sección: Home Tabs */}
+            <Text style={styles.sectionLabel}>🏠 Inicio</Text>
+            
             {menuItems.map((item) => {
-              const isActive = activeTab === item.key;
+              const isActive = isOnHome && activeTab === item.key;
               return (
                 <TouchableOpacity
                   key={item.key}
@@ -177,38 +186,47 @@ export function SideMenu({
             {/* Separador */}
             <View style={styles.separator} />
 
+            {/* Sección: Páginas */}
+            <Text style={styles.sectionLabel}>📄 Páginas</Text>
+
             {/* Portfolio - navegación externa */}
             <TouchableOpacity
-              style={styles.menuItem}
+              style={[styles.menuItem, isOnPortfolio && styles.menuItemActive]}
               onPress={() => {
                 onClose();
                 router.push('/portfolio');
               }}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, { backgroundColor: '#3b82f620' }]}>
+              <View style={[styles.iconContainer, isOnPortfolio && { backgroundColor: '#3b82f620' }]}>
                 <Text style={{ fontSize: 18 }}>📝</Text>
               </View>
-              <Text style={[styles.menuItemText, { color: '#6b7280' }]}>
+              <Text style={[styles.menuItemText, isOnPortfolio && { color: '#3b82f6' }]}>
                 Portfolio
               </Text>
+              {isOnPortfolio && (
+                <View style={[styles.activeIndicator, { backgroundColor: '#3b82f6' }]} />
+              )}
             </TouchableOpacity>
 
             {/* Diagnóstico ML */}
             <TouchableOpacity
-              style={styles.menuItem}
+              style={[styles.menuItem, isOnMLDiagnostics && styles.menuItemActive]}
               onPress={() => {
                 onClose();
                 router.push('/ml-diagnostics');
               }}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, { backgroundColor: '#8b5cf620' }]}>
+              <View style={[styles.iconContainer, isOnMLDiagnostics && { backgroundColor: '#8b5cf620' }]}>
                 <Text style={{ fontSize: 18 }}>🧠</Text>
               </View>
-              <Text style={[styles.menuItemText, { color: '#6b7280' }]}>
+              <Text style={[styles.menuItemText, isOnMLDiagnostics && { color: '#8b5cf6' }]}>
                 Diagnóstico ML
               </Text>
+              {isOnMLDiagnostics && (
+                <View style={[styles.activeIndicator, { backgroundColor: '#8b5cf6' }]} />
+              )}
             </TouchableOpacity>
           </View>
 
@@ -336,5 +354,15 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 12,
     color: '#4b5563',
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    marginTop: 4,
   },
 });
