@@ -18,6 +18,7 @@
       "forex": 0.02,
       "institutional": 0.00,
       "financials": 0.00,
+      "seasonality": 0.01,
       "expectations": 0.00
     },
     "swing": {
@@ -35,6 +36,7 @@
       "divergences": 0.05,
       "volatilityIV": 0.03,
       "marketBreadth": 0.04,
+      "seasonality": 0.02,
       "expectations": 0.00
     },
     "long": {
@@ -52,6 +54,7 @@
       "divergences": 0.03,
       "volatilityIV": 0.02,
       "marketBreadth": 0.03,
+      "seasonality": 0.04,
       "expectations": 0.00
     }
   },
