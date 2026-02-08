@@ -67,6 +67,42 @@ export type NewsCategory =
   | 'commodities'    // Materias primas
   | 'crypto';        // Regulación cripto, adopción
 
+// ===== TIPOS PARA NOTICIAS POR SÍMBOLO =====
+
+export interface AssetNews {
+  headline: string;
+  source: string;
+  publishedAt: Date;
+  url: string;
+  sentiment: ImpactDirection;
+  sentimentScore: number; // -1 a 1
+  keywords: string[];
+  relevanceScore: number; // 0-100
+  marketImpact?: {
+    category: NewsCategory;
+    magnitude: ImpactMagnitude;
+    reasoning: string;
+  };
+}
+
+export interface NewsSentimentSummary {
+  symbol: string;
+  totalNews: number;
+  bullishCount: number;
+  bearishCount: number;
+  neutralCount: number;
+  averageSentiment: number; // -1 a 1
+  overallDirection: ImpactDirection;
+  confidence: number; // 0-100
+  topHeadlines: {
+    headline: string;
+    source: string;
+    sentiment: ImpactDirection;
+    publishedAt: Date;
+  }[];
+  lastUpdated: Date;
+}
+
 // ===== MAPEO DINÁMICO DE IMPACTOS =====
 
 interface ImpactRule {
@@ -746,6 +782,300 @@ class MarketImpactNewsService {
     return 'neutral';
   }
   
+  // ===== NOTICIAS POR SÍMBOLO (para predicciones) =====
+  
+  /**
+   * Obtiene noticias específicas para un activo usando múltiples fuentes RSS
+   * Útil para enriquecer las predicciones con contexto de noticias
+   */
+  async getNewsForSymbol(symbol: string, companyName?: string): Promise<AssetNews[]> {
+    const news: AssetNews[] = [];
+    const seenHeadlines = new Set<string>();
+    
+    try {
+      // Construir términos de búsqueda
+      const searchTerms = [symbol];
+      if (companyName) {
+        searchTerms.push(companyName);
+        // Agregar variantes sin "Inc", "Corp", etc
+        const cleanName = companyName.replace(/\s+(Inc\.?|Corp\.?|Ltd\.?|LLC|Company|Co\.?)$/i, '').trim();
+        if (cleanName !== companyName) searchTerms.push(cleanName);
+      }
+      
+      // Fuentes específicas para búsqueda de símbolos
+      const symbolSearchSources = [
+        `https://news.google.com/rss/search?q=${encodeURIComponent(symbol + ' stock')}&hl=en-US&gl=US&ceid=US:en`,
+        `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${symbol}&region=US&lang=en-US`,
+        `https://www.investing.com/rss/news_285.rss`, // Market overview
+      ];
+      
+      if (companyName) {
+        symbolSearchSources.push(
+          `https://news.google.com/rss/search?q=${encodeURIComponent(companyName + ' stock news')}&hl=en-US&gl=US&ceid=US:en`
+        );
+      }
+      
+      // Fetch en paralelo
+      const promises = symbolSearchSources.map(url => 
+        this.fetchDirectRSS(url).catch(() => [])
+      );
+      
+      const results = await Promise.all(promises);
+      
+      for (const items of results) {
+        for (const item of items) {
+          // Filtrar solo noticias relevantes al símbolo
+          const titleLower = item.title.toLowerCase();
+          const symbolLower = symbol.toLowerCase();
+          const companyLower = (companyName || '').toLowerCase();
+          
+          const isRelevant = titleLower.includes(symbolLower) || 
+                            (companyName && titleLower.includes(companyLower.split(' ')[0]));
+          
+          if (!isRelevant) continue;
+          
+          // Evitar duplicados
+          const normalizedHeadline = item.title.toLowerCase().substring(0, 50);
+          if (seenHeadlines.has(normalizedHeadline)) continue;
+          seenHeadlines.add(normalizedHeadline);
+          
+          // Analizar sentimiento
+          const sentiment = this.analyzeHeadlineSentiment(item.title);
+          
+          news.push({
+            headline: item.title,
+            source: item.source,
+            publishedAt: item.publishedAt,
+            url: item.link,
+            sentiment: sentiment.direction,
+            sentimentScore: sentiment.score,
+            keywords: this.extractKeywords(item.title),
+            relevanceScore: this.calculateRelevance(item.title, symbol, companyName),
+          });
+        }
+      }
+      
+      // También buscar en las noticias de impacto de mercado cacheadas
+      const cachedMarketNews = this.cachedNews.filter(n => 
+        n.bullishAssets.some(a => a.symbol === symbol) ||
+        n.bearishAssets.some(a => a.symbol === symbol)
+      );
+      
+      for (const marketNews of cachedMarketNews) {
+        const isBullish = marketNews.bullishAssets.some(a => a.symbol === symbol);
+        news.push({
+          headline: marketNews.headline,
+          source: marketNews.source,
+          publishedAt: marketNews.publishedAt,
+          url: '',
+          sentiment: isBullish ? 'bullish' : 'bearish',
+          sentimentScore: isBullish ? 0.7 : -0.7,
+          keywords: marketNews.detectedKeywords,
+          relevanceScore: 90, // Alta relevancia porque ya matcheó el símbolo
+          marketImpact: {
+            category: marketNews.category,
+            magnitude: marketNews.impactMagnitude,
+            reasoning: isBullish 
+              ? marketNews.bullishAssets.find(a => a.symbol === symbol)?.reasoning || ''
+              : marketNews.bearishAssets.find(a => a.symbol === symbol)?.reasoning || '',
+          },
+        });
+      }
+      
+      // Ordenar por relevancia y fecha
+      return news
+        .sort((a, b) => {
+          // Primero por relevancia
+          if (b.relevanceScore !== a.relevanceScore) {
+            return b.relevanceScore - a.relevanceScore;
+          }
+          // Luego por fecha
+          return b.publishedAt.getTime() - a.publishedAt.getTime();
+        })
+        .slice(0, 10); // Top 10 noticias para el símbolo
+        
+    } catch (error) {
+      logger.error(`[MarketImpactNews] Error fetching news for ${symbol}:`, error);
+      return news;
+    }
+  }
+  
+  /**
+   * Fetch directo de una URL RSS
+   */
+  private async fetchDirectRSS(url: string): Promise<RawNewsItem[]> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeout);
+      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      const xml = await response.text();
+      return this.parseRSSFeed(xml, new URL(url).hostname);
+    } catch (error) {
+      clearTimeout(timeout);
+      throw error;
+    }
+  }
+  
+  /**
+   * Analiza el sentimiento de un headline
+   */
+  private analyzeHeadlineSentiment(headline: string): { direction: ImpactDirection; score: number } {
+    const lower = headline.toLowerCase();
+    
+    const bullishWords = [
+      'surge', 'soar', 'jump', 'rally', 'gain', 'rise', 'up', 'high', 'record', 
+      'beat', 'exceed', 'outperform', 'growth', 'profit', 'revenue', 'upgrade',
+      'buy', 'bullish', 'positive', 'strong', 'boom', 'breakthrough', 'deal',
+      'partnership', 'acquisition', 'expansion', 'launch', 'innovation', 'win'
+    ];
+    
+    const bearishWords = [
+      'fall', 'drop', 'plunge', 'crash', 'sink', 'down', 'low', 'miss', 'decline',
+      'loss', 'cut', 'layoff', 'downgrade', 'sell', 'bearish', 'negative', 'weak',
+      'concern', 'warning', 'risk', 'lawsuit', 'investigation', 'fraud', 'scandal',
+      'recall', 'delay', 'cancel', 'fail', 'struggle', 'debt'
+    ];
+    
+    let score = 0;
+    let bullishCount = 0;
+    let bearishCount = 0;
+    
+    for (const word of bullishWords) {
+      if (lower.includes(word)) {
+        bullishCount++;
+        score += 0.15;
+      }
+    }
+    
+    for (const word of bearishWords) {
+      if (lower.includes(word)) {
+        bearishCount++;
+        score -= 0.15;
+      }
+    }
+    
+    // Clamp score
+    score = Math.max(-1, Math.min(1, score));
+    
+    let direction: ImpactDirection = 'neutral';
+    if (score > 0.1) direction = 'bullish';
+    else if (score < -0.1) direction = 'bearish';
+    
+    return { direction, score };
+  }
+  
+  /**
+   * Extrae keywords del headline
+   */
+  private extractKeywords(headline: string): string[] {
+    const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 
+      'been', 'to', 'of', 'and', 'in', 'on', 'for', 'with', 'at', 'by', 'from',
+      'as', 'its', 'it', 'this', 'that', 'will', 'has', 'have', 'had', 'says',
+      'said', 'after', 'new', 'could', 'may', 'amid']);
+    
+    return headline
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.has(word))
+      .slice(0, 8);
+  }
+  
+  /**
+   * Calcula relevancia de la noticia para el símbolo
+   */
+  private calculateRelevance(headline: string, symbol: string, companyName?: string): number {
+    const lower = headline.toLowerCase();
+    let score = 50; // Base score
+    
+    // Símbolo exacto en el título
+    if (lower.includes(symbol.toLowerCase())) {
+      score += 30;
+    }
+    
+    // Nombre de la compañía
+    if (companyName) {
+      const nameParts = companyName.toLowerCase().split(' ');
+      const matches = nameParts.filter(part => part.length > 2 && lower.includes(part));
+      score += matches.length * 10;
+    }
+    
+    // Palabras financieras que indican noticia directa sobre el activo
+    const directWords = ['stock', 'shares', 'earnings', 'revenue', 'profit', 'forecast', 
+      'guidance', 'quarter', 'annual', 'ceo', 'company', 'business'];
+    const directMatches = directWords.filter(w => lower.includes(w));
+    score += directMatches.length * 5;
+    
+    return Math.min(100, score);
+  }
+  
+  /**
+   * Obtiene resumen de sentimiento para un símbolo basado en noticias
+   * Útil para ajustar confianza de predicciones
+   */
+  async getNewsSentimentSummary(symbol: string, companyName?: string): Promise<NewsSentimentSummary> {
+    const news = await this.getNewsForSymbol(symbol, companyName);
+    
+    if (news.length === 0) {
+      return {
+        symbol,
+        totalNews: 0,
+        bullishCount: 0,
+        bearishCount: 0,
+        neutralCount: 0,
+        averageSentiment: 0,
+        overallDirection: 'neutral',
+        confidence: 0,
+        topHeadlines: [],
+        lastUpdated: new Date(),
+      };
+    }
+    
+    const bullish = news.filter(n => n.sentiment === 'bullish');
+    const bearish = news.filter(n => n.sentiment === 'bearish');
+    const neutral = news.filter(n => n.sentiment === 'neutral');
+    
+    const avgSentiment = news.reduce((sum, n) => sum + n.sentimentScore, 0) / news.length;
+    
+    let direction: ImpactDirection = 'neutral';
+    if (avgSentiment > 0.15) direction = 'bullish';
+    else if (avgSentiment < -0.15) direction = 'bearish';
+    
+    // Confianza basada en cantidad de noticias y consistencia
+    const consistency = 1 - (Math.min(bullish.length, bearish.length) / Math.max(bullish.length, bearish.length, 1));
+    const confidence = Math.min(100, (news.length * 10) * consistency);
+    
+    return {
+      symbol,
+      totalNews: news.length,
+      bullishCount: bullish.length,
+      bearishCount: bearish.length,
+      neutralCount: neutral.length,
+      averageSentiment: avgSentiment,
+      overallDirection: direction,
+      confidence: Math.round(confidence),
+      topHeadlines: news.slice(0, 5).map(n => ({
+        headline: n.headline,
+        source: n.source,
+        sentiment: n.sentiment,
+        publishedAt: n.publishedAt,
+      })),
+      lastUpdated: new Date(),
+    };
+  }
+
   /**
    * Noticias mock para demostración cuando no hay API disponible
    */

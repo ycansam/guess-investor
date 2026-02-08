@@ -489,6 +489,42 @@ export interface MarketImpactNews {
   reasoning: string;
 }
 
+// Noticias específicas para un activo
+export interface AssetNews {
+  headline: string;
+  source: string;
+  publishedAt: string;
+  url: string;
+  sentiment: ImpactDirection;
+  sentimentScore: number; // -1 a 1
+  keywords: string[];
+  relevanceScore: number; // 0-100
+  marketImpact?: {
+    category: NewsCategory;
+    magnitude: ImpactMagnitude;
+    reasoning: string;
+  };
+}
+
+// Resumen de sentimiento de noticias para un activo
+export interface NewsSentimentSummary {
+  symbol: string;
+  totalNews: number;
+  bullishCount: number;
+  bearishCount: number;
+  neutralCount: number;
+  averageSentiment: number; // -1 a 1
+  overallDirection: ImpactDirection;
+  confidence: number; // 0-100
+  topHeadlines: {
+    headline: string;
+    source: string;
+    sentiment: ImpactDirection;
+    publishedAt: string;
+  }[];
+  lastUpdated: string;
+}
+
 // ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
@@ -1012,6 +1048,23 @@ export const apiClient = {
    */
   getMarketImpactNews: (): Promise<MarketImpactNews[]> => {
     return get('/news/market-impact');
+  },
+
+  /**
+   * Obtener noticias específicas para un símbolo
+   */
+  getNewsForSymbol: (symbol: string, companyName?: string): Promise<AssetNews[]> => {
+    const params = companyName ? `?companyName=${encodeURIComponent(companyName)}` : '';
+    return get(`/news/symbol/${symbol}${params}`);
+  },
+
+  /**
+   * Obtener resumen de sentimiento de noticias para un símbolo
+   * Útil para ajustar confianza de predicciones
+   */
+  getNewsSentiment: (symbol: string, companyName?: string): Promise<NewsSentimentSummary> => {
+    const params = companyName ? `?companyName=${encodeURIComponent(companyName)}` : '';
+    return get(`/news/sentiment/${symbol}${params}`);
   },
 
   // -------------------------------------------------------------------------
