@@ -581,17 +581,22 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
       return true;
     });
 
+    // Filtrar activos sin datos válidos (sin precio o en loading)
+    const withValidData = deduplicated.filter(a => 
+      !a.loading && a.price !== undefined && a.price > 0
+    );
+
     // Obtener predicción para un símbolo desde cachedPredictions
     const getPrediction = (symbol: string) => {
       return cachedPredictions.find(p => p.symbol === symbol && p.timeframe === selectedTimeframe) || null;
     };
 
     // Separar en 3 grupos: con predicción, favoritos sin predicción, resto
-    const withPrediction = deduplicated.filter(a => getPrediction(a.symbol) !== null);
-    const favoritesWithoutPrediction = deduplicated.filter(a => 
+    const withPrediction = withValidData.filter(a => getPrediction(a.symbol) !== null);
+    const favoritesWithoutPrediction = withValidData.filter(a => 
       getPrediction(a.symbol) === null && favoriteSymbols.has(a.symbol)
     );
-    const rest = deduplicated.filter(a => 
+    const rest = withValidData.filter(a => 
       getPrediction(a.symbol) === null && !favoriteSymbols.has(a.symbol)
     );
     
