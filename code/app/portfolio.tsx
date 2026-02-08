@@ -1,11 +1,13 @@
 /**
- * Investment Notes Screen
+ * Investment Notes Screen - Simplificado
  * 
- * Bloc de notas para inversiones:
- * - Apuntes sobre activos que te interesan
- * - Tesis de inversión
- * - Precios de referencia (target, entry, stop loss)
- * - Estados: watching, bought, sold, archived
+ * Solo 3 parámetros de dinero:
+ * - Dinero invertido
+ * - Beneficio esperado
+ * - Pérdida esperada
+ * 
+ * Resultado: beneficiado o pérdida
+ * Nota de texto opcional
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +31,8 @@ import {
     InvestmentNote,
     NotesData,
     notesService,
-    NoteStatus,
+    ResultadoTipo,
+    WalletTotals,
 } from '../services/notes-service';
 
 // Colores del tema oscuro
@@ -44,68 +47,96 @@ const COLORS = {
   orange: '#FF9800',
   blue: '#2196F3',
   purple: '#9C27B0',
-  yellow: '#FFC107',
   border: '#333355',
 };
 
-// Configuración de estados
-const STATUS_CONFIG: Record<NoteStatus, { label: string; emoji: string; color: string }> = {
-  watching: { label: 'Observando', emoji: '👀', color: COLORS.blue },
-  bought: { label: 'Comprado', emoji: '✅', color: COLORS.green },
-  sold: { label: 'Vendido', emoji: '💰', color: COLORS.purple },
-  archived: { label: 'Archivado', emoji: '📦', color: COLORS.textSecondary },
+// Formato de moneda
+const formatMoney = (value: number): string => {
+  return `€${value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-// Formato de precio
-const formatPrice = (value: number): string => {
-  if (value >= 1000) {
-    return `$${value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-  return `$${value.toFixed(value < 1 ? 4 : 2)}`;
-};
+type FilterType = 'all' | 'open' | 'profit' | 'loss';
 
-// Formato de porcentaje
-const formatPercent = (value: number): string => {
-  const sign = value >= 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)}%`;
+// ============================================================================
+// COMPONENTE: Resumen del Wallet
+// ============================================================================
+
+const WalletSummary = ({ wallet }: { wallet: WalletTotals }) => {
+  const balanceColor = wallet.balance >= 0 ? COLORS.green : COLORS.red;
+
+  return (
+    <View style={styles.walletCard}>
+      <Text style={styles.walletTitle}>💰 Mi Wallet</Text>
+      
+      <View style={styles.walletRow}>
+        <View style={styles.walletItem}>
+          <Text style={styles.walletLabel}>Beneficios</Text>
+          <Text style={[styles.walletValue, { color: COLORS.green }]}>
+            +{formatMoney(wallet.totalBeneficios)}
+          </Text>
+          <Text style={styles.walletCount}>{wallet.countBeneficios} operaciones</Text>
+        </View>
+        
+        <View style={styles.walletItem}>
+          <Text style={styles.walletLabel}>Pérdidas</Text>
+          <Text style={[styles.walletValue, { color: COLORS.red }]}>
+            -{formatMoney(wallet.totalPerdidas)}
+          </Text>
+          <Text style={styles.walletCount}>{wallet.countPerdidas} operaciones</Text>
+        </View>
+      </View>
+
+      <View style={styles.walletBalance}>
+        <Text style={styles.walletBalanceLabel}>Balance Total</Text>
+        <Text style={[styles.walletBalanceValue, { color: balanceColor }]}>
+          {wallet.balance >= 0 ? '+' : ''}{formatMoney(wallet.balance)}
+        </Text>
+      </View>
+
+      <Text style={styles.walletAbiertas}>
+        📊 {wallet.countAbiertas} posiciones abiertas
+      </Text>
+    </View>
+  );
 };
 
 // ============================================================================
-// COMPONENTE: Filtros de Estado
+// COMPONENTE: Filtros
 // ============================================================================
 
-const StatusFilters = ({
+const Filters = ({
   activeFilter,
   counts,
   onFilterChange,
 }: {
-  activeFilter: NoteStatus | 'all';
-  counts: Record<string, number>;
-  onFilterChange: (filter: NoteStatus | 'all') => void;
+  activeFilter: FilterType;
+  counts: { all: number; open: number; profit: number; loss: number };
+  onFilterChange: (filter: FilterType) => void;
 }) => {
-  const filters: (NoteStatus | 'all')[] = ['all', 'watching', 'bought', 'sold', 'archived'];
-  const total = Object.values(counts).reduce((sum, c) => sum + c, 0);
+  const filters: { key: FilterType; label: string; emoji: string; color: string }[] = [
+    { key: 'all', label: 'Todas', emoji: '📝', color: COLORS.text },
+    { key: 'open', label: 'Abiertas', emoji: '⏳', color: COLORS.orange },
+    { key: 'profit', label: 'Beneficio', emoji: '✅', color: COLORS.green },
+    { key: 'loss', label: 'Pérdida', emoji: '❌', color: COLORS.red },
+  ];
 
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
       {filters.map((filter) => {
-        const isActive = activeFilter === filter;
-        const count = filter === 'all' ? total : counts[filter] || 0;
-        const config = filter === 'all' 
-          ? { label: 'Todas', emoji: '📝', color: COLORS.text }
-          : STATUS_CONFIG[filter];
+        const isActive = activeFilter === filter.key;
+        const count = counts[filter.key];
 
         return (
           <Pressable
-            key={filter}
-            style={[styles.filterButton, isActive && { backgroundColor: config.color + '33' }]}
-            onPress={() => onFilterChange(filter)}
+            key={filter.key}
+            style={[styles.filterButton, isActive && { backgroundColor: filter.color + '33' }]}
+            onPress={() => onFilterChange(filter.key)}
           >
-            <Text style={styles.filterEmoji}>{config.emoji}</Text>
-            <Text style={[styles.filterLabel, isActive && { color: config.color }]}>
-              {config.label}
+            <Text style={styles.filterEmoji}>{filter.emoji}</Text>
+            <Text style={[styles.filterLabel, isActive && { color: filter.color }]}>
+              {filter.label}
             </Text>
-            <View style={[styles.filterBadge, { backgroundColor: config.color }]}>
+            <View style={[styles.filterBadge, { backgroundColor: filter.color }]}>
               <Text style={styles.filterCount}>{count}</Text>
             </View>
           </Pressable>
@@ -122,140 +153,104 @@ const StatusFilters = ({
 const NoteCard = ({
   note,
   onEdit,
-  onStatusChange,
+  onSetResult,
+  onClearResult,
   onDelete,
 }: {
   note: InvestmentNote;
   onEdit: () => void;
-  onStatusChange: (status: NoteStatus) => void;
+  onSetResult: () => void;
+  onClearResult: () => void;
   onDelete: () => void;
 }) => {
-  const statusConfig = STATUS_CONFIG[note.status];
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const isClosed = note.resultado !== null;
+  const isProfitable = note.resultado === 'beneficiado';
 
   return (
     <Pressable style={styles.noteCard} onPress={onEdit}>
       {/* Header */}
       <View style={styles.noteHeader}>
-        <View style={styles.noteHeaderLeft}>
-          <Text style={styles.noteSymbol}>{note.symbol}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusConfig.color + '33' }]}>
-            <Text style={styles.statusText}>{statusConfig.emoji} {statusConfig.label}</Text>
-          </View>
-        </View>
-        <View style={styles.noteHeaderRight}>
-          <Text style={styles.notePrice}>{formatPrice(note.currentPrice)}</Text>
-          <Text style={[
-            styles.noteDayChange,
-            { color: note.dayChange >= 0 ? COLORS.green : COLORS.red }
+        <Text style={styles.noteSymbol}>{note.symbol}</Text>
+        {isClosed ? (
+          <View style={[
+            styles.resultBadge,
+            { backgroundColor: isProfitable ? COLORS.green + '33' : COLORS.red + '33' }
           ]}>
-            {formatPercent(note.dayChange)}
+            <Text style={[
+              styles.resultText,
+              { color: isProfitable ? COLORS.green : COLORS.red }
+            ]}>
+              {isProfitable ? '✅ Beneficio' : '❌ Pérdida'}
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.resultBadge, { backgroundColor: COLORS.orange + '33' }]}>
+            <Text style={[styles.resultText, { color: COLORS.orange }]}>
+              ⏳ Abierta
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Datos de dinero */}
+      <View style={styles.moneyGrid}>
+        <View style={styles.moneyItem}>
+          <Text style={styles.moneyLabel}>💵 Invertido</Text>
+          <Text style={styles.moneyValue}>{formatMoney(note.dineroInvertido)}</Text>
+        </View>
+        <View style={styles.moneyItem}>
+          <Text style={styles.moneyLabel}>📈 Beneficio esp.</Text>
+          <Text style={[styles.moneyValue, { color: COLORS.green }]}>
+            +{formatMoney(note.beneficioEsperado)}
+          </Text>
+        </View>
+        <View style={styles.moneyItem}>
+          <Text style={styles.moneyLabel}>📉 Pérdida esp.</Text>
+          <Text style={[styles.moneyValue, { color: COLORS.red }]}>
+            -{formatMoney(note.perdidaEsperada)}
           </Text>
         </View>
       </View>
 
-      <Text style={styles.noteName} numberOfLines={1}>{note.name}</Text>
-
-      {/* Rating */}
-      {note.rating && (
-        <View style={styles.ratingContainer}>
-          {[1, 2, 3, 4, 5].map((star) => (
-            <Text key={star} style={styles.ratingStar}>
-              {star <= note.rating! ? '⭐' : '☆'}
-            </Text>
-          ))}
+      {/* Resultado final si está cerrada */}
+      {isClosed && note.resultadoFinal !== null && (
+        <View style={[
+          styles.resultFinal,
+          { backgroundColor: isProfitable ? COLORS.green + '22' : COLORS.red + '22' }
+        ]}>
+          <Text style={styles.resultFinalLabel}>Resultado final:</Text>
+          <Text style={[
+            styles.resultFinalValue,
+            { color: isProfitable ? COLORS.green : COLORS.red }
+          ]}>
+            {isProfitable ? '+' : '-'}{formatMoney(Math.abs(note.resultadoFinal))}
+          </Text>
         </View>
       )}
 
-      {/* Thesis */}
-      {note.thesis && (
-        <View style={styles.thesisContainer}>
-          <Text style={styles.thesisLabel}>💡 Tesis:</Text>
-          <Text style={styles.thesisText} numberOfLines={2}>{note.thesis}</Text>
-        </View>
-      )}
-
-      {/* Notes */}
-      {note.notes && (
-        <View style={styles.notesContainer}>
-          <Text style={styles.notesText} numberOfLines={3}>{note.notes}</Text>
-        </View>
-      )}
-
-      {/* Precios de referencia */}
-      {(note.targetPrice || note.entryPrice || note.stopLoss) && (
-        <View style={styles.pricesContainer}>
-          {note.targetPrice && (
-            <View style={[styles.priceTag, note.atTarget && styles.priceTagActive]}>
-              <Text style={styles.priceTagLabel}>🎯 Target</Text>
-              <Text style={styles.priceTagValue}>{formatPrice(note.targetPrice)}</Text>
-              {note.distanceToTarget !== null && (
-                <Text style={[
-                  styles.priceTagDistance,
-                  { color: note.distanceToTarget > 0 ? COLORS.green : COLORS.red }
-                ]}>
-                  {formatPercent(note.distanceToTarget)}
-                </Text>
-              )}
-            </View>
-          )}
-          {note.entryPrice && (
-            <View style={[styles.priceTag, note.atEntry && styles.priceTagActive]}>
-              <Text style={styles.priceTagLabel}>📥 Entry</Text>
-              <Text style={styles.priceTagValue}>{formatPrice(note.entryPrice)}</Text>
-              {note.distanceToEntry !== null && (
-                <Text style={[
-                  styles.priceTagDistance,
-                  { color: note.distanceToEntry < 0 ? COLORS.green : COLORS.orange }
-                ]}>
-                  {formatPercent(note.distanceToEntry)}
-                </Text>
-              )}
-            </View>
-          )}
-          {note.stopLoss && (
-            <View style={[styles.priceTag, note.atStopLoss && styles.priceTagDanger]}>
-              <Text style={styles.priceTagLabel}>🛑 Stop</Text>
-              <Text style={styles.priceTagValue}>{formatPrice(note.stopLoss)}</Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Alertas */}
-      {(note.atTarget || note.atEntry || note.atStopLoss) && (
-        <View style={styles.alertsContainer}>
-          {note.atTarget && (
-            <View style={[styles.alertBadge, { backgroundColor: COLORS.green }]}>
-              <Text style={styles.alertText}>🎯 ¡Target alcanzado!</Text>
-            </View>
-          )}
-          {note.atEntry && (
-            <View style={[styles.alertBadge, { backgroundColor: COLORS.blue }]}>
-              <Text style={styles.alertText}>📥 ¡Precio de entrada!</Text>
-            </View>
-          )}
-          {note.atStopLoss && (
-            <View style={[styles.alertBadge, { backgroundColor: COLORS.red }]}>
-              <Text style={styles.alertText}>🛑 ¡Stop Loss!</Text>
-            </View>
-          )}
+      {/* Nota de texto */}
+      {note.note && (
+        <View style={styles.noteTextContainer}>
+          <Text style={styles.noteText} numberOfLines={3}>{note.note}</Text>
         </View>
       )}
 
       {/* Acciones */}
       <View style={styles.noteActions}>
-        <Pressable 
-          style={styles.noteActionButton} 
-          onPress={() => setShowStatusMenu(true)}
-        >
-          <Text style={styles.noteActionText}>📋 Estado</Text>
+        {!isClosed ? (
+          <Pressable style={[styles.actionButton, styles.actionButtonPrimary]} onPress={onSetResult}>
+            <Text style={styles.actionButtonTextPrimary}>💰 Cerrar Posición</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={styles.actionButton} onPress={onClearResult}>
+            <Text style={styles.actionButtonText}>🔄 Reabrir</Text>
+          </Pressable>
+        )}
+        <Pressable style={styles.actionButton} onPress={onEdit}>
+          <Text style={styles.actionButtonText}>✏️ Editar</Text>
         </Pressable>
-        <Pressable style={styles.noteActionButton} onPress={onEdit}>
-          <Text style={styles.noteActionText}>✏️ Editar</Text>
-        </Pressable>
         <Pressable 
-          style={[styles.noteActionButton, { borderColor: COLORS.red }]} 
+          style={[styles.actionButton, { borderColor: COLORS.red }]} 
           onPress={() => {
             Alert.alert(
               'Eliminar nota',
@@ -267,38 +262,9 @@ const NoteCard = ({
             );
           }}
         >
-          <Text style={[styles.noteActionText, { color: COLORS.red }]}>🗑️</Text>
+          <Text style={[styles.actionButtonText, { color: COLORS.red }]}>🗑️</Text>
         </Pressable>
       </View>
-
-      {/* Menu de estado */}
-      <Modal visible={showStatusMenu} transparent animationType="fade">
-        <Pressable style={styles.menuOverlay} onPress={() => setShowStatusMenu(false)}>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>Cambiar estado</Text>
-            {(Object.keys(STATUS_CONFIG) as NoteStatus[]).map((status) => {
-              const config = STATUS_CONFIG[status];
-              return (
-                <Pressable
-                  key={status}
-                  style={[
-                    styles.menuItem,
-                    note.status === status && { backgroundColor: config.color + '33' }
-                  ]}
-                  onPress={() => {
-                    onStatusChange(status);
-                    setShowStatusMenu(false);
-                  }}
-                >
-                  <Text style={styles.menuItemText}>
-                    {config.emoji} {config.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
     </Pressable>
   );
 };
@@ -319,55 +285,39 @@ const NoteModal = ({
   onSubmit: (input: CreateNoteInput) => void;
 }) => {
   const [symbol, setSymbol] = useState('');
-  const [name, setName] = useState('');
-  const [assetType, setAssetType] = useState<'stock' | 'crypto' | 'etf'>('stock');
-  const [thesis, setThesis] = useState('');
-  const [notes, setNotes] = useState('');
-  const [targetPrice, setTargetPrice] = useState('');
-  const [entryPrice, setEntryPrice] = useState('');
-  const [stopLoss, setStopLoss] = useState('');
-  const [rating, setRating] = useState(0);
+  const [dineroInvertido, setDineroInvertido] = useState('');
+  const [beneficioEsperado, setBeneficioEsperado] = useState('');
+  const [perdidaEsperada, setPerdidaEsperada] = useState('');
+  const [noteText, setNoteText] = useState('');
 
   useEffect(() => {
     if (note) {
       setSymbol(note.symbol);
-      setName(note.name);
-      setAssetType(note.assetType as 'stock' | 'crypto' | 'etf');
-      setThesis(note.thesis || '');
-      setNotes(note.notes || '');
-      setTargetPrice(note.targetPrice?.toString() || '');
-      setEntryPrice(note.entryPrice?.toString() || '');
-      setStopLoss(note.stopLoss?.toString() || '');
-      setRating(note.rating || 0);
+      setDineroInvertido(note.dineroInvertido.toString());
+      setBeneficioEsperado(note.beneficioEsperado.toString());
+      setPerdidaEsperada(note.perdidaEsperada.toString());
+      setNoteText(note.note || '');
     } else {
       setSymbol('');
-      setName('');
-      setAssetType('stock');
-      setThesis('');
-      setNotes('');
-      setTargetPrice('');
-      setEntryPrice('');
-      setStopLoss('');
-      setRating(0);
+      setDineroInvertido('');
+      setBeneficioEsperado('');
+      setPerdidaEsperada('');
+      setNoteText('');
     }
   }, [note, visible]);
 
   const handleSubmit = () => {
-    if (!symbol || !name) {
-      Alert.alert('Error', 'Símbolo y nombre son requeridos');
+    if (!symbol) {
+      Alert.alert('Error', 'El símbolo es requerido');
       return;
     }
 
     onSubmit({
       symbol: symbol.toUpperCase(),
-      name,
-      assetType,
-      thesis: thesis || undefined,
-      notes: notes || undefined,
-      targetPrice: targetPrice ? parseFloat(targetPrice) : undefined,
-      entryPrice: entryPrice ? parseFloat(entryPrice) : undefined,
-      stopLoss: stopLoss ? parseFloat(stopLoss) : undefined,
-      rating: rating || undefined,
+      dineroInvertido: parseFloat(dineroInvertido) || 0,
+      beneficioEsperado: parseFloat(beneficioEsperado) || 0,
+      perdidaEsperada: parseFloat(perdidaEsperada) || 0,
+      note: noteText || undefined,
     });
 
     onClose();
@@ -387,123 +337,60 @@ const NoteModal = ({
           </View>
 
           <ScrollView style={styles.modalBody}>
-            {/* Símbolo y Nombre */}
-            <View style={styles.inputRow}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={styles.inputLabel}>Símbolo *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="AAPL"
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={symbol}
-                  onChangeText={setSymbol}
-                  autoCapitalize="characters"
-                  editable={!note}
-                />
-              </View>
-              <View style={{ flex: 2 }}>
-                <Text style={styles.inputLabel}>Nombre *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Apple Inc."
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={name}
-                  onChangeText={setName}
-                />
-              </View>
-            </View>
-
-            {/* Tipo de Activo */}
-            <Text style={styles.inputLabel}>Tipo</Text>
-            <View style={styles.assetTypeRow}>
-              {(['stock', 'crypto', 'etf'] as const).map((type) => (
-                <Pressable
-                  key={type}
-                  style={[
-                    styles.assetTypeButton,
-                    assetType === type && styles.assetTypeButtonActive,
-                  ]}
-                  onPress={() => setAssetType(type)}
-                >
-                  <Text style={[
-                    styles.assetTypeText,
-                    assetType === type && styles.assetTypeTextActive,
-                  ]}>
-                    {type === 'stock' ? '📈 Stock' : type === 'crypto' ? '₿ Crypto' : '📊 ETF'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {/* Rating */}
-            <Text style={styles.inputLabel}>Rating</Text>
-            <View style={styles.ratingRow}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Pressable key={star} onPress={() => setRating(star === rating ? 0 : star)}>
-                  <Text style={styles.ratingStarLarge}>
-                    {star <= rating ? '⭐' : '☆'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {/* Tesis */}
-            <Text style={styles.inputLabel}>💡 Tesis de Inversión</Text>
+            {/* Símbolo */}
+            <Text style={styles.inputLabel}>Símbolo *</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="¿Por qué te interesa este activo?"
+              style={styles.input}
+              placeholder="AAPL, BTC-USD, etc."
               placeholderTextColor={COLORS.textSecondary}
-              value={thesis}
-              onChangeText={setThesis}
-              multiline
+              value={symbol}
+              onChangeText={setSymbol}
+              autoCapitalize="characters"
+              editable={!note}
+            />
+
+            {/* Dinero invertido */}
+            <Text style={styles.inputLabel}>💵 Dinero Invertido (€)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="1000.00"
+              placeholderTextColor={COLORS.textSecondary}
+              value={dineroInvertido}
+              onChangeText={setDineroInvertido}
+              keyboardType="decimal-pad"
+            />
+
+            {/* Beneficio esperado */}
+            <Text style={styles.inputLabel}>📈 Beneficio Esperado (€)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="200.00"
+              placeholderTextColor={COLORS.textSecondary}
+              value={beneficioEsperado}
+              onChangeText={setBeneficioEsperado}
+              keyboardType="decimal-pad"
+            />
+
+            {/* Pérdida esperada */}
+            <Text style={styles.inputLabel}>📉 Pérdida Esperada (€)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="100.00"
+              placeholderTextColor={COLORS.textSecondary}
+              value={perdidaEsperada}
+              onChangeText={setPerdidaEsperada}
+              keyboardType="decimal-pad"
             />
 
             {/* Notas */}
-            <Text style={styles.inputLabel}>📝 Notas</Text>
+            <Text style={styles.inputLabel}>📝 Notas (opcional)</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Apuntes, ideas, observaciones..."
+              placeholder="Apuntes, razonamientos, etc."
               placeholderTextColor={COLORS.textSecondary}
-              value={notes}
-              onChangeText={setNotes}
+              value={noteText}
+              onChangeText={setNoteText}
               multiline
-            />
-
-            {/* Precios de referencia */}
-            <Text style={styles.sectionTitle}>Precios de Referencia</Text>
-            <View style={styles.inputRow}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={styles.inputLabel}>🎯 Target</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="200.00"
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={targetPrice}
-                  onChangeText={setTargetPrice}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={styles.inputLabel}>📥 Entry</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="150.00"
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={entryPrice}
-                  onChangeText={setEntryPrice}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
-
-            <Text style={styles.inputLabel}>🛑 Stop Loss</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="130.00"
-              placeholderTextColor={COLORS.textSecondary}
-              value={stopLoss}
-              onChangeText={setStopLoss}
-              keyboardType="decimal-pad"
             />
           </ScrollView>
 
@@ -511,6 +398,132 @@ const NoteModal = ({
             <Text style={styles.submitButtonText}>
               {note ? 'Guardar Cambios' : 'Crear Nota'}
             </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ============================================================================
+// COMPONENTE: Modal para Cerrar Posición
+// ============================================================================
+
+const ResultModal = ({
+  visible,
+  note,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean;
+  note: InvestmentNote | null;
+  onClose: () => void;
+  onSubmit: (resultado: ResultadoTipo, resultadoFinal: number) => void;
+}) => {
+  const [resultado, setResultado] = useState<ResultadoTipo | null>(null);
+  const [amount, setAmount] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setResultado(null);
+      setAmount('');
+    }
+  }, [visible]);
+
+  const handleSubmit = () => {
+    if (!resultado) {
+      Alert.alert('Error', 'Selecciona si fue beneficio o pérdida');
+      return;
+    }
+    
+    const finalAmount = parseFloat(amount) || 0;
+    if (finalAmount <= 0) {
+      Alert.alert('Error', 'Introduce el importe del resultado');
+      return;
+    }
+
+    onSubmit(resultado, finalAmount);
+    onClose();
+  };
+
+  if (!note) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={styles.resultModalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>💰 Cerrar Posición</Text>
+            <Pressable onPress={onClose}>
+              <Ionicons name="close" size={24} color={COLORS.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.resultModalBody}>
+            <Text style={styles.resultSymbol}>{note.symbol}</Text>
+            <Text style={styles.resultInvested}>
+              Invertido: {formatMoney(note.dineroInvertido)}
+            </Text>
+
+            {/* Botones de resultado */}
+            <Text style={[styles.inputLabel, { marginTop: 20 }]}>¿Cómo terminó?</Text>
+            <View style={styles.resultButtons}>
+              <Pressable
+                style={[
+                  styles.resultButton,
+                  resultado === 'beneficiado' && styles.resultButtonProfit,
+                ]}
+                onPress={() => setResultado('beneficiado')}
+              >
+                <Text style={[
+                  styles.resultButtonText,
+                  resultado === 'beneficiado' && styles.resultButtonTextActive,
+                ]}>
+                  ✅ Beneficio
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.resultButton,
+                  resultado === 'perdida' && styles.resultButtonLoss,
+                ]}
+                onPress={() => setResultado('perdida')}
+              >
+                <Text style={[
+                  styles.resultButtonText,
+                  resultado === 'perdida' && styles.resultButtonTextActive,
+                ]}>
+                  ❌ Pérdida
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Importe */}
+            <Text style={styles.inputLabel}>
+              {resultado === 'beneficiado' ? '💰 Importe ganado (€)' : '💸 Importe perdido (€)'}
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder={resultado === 'beneficiado' 
+                ? note.beneficioEsperado.toString()
+                : note.perdidaEsperada.toString()
+              }
+              placeholderTextColor={COLORS.textSecondary}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="decimal-pad"
+            />
+          </View>
+
+          <Pressable 
+            style={[
+              styles.submitButton,
+              resultado === 'beneficiado' && { backgroundColor: COLORS.green },
+              resultado === 'perdida' && { backgroundColor: COLORS.red },
+            ]} 
+            onPress={handleSubmit}
+          >
+            <Text style={styles.submitButtonText}>Confirmar</Text>
           </Pressable>
         </View>
       </View>
@@ -527,11 +540,13 @@ export default function NotesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notesData, setNotesData] = useState<NotesData | null>(null);
-  const [activeFilter, setActiveFilter] = useState<NoteStatus | 'all'>('all');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
-  // Modal
+  // Modales
   const [showModal, setShowModal] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
   const [editingNote, setEditingNote] = useState<InvestmentNote | null>(null);
+  const [closingNote, setClosingNote] = useState<InvestmentNote | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -563,8 +578,19 @@ export default function NotesScreen() {
     }
   };
 
-  const handleStatusChange = async (symbol: string, status: NoteStatus) => {
-    const success = await notesService.updateStatus(symbol, status);
+  const handleSetResult = async (resultado: ResultadoTipo, resultadoFinal: number) => {
+    if (!closingNote) return;
+    
+    const success = await notesService.setResult(closingNote.symbol, resultado, resultadoFinal);
+    if (success) {
+      loadData();
+    } else {
+      Alert.alert('Error', 'No se pudo cerrar la posición');
+    }
+  };
+
+  const handleClearResult = async (symbol: string) => {
+    const success = await notesService.clearResult(symbol);
     if (success) {
       loadData();
     }
@@ -587,10 +613,28 @@ export default function NotesScreen() {
     setShowModal(true);
   };
 
+  const openResultModal = (note: InvestmentNote) => {
+    setClosingNote(note);
+    setShowResultModal(true);
+  };
+
+  // Calcular contadores para filtros
+  const counts = {
+    all: notesData?.notes.length || 0,
+    open: notesData?.notes.filter(n => !n.resultado).length || 0,
+    profit: notesData?.notes.filter(n => n.resultado === 'beneficiado').length || 0,
+    loss: notesData?.notes.filter(n => n.resultado === 'perdida').length || 0,
+  };
+
   // Filtrar notas
-  const filteredNotes = notesData?.notes.filter(
-    (note) => activeFilter === 'all' || note.status === activeFilter
-  ) || [];
+  const filteredNotes = notesData?.notes.filter((note) => {
+    switch (activeFilter) {
+      case 'open': return !note.resultado;
+      case 'profit': return note.resultado === 'beneficiado';
+      case 'loss': return note.resultado === 'perdida';
+      default: return true;
+    }
+  }) || [];
 
   if (loading) {
     return (
@@ -624,10 +668,13 @@ export default function NotesScreen() {
           </Pressable>
         </View>
 
+        {/* Wallet Summary */}
+        {notesData?.wallet && <WalletSummary wallet={notesData.wallet} />}
+
         {/* Filtros */}
-        <StatusFilters
+        <Filters
           activeFilter={activeFilter}
-          counts={notesData?.counts || {}}
+          counts={counts}
           onFilterChange={setActiveFilter}
         />
 
@@ -638,18 +685,17 @@ export default function NotesScreen() {
               key={note.id}
               note={note}
               onEdit={() => openEditModal(note)}
-              onStatusChange={(status) => handleStatusChange(note.symbol, status)}
+              onSetResult={() => openResultModal(note)}
+              onClearResult={() => handleClearResult(note.symbol)}
               onDelete={() => handleDelete(note.symbol)}
             />
           ))
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📝</Text>
-            <Text style={styles.emptyTitle}>
-              {activeFilter === 'all' ? 'Sin notas' : `Sin notas "${STATUS_CONFIG[activeFilter].label}"`}
-            </Text>
+            <Text style={styles.emptyTitle}>Sin notas</Text>
             <Text style={styles.emptyText}>
-              Añade notas sobre activos que te interesen
+              Añade notas sobre tus inversiones para hacer seguimiento
             </Text>
             <Pressable style={styles.emptyButton} onPress={openCreateModal}>
               <Text style={styles.emptyButtonText}>➕ Crear Nota</Text>
@@ -660,12 +706,20 @@ export default function NotesScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Modal */}
+      {/* Modal de crear/editar */}
       <NoteModal
         visible={showModal}
         note={editingNote}
         onClose={() => setShowModal(false)}
         onSubmit={handleCreateNote}
+      />
+
+      {/* Modal de resultado */}
+      <ResultModal
+        visible={showResultModal}
+        note={closingNote}
+        onClose={() => setShowResultModal(false)}
+        onSubmit={handleSetResult}
       />
     </View>
   );
@@ -723,6 +777,65 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  // Wallet
+  walletCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+  },
+  walletTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 16,
+  },
+  walletRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  walletItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  walletLabel: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  walletValue: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  walletCount: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  walletBalance: {
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  walletBalanceLabel: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  walletBalanceValue: {
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  walletAbiertas: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+
   // Filters
   filtersContainer: {
     paddingHorizontal: 12,
@@ -768,189 +881,107 @@ const styles = StyleSheet.create({
   noteHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  noteHeaderLeft: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  noteHeaderRight: {
-    alignItems: 'flex-end',
+    marginBottom: 12,
   },
   noteSymbol: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: COLORS.text,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 11,
-    color: COLORS.text,
-  },
-  notePrice: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  noteDayChange: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  noteName: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: 8,
-  },
-
-  // Rating
-  ratingContainer: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  ratingStar: {
-    fontSize: 14,
-    marginRight: 2,
-  },
-
-  // Thesis
-  thesisContainer: {
-    backgroundColor: COLORS.cardLight,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 8,
-  },
-  thesisLabel: {
-    fontSize: 12,
-    color: COLORS.yellow,
-    marginBottom: 4,
-  },
-  thesisText: {
-    fontSize: 13,
-    color: COLORS.text,
-    lineHeight: 18,
-  },
-
-  // Notes
-  notesContainer: {
-    marginBottom: 8,
-  },
-  notesText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
-  },
-
-  // Prices
-  pricesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  priceTag: {
-    backgroundColor: COLORS.cardLight,
-    borderRadius: 8,
-    padding: 8,
-    minWidth: 80,
-  },
-  priceTagActive: {
-    borderWidth: 1,
-    borderColor: COLORS.green,
-  },
-  priceTagDanger: {
-    borderWidth: 1,
-    borderColor: COLORS.red,
-  },
-  priceTagLabel: {
-    fontSize: 10,
-    color: COLORS.textSecondary,
-    marginBottom: 2,
-  },
-  priceTagValue: {
-    fontSize: 14,
-    color: COLORS.text,
-    fontWeight: '600',
-  },
-  priceTagDistance: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-
-  // Alerts
-  alertsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  alertBadge: {
+  resultBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  alertText: {
-    fontSize: 11,
-    color: COLORS.text,
+  resultText: {
+    fontSize: 12,
     fontWeight: '600',
+  },
+
+  // Money Grid
+  moneyGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  moneyItem: {
+    flex: 1,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
+  },
+  moneyLabel: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  moneyValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+
+  // Result Final
+  resultFinal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  resultFinalLabel: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  resultFinalValue: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+
+  // Note Text
+  noteTextContainer: {
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  noteText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
 
   // Actions
   noteActions: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 8,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  noteActionButton: {
+  actionButton: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
   },
-  noteActionText: {
+  actionButtonPrimary: {
+    backgroundColor: COLORS.blue,
+    borderColor: COLORS.blue,
+  },
+  actionButtonText: {
     fontSize: 12,
     color: COLORS.textSecondary,
   },
-
-  // Menu
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  menuContent: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 16,
-    width: '80%',
-  },
-  menuTitle: {
-    fontSize: 16,
+  actionButtonTextPrimary: {
+    fontSize: 12,
+    color: COLORS.text,
     fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  menuItemText: {
-    fontSize: 15,
-    color: COLORS.text,
   },
 
   // Empty State
@@ -997,7 +1028,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '90%',
+    maxHeight: '85%',
+  },
+  resultModalContent: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '60%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1015,11 +1052,55 @@ const styles = StyleSheet.create({
   modalBody: {
     padding: 20,
   },
+  resultModalBody: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  resultSymbol: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  resultInvested: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  resultButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    marginBottom: 20,
+    width: '100%',
+  },
+  resultButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: COLORS.cardLight,
+    alignItems: 'center',
+  },
+  resultButtonProfit: {
+    backgroundColor: COLORS.green,
+  },
+  resultButtonLoss: {
+    backgroundColor: COLORS.red,
+  },
+  resultButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  resultButtonTextActive: {
+    color: COLORS.text,
+  },
   inputLabel: {
     fontSize: 12,
     color: COLORS.textSecondary,
     marginBottom: 6,
     marginTop: 12,
+    alignSelf: 'flex-start',
+    width: '100%',
   },
   input: {
     backgroundColor: COLORS.cardLight,
@@ -1027,51 +1108,11 @@ const styles = StyleSheet.create({
     padding: 12,
     color: COLORS.text,
     fontSize: 16,
+    width: '100%',
   },
   textArea: {
     height: 80,
     textAlignVertical: 'top',
-  },
-  inputRow: {
-    flexDirection: 'row',
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginTop: 20,
-    marginBottom: 8,
-  },
-  assetTypeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  assetTypeButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: COLORS.cardLight,
-    alignItems: 'center',
-  },
-  assetTypeButtonActive: {
-    backgroundColor: COLORS.blue,
-  },
-  assetTypeText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  assetTypeTextActive: {
-    color: COLORS.text,
-    fontWeight: '600',
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  ratingStarLarge: {
-    fontSize: 28,
   },
   submitButton: {
     margin: 20,

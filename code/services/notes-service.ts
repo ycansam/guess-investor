@@ -1,7 +1,8 @@
 /**
  * Notes Service
  * 
- * Servicio simple para gestionar notas de texto por activo
+ * Servicio simplificado para gestionar notas de inversión
+ * Solo 3 campos de dinero + resultado + nota de texto
  */
 
 // URL base del backend
@@ -13,17 +14,42 @@ const API_BASE_URL = __DEV__
 // TYPES
 // ============================================================================
 
+export type ResultadoTipo = 'beneficiado' | 'perdida';
+
 export interface InvestmentNote {
   id: string;
   symbol: string;
-  note: string;
+  dineroInvertido: number;
+  beneficioEsperado: number;
+  perdidaEsperada: number;
+  resultado: ResultadoTipo | null;
+  resultadoFinal: number | null;
+  note: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WalletTotals {
+  totalBeneficios: number;
+  totalPerdidas: number;
+  balance: number;
+  countBeneficios: number;
+  countPerdidas: number;
+  countAbiertas: number;
 }
 
 export interface NotesData {
   notes: InvestmentNote[];
   count: number;
+  wallet: WalletTotals;
+}
+
+export interface CreateNoteInput {
+  symbol: string;
+  dineroInvertido: number;
+  beneficioEsperado: number;
+  perdidaEsperada: number;
+  note?: string;
 }
 
 // ============================================================================
@@ -51,6 +77,24 @@ export const notesService = {
   },
 
   /**
+   * Obtener totales del wallet
+   */
+  async getWallet(): Promise<WalletTotals | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/notes/wallet`);
+      const result = await response.json();
+      
+      if (result.success) {
+        return result.data;
+      }
+      return null;
+    } catch (error) {
+      console.error('[Notes] Error getting wallet:', error);
+      return null;
+    }
+  },
+
+  /**
    * Obtener nota por símbolo
    */
   async getBySymbol(symbol: string): Promise<InvestmentNote | null> {
@@ -71,12 +115,12 @@ export const notesService = {
   /**
    * Crear o actualizar nota
    */
-  async upsert(symbol: string, note: string): Promise<boolean> {
+  async upsert(input: CreateNoteInput): Promise<boolean> {
     try {
       const response = await fetch(`${API_BASE_URL}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, note }),
+        body: JSON.stringify(input),
       });
       const result = await response.json();
       return result.success;
@@ -89,17 +133,51 @@ export const notesService = {
   /**
    * Actualizar nota
    */
-  async update(symbol: string, note: string): Promise<boolean> {
+  async update(symbol: string, data: Partial<CreateNoteInput>): Promise<boolean> {
     try {
       const response = await fetch(`${API_BASE_URL}/notes/${symbol}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note }),
+        body: JSON.stringify(data),
       });
       const result = await response.json();
       return result.success;
     } catch (error) {
       console.error('[Notes] Error updating note:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Establecer resultado (beneficiado o pérdida)
+   */
+  async setResult(symbol: string, resultado: ResultadoTipo, resultadoFinal: number): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/notes/${symbol}/result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resultado, resultadoFinal }),
+      });
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      console.error('[Notes] Error setting result:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Limpiar resultado (reabrir posición)
+   */
+  async clearResult(symbol: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/notes/${symbol}/result`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      console.error('[Notes] Error clearing result:', error);
       return false;
     }
   },

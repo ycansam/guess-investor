@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import {
-    Animated,
-    Dimensions,
-    Modal,
-    Platform,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  Animated,
+  Dimensions,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from 'react-native';
 
 export type TabType = 'favorites' | 'predictions' | 'trends';
@@ -45,6 +46,7 @@ export function SideMenu({
   predictionsCount,
   favoritesCount = 0,
 }: SideMenuProps) {
+  const router = useRouter();
   const slideAnim = useRef(new Animated.Value(-MENU_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -171,6 +173,26 @@ export function SideMenu({
                 </TouchableOpacity>
               );
             })}
+
+            {/* Separador */}
+            <View style={styles.separator} />
+
+            {/* Portfolio - navegación externa */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                onClose();
+                router.push('/portfolio');
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: '#3b82f620' }]}>
+                <Text style={{ fontSize: 18 }}>📝</Text>
+              </View>
+              <Text style={[styles.menuItemText, { color: '#6b7280' }]}>
+                Portfolio
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Footer del menú */}
@@ -280,6 +302,12 @@ const styles = StyleSheet.create({
     bottom: '25%',
     width: 3,
     borderRadius: 2,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#2e2e2e',
+    marginHorizontal: 20,
+    marginVertical: 12,
   },
   menuFooter: {
     paddingHorizontal: 20,
