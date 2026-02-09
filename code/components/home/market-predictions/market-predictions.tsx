@@ -7,30 +7,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    FlatList,
-    PanResponder,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  FlatList,
+  PanResponder,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-    TIMEFRAME_INFO,
-    trainingCacheService,
-    TrainingPrediction,
-    TrainingTimeframe,
+  TIMEFRAME_INFO,
+  trainingCacheService,
+  TrainingPrediction,
+  TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -88,6 +88,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
   const [cachedPredictions, setCachedPredictions] = useState<TrainingPrediction[]>([]);
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [isPredictingBatch, setIsPredictingBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{current: number; total: number}>({current: 0, total: 0});
   const [sortBy, setSortBy] = useState<'default' | 'pred_desc' | 'pred_asc'>('default');
   const [selectedPrediction, setSelectedPrediction] = useState<TrainingPrediction | null>(null);
   const [recommendedTimeframes, setRecommendedTimeframes] = useState<Map<string, TrainingTimeframe>>(new Map());
@@ -647,6 +648,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
 
     setIsPredictingBatch(true);
+    setBatchProgress({current: 0, total: 0});
     
     // Filtrar activos que ya tienen predicción cacheada
     const assetsNeedingPrediction = selectedAssetsList.filter(
@@ -664,17 +666,33 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     let errorCount = 0;
 
     try {
-      // BATCH API: Obtener todas las predicciones en una sola llamada
+      // BATCH API: Dividir en chunks de 20 máximo
       const symbolsToPredict = assetsNeedingPrediction.map(a => a.symbol);
-      console.log(`[DEBUG] Batch request for ${symbolsToPredict.length} symbols:`, symbolsToPredict);
-      const batchResult = await apiClient.calculatePredictionBatch(symbolsToPredict, timeframeDays);
-      console.log(`[DEBUG] Batch response:`, batchResult);
+      const BATCH_SIZE = 20;
+      const chunks: string[][] = [];
+      for (let i = 0; i < symbolsToPredict.length; i += BATCH_SIZE) {
+        chunks.push(symbolsToPredict.slice(i, i + BATCH_SIZE));
+      }
+      
+      console.log(`[DEBUG] Batch request for ${symbolsToPredict.length} symbols in ${chunks.length} chunks`);
+      
+      // Hacer todas las peticiones batch y combinar resultados
+      const allResults: Record<string, any> = {};
+      for (const chunk of chunks) {
+        const batchResult = await apiClient.calculatePredictionBatch(chunk, timeframeDays);
+        Object.assign(allResults, batchResult.results);
+      }
+      console.log(`[DEBUG] Combined batch results for ${Object.keys(allResults).length} symbols`);
       
       // Procesar cada resultado
+      const totalToProcess = assetsNeedingPrediction.length;
+      let processed = 0;
+      setBatchProgress({current: 0, total: totalToProcess});
+      
       for (const asset of assetsNeedingPrediction) {
         setPredictingSymbol(asset.symbol);
         
-        const result = batchResult.results[asset.symbol];
+        const result = allResults[asset.symbol];
         const calculatedPrediction = result?.success ? result.data : null;
         
         try {
@@ -753,6 +771,8 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
           console.error(`[MarketPredictions] Error processing ${asset.symbol}:`, assetError);
           errorCount++;
         }
+        processed++;
+        setBatchProgress({current: processed, total: totalToProcess});
       }
     } catch (batchError) {
       console.error('[MarketPredictions] Error en batch prediction:', batchError);
@@ -1124,7 +1144,12 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
               disabled={selectedToPredictCount === 0 || isPredictingBatch}
             >
               {isPredictingBatch ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <>
+                  <ActivityIndicator size="small" color="#fff" />
+                  {batchProgress.total > 0 && (
+                    <Text style={styles.actionBtnText}>{batchProgress.current}/{batchProgress.total}</Text>
+                  )}
+                </>
               ) : (
                 <>
                   <Text style={styles.actionBtnIcon}>🔮</Text>
