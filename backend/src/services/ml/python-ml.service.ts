@@ -275,19 +275,34 @@ export const pythonMlService = {
 
   /**
    * Obtiene los pesos de modelos recomendados para un activo
+   * 
+   * NOTA: Los modelos 'symbol' y 'regime' requieren historial de predicciones
+   * verificadas. Si samples_used < MIN_SAMPLES_FOR_SPECIFIC, su peso se
+   * redistribuye al modelo 'global'.
    */
   async getModelWeights(symbol: string): Promise<Record<string, number>> {
+    const MIN_SAMPLES_FOR_SPECIFIC = 10; // Mínimo para usar modelos específicos
     const profile = await this.classifyAsset(symbol);
     
     if (profile && profile.model_weights) {
+      // Si no hay suficientes muestras, deshabilitar modelos que requieren historial
+      if ((profile.samples_used || 0) < MIN_SAMPLES_FOR_SPECIFIC) {
+        const weights = { ...profile.model_weights };
+        // Redistribuir peso de symbol y regime al global
+        const redistributed = (weights.symbol || 0) + (weights.regime || 0);
+        weights.symbol = 0;
+        weights.regime = 0;
+        weights.global = (weights.global || 0.25) + redistributed;
+        return weights;
+      }
       return profile.model_weights;
     }
 
-    // Pesos por defecto
+    // Pesos por defecto (sin historial = sin modelos específicos)
     return {
-      global: 0.25,
-      symbol: 0.15,
-      regime: 0.15,
+      global: 0.55, // Absorbe el peso de symbol y regime
+      symbol: 0.00, // Deshabilitado: requiere historial
+      regime: 0.00, // Deshabilitado: requiere historial
       momentum: 0.15,
       mean_reversion: 0.10,
       fundamental: 0.10,
@@ -327,19 +342,20 @@ export const pythonMlService = {
       },
       
       recommended_models: isCrypto 
-        ? ['momentum', 'sentiment_driven', 'regime']
+        ? ['momentum', 'sentiment_driven', 'global']
         : isETF 
-          ? ['fundamental', 'regime', 'global']
-          : ['global', 'momentum', 'symbol'],
+          ? ['fundamental', 'mean_reversion', 'global']
+          : ['global', 'momentum', 'fundamental'],
       
+      // NOTA: symbol y regime deshabilitados por defecto (requieren historial)
       model_weights: {
-        global: 0.20,
-        symbol: 0.15,
-        regime: 0.15,
-        momentum: isCrypto ? 0.20 : 0.15,
-        mean_reversion: 0.10,
-        fundamental: isCrypto ? 0.05 : isETF ? 0.15 : 0.10,
-        sentiment_driven: isCrypto ? 0.15 : 0.10,
+        global: 0.35, // Mayor peso sin modelos específicos
+        symbol: 0.00, // Deshabilitado: requiere historial específico del activo
+        regime: 0.00, // Deshabilitado: requiere historial para detectar régimen
+        momentum: isCrypto ? 0.25 : 0.20,
+        mean_reversion: isCrypto ? 0.15 : 0.15,
+        fundamental: isCrypto ? 0.10 : isETF ? 0.20 : 0.15,
+        sentiment_driven: isCrypto ? 0.15 : 0.15,
       },
       
       classified_at: new Date().toISOString(),

@@ -1,6 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { TIMEFRAME_INFO, TrainingPrediction } from '../../services/training-cache-service';
 
 interface TrainingPredictionAnalysisModalProps {
@@ -185,11 +185,9 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
                   {renderFactorScore('Sentimiento', '💬', 'sentiment')}
                   {renderFactorScore('Noticias', '📰', 'news')}
                   {renderFactorScore('Macro', '🌍', 'macro')}
-                  {renderFactorScore('Competidores', '🏭', 'competitors')}
                   {renderFactorScore('Forex', '💱', 'forex')}
                   {renderFactorScore('Institucionales', '🏛️', 'institutional')}
                   {renderFactorScore('Financieros', '💰', 'financials')}
-                  {renderFactorScore('Expectativas', '🎯', 'expectations')}
                 </View>
 
                 {analysis.factorBreakdown.confidenceExplanation && (

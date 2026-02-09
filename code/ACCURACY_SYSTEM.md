@@ -121,7 +121,7 @@ Este sistema permite:
 
 ## Próximos Pasos
 
-- [x] ~~Usar `accuracyScore` para ajustar pesos de factores~~ ✅ Implementado en `weight-optimizer-service.ts`
+- [x] ~~Usar `accuracyScore` para ajustar pesos de factores~~ ✅ Implementado en Python ML (factor-weight-learning.service.ts coordina)
 - [x] ~~Penalizar más las predicciones "poor" en el entrenamiento~~ ✅ Poor +25%, Failed +50% penalización extra
 - [x] ~~Ajustar pesos según volatilidad del activo~~ ✅ Implementado en `prediction-calculator.ts`
 - [x] ~~Crear modelo ML que prediga el accuracy esperado~~ ✅ Implementado en `accuracy-predictor-service.ts`
@@ -134,7 +134,7 @@ Este sistema permite:
 La función de pérdida ahora incluye 4 componentes:
 
 ```typescript
-// En weight-optimizer-service.ts
+// Configuración en Python neural_network_trainer.py
 LOSS_ALPHA = 0.35  // Dirección correcta
 LOSS_BETA = 0.25   // Precisión de magnitud
 LOSS_GAMMA = 0.10  // Rango min-max
