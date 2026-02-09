@@ -14,7 +14,7 @@
 import { prisma } from '../../config/database.js';
 import { logger } from '../../middleware/logger.js';
 
-// Tipo para los multiplicadores de un clasificador (9 factores - competitors y seasonality eliminados)
+// Tipo para los multiplicadores de un clasificador (8 factores - competitors, seasonality y expectations eliminados)
 interface ClassifierMultipliers {
   trend: number;
   technical: number;
@@ -24,7 +24,6 @@ interface ClassifierMultipliers {
   forex: number;
   institutional: number;
   financials: number;
-  expectations: number;
 }
 
 // Estado completo del aprendizaje de clasificadores
@@ -51,7 +50,6 @@ const BASE_MULTIPLIERS: ClassifierMultipliers = {
   forex: 1.0,
   institutional: 1.0,
   financials: 1.0,
-  expectations: 1.0,
 };
 
 // Multiplicadores iniciales estáticos (los actuales del código)
@@ -59,7 +57,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
   large_cap_stock: {
     financials: 1.3,
     institutional: 1.2,
-    expectations: 1.3,
     forex: 0.8,
   },
   small_cap_stock: {
@@ -74,7 +71,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     news: 1.3,
     macro: 1.2,
     financials: 0.1,
-    expectations: 0.2,
   },
   crypto_alt: {
     sentiment: 1.8,
@@ -82,21 +78,18 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     news: 1.4,
     financials: 0.05,
     macro: 0.7,
-    expectations: 0.1,
   },
   etf_index: {
     macro: 1.4,
     trend: 1.2,
     forex: 1.1,
     financials: 0.3,
-    expectations: 0.5,
   },
   commodity: {
     macro: 1.5,
     forex: 2.0,
     sentiment: 0.7,
     financials: 0.1,
-    expectations: 0.3,
   },
   reit: {
     macro: 1.4,
@@ -110,7 +103,6 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     news: 1.2,
     financials: 0.1,
     institutional: 0.3,
-    expectations: 0.2,
   },
   adr: {
     forex: 1.5,

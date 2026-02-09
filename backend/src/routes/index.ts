@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { analysisRoutes } from './analysis.routes.js';
 import { assetRoutes } from './asset.routes.js';
+import { backtestRoutes } from './backtest.routes.js';
 import { favoriteRoutes } from './favorite.routes.js';
 import mlRoutes from './ml.routes.js';
 import { newsRoutes } from './news.routes.js';
@@ -24,5 +25,6 @@ router.use('/predictions', predictionRoutes);
 router.use('/analysis', analysisRoutes);
 router.use('/training', trainingRoutes);
 router.use('/ml', mlRoutes);
+router.use('/backtest', backtestRoutes);
 
 export const apiRoutes = router;

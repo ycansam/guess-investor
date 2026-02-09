@@ -39,10 +39,10 @@ const COLORS = {
   border: '#333355',
 };
 
-// Tipos de factor
+// Tipos de factor (expectations eliminado - deprecated)
 export type FactorType = 'technical' | 'macro' | 'sentiment' | 'news' | 'trend' | 
                          'competitors' | 'forex' | 'institutional' | 
-                         'financials' | 'expectations';
+                         'financials';
 
 interface Props {
   visible: boolean;
@@ -98,11 +98,6 @@ const FACTOR_CONFIG: Record<FactorType, { title: string; icon: string; descripti
     title: 'Financieros',
     icon: '💰',
     description: 'Métricas financieras: P/E, márgenes, deuda, target de analistas',
-  },
-  expectations: {
-    title: 'Expectativas',
-    icon: '🎯',
-    description: 'Estimaciones de analistas y expectativas del mercado',
   },
 };
 

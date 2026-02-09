@@ -371,9 +371,9 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                   const essentialFactors = getEssentialFactors(prediction.symbol || '');
                   const isEssential = essentialFactors.includes(factor.name);
                   
-                  // Factores que tienen modal con más detalles
+                  // Factores que tienen modal con más detalles (expectations eliminado)
                   const hasDetailModal = ['technical', 'macro', 'sentiment', 'news', 'trend', 'competitors', 
-                                          'forex', 'institutional', 'seasonality', 'financials', 'expectations']
+                                          'forex', 'institutional', 'seasonality', 'financials']
                                           .includes(factor.name);
                   
                   return (
@@ -390,7 +390,6 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                              factor.name === 'institutional' ? '🏛️ Institucionales' :
                              factor.name === 'seasonality' ? '📅 Estacionalidad' :
                              factor.name === 'financials' ? '💰 Financieros' :
-                             factor.name === 'expectations' ? '🎯 Expectativas' :
                              factor.name === 'technical' ? '📊 Técnico' : factor.name}
                             {isEssential && !factor.hasData && ' ⚠️'}
                           </Text>

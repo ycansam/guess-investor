@@ -1108,7 +1108,79 @@ export const apiClient = {
   getMLStatus: (): Promise<MLModelsStatus> => {
     return get('/ml/status');
   },
+
+  // -------------------------------------------------------------------------
+  // BACKTESTING
+  // -------------------------------------------------------------------------
+
+  /**
+   * Ejecutar backtest para un símbolo
+   */
+  runBacktest: (symbol: string, days?: number, timeframe?: number): Promise<BacktestResult> => {
+    return post('/backtest', { symbol, days: days || 90, timeframe: timeframe || 5 });
+  },
+
+  /**
+   * Obtener resumen de backtesting multi-timeframe
+   */
+  getBacktestSummary: (symbol: string, days?: number): Promise<BacktestSummary> => {
+    const params = days ? `?days=${days}` : '';
+    return get(`/backtest/summary/${encodeURIComponent(symbol)}${params}`);
+  },
+
+  /**
+   * Ejecutar backtest por lotes
+   */
+  runBacktestBatch: (symbols: string[], days?: number): Promise<{
+    tested: number;
+    successful: number;
+    results: Array<{ symbol: string; success: boolean; data?: BacktestSummary; error?: string }>;
+  }> => {
+    return post('/backtest/batch', { symbols, days: days || 60 });
+  },
 };
+
+// Tipos para backtesting
+export interface BacktestResult {
+  symbol: string;
+  period: string;
+  timeframe: string;
+  totalPredictions: number;
+  directionAccuracy: string;
+  avgError: string;
+  upAccuracy: string;
+  downAccuracy: string;
+  quality: {
+    excellent: number;
+    good: number;
+    poor: number;
+    failed: number;
+  };
+  advanced: {
+    sharpeRatio: string;
+    maxDrawdown: string;
+    winRate: string;
+    profitFactor: string;
+  };
+  recentPredictions: Array<{
+    date: string;
+    predicted: string;
+    actual: string;
+    correct: boolean;
+    score: number;
+  }>;
+  durationMs: number;
+}
+
+export interface BacktestSummary {
+  symbol: string;
+  period: string;
+  totalTests: number;
+  directionAccuracy: number;
+  avgAccuracyScore: number;
+  bestTimeframe: number;
+  recommendation: string;
+}
 
 // Export por defecto
 export default apiClient;
