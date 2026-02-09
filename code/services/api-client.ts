@@ -718,6 +718,19 @@ export const apiClient = {
   },
 
   /**
+   * Calcular múltiples predicciones en paralelo (sin guardar)
+   * Más eficiente que múltiples llamadas individuales
+   * Máximo 20 símbolos por batch
+   */
+  calculatePredictionBatch: (symbols: string[], days: number = 1): Promise<{
+    results: Record<string, { success: boolean; data?: CalculatedPrediction; error?: string }>;
+    totalRequested: number;
+    totalSuccess: number;
+  }> => {
+    return post('/predictions/calculate-batch', { symbols, days });
+  },
+
+  /**
    * Crear y guardar predicción (recalcula todo)
    */
   createPrediction: (symbol: string, days: number = 1): Promise<CalculatedPrediction & { id: string }> => {

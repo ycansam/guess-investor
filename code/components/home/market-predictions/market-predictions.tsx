@@ -7,30 +7,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  FlatList,
-  PanResponder,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  useWindowDimensions,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    FlatList,
+    PanResponder,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View
 } from 'react-native';
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { MarketAsset, marketDataService } from '../../../services/market-data-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
-  TIMEFRAME_INFO,
-  trainingCacheService,
-  TrainingPrediction,
-  TrainingTimeframe,
+    TIMEFRAME_INFO,
+    trainingCacheService,
+    TrainingPrediction,
+    TrainingTimeframe,
 } from '../../../services/training-cache-service';
 import { TrainingPredictionAnalysisModal } from '../../training-prediction-analysis-modal/training-prediction-analysis-modal';
 import { useHome } from '../use-home';
@@ -637,7 +637,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     return [...applySorting(withPrediction), ...applySorting(favoritesWithoutPrediction), ...applySorting(rest)];
   }, [displayedAssets, sortBy, selectedTimeframe, cachedPredictions, favoriteSymbols]);
 
-  // Predecir todos los seleccionados
+  // Predecir todos los seleccionados (usando batch API)
   const predictSelected = useCallback(async () => {
     const selectedAssetsList = displayedAssets.filter(a => selectedSymbols.has(a.symbol) && a.price !== undefined);
     
@@ -647,108 +647,123 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
     }
 
     setIsPredictingBatch(true);
+    
+    // Filtrar activos que ya tienen predicción cacheada
+    const assetsNeedingPrediction = selectedAssetsList.filter(
+      asset => !getCachedPrediction(asset.symbol, selectedTimeframe)
+    );
+    
+    if (assetsNeedingPrediction.length === 0) {
+      console.log('Todas las predicciones seleccionadas ya están cacheadas');
+      setIsPredictingBatch(false);
+      return;
+    }
+
+    const timeframeDays = selectedTimeframe === 'intraday' ? 1 : selectedTimeframe === 'swing' ? 7 : 30;
     let successCount = 0;
     let errorCount = 0;
 
-    for (const asset of selectedAssetsList) {
-      try {
-        // Verificar si ya hay predicción cacheada
-        if (getCachedPrediction(asset.symbol, selectedTimeframe)) {
-          continue;
-        }
-
+    try {
+      // BATCH API: Obtener todas las predicciones en una sola llamada
+      const symbolsToPredict = assetsNeedingPrediction.map(a => a.symbol);
+      console.log(`[DEBUG] Batch request for ${symbolsToPredict.length} symbols:`, symbolsToPredict);
+      const batchResult = await apiClient.calculatePredictionBatch(symbolsToPredict, timeframeDays);
+      console.log(`[DEBUG] Batch response:`, batchResult);
+      
+      // Procesar cada resultado
+      for (const asset of assetsNeedingPrediction) {
         setPredictingSymbol(asset.symbol);
-
-        // Obtener predicción real del backend
-        const timeframeDays = selectedTimeframe === 'intraday' ? 1 : selectedTimeframe === 'swing' ? 7 : 30;
-        const calculatedPrediction = await apiClient.calculatePrediction(
-          asset.symbol,
-          timeframeDays
-        );
-
-        // Usar datos del calculador si está disponible, o fallback a momentum
-        let direction: 'up' | 'down' | 'neutral';
-        let confidence: number;
-        let predictedChange: number;
-        let reasoning: string;
-
-        // Variables para precio base y objetivo - usar backend cuando esté disponible
-        let basePrice: number = asset.price!;
-        let targetPriceCalc: number = asset.price! * (1 + predictedChange / 100);
-
-        if (calculatedPrediction) {
-          direction = calculatedPrediction.direction;
-          confidence = calculatedPrediction.confidence;
-          predictedChange = calculatedPrediction.predictedChange;
-          reasoning = `Score: ${calculatedPrediction.factorBreakdown?.confidenceExplanation || 'Basado en análisis de 11 factores'}`;
-          // IMPORTANTE: Usar precio del backend (previousClose) para consistencia
-          basePrice = calculatedPrediction.currentPrice;
-          targetPriceCalc = (calculatedPrediction.predictedPriceMin + calculatedPrediction.predictedPriceMax) / 2;
-        } else {
-          // Fallback a momentum si el calculador falla
-          const momentum = asset.changePercent ?? 0;
-          direction = momentum > 0.2 ? 'up' : momentum < -0.2 ? 'down' : 'neutral';
-          confidence = Math.round(Math.min(85, Math.max(45, 60 + Math.abs(momentum) * 2)));
-          predictedChange = Math.round((direction === 'up' ? Math.abs(momentum) * 0.5 : direction === 'down' ? -Math.abs(momentum) * 0.5 : 0) * 100) / 100;
-          reasoning = `Basado en momentum actual (${momentum.toFixed(2)}%)`;
-        }
-
-        const prediction = await trainingCacheService.set(asset.symbol, selectedTimeframe, {
-          symbol: asset.symbol,
-          name: asset.name,
-          icon: asset.icon,
-          timeframe: selectedTimeframe,
-          direction,
-          confidence,
-          predictedChange,
-          currentPrice: basePrice,
-          targetPrice: targetPriceCalc,
-          currency: calculatedPrediction?.currency, // IMPORTANTE: Guardar la moneda real del activo
-          reasoning,
-          analysisData: calculatedPrediction || undefined, // Guardar análisis completo
-          createdAt: new Date(),
-        });
-
-        // Registrar predicción para tracking de estadísticas ML
-        // Usar valores del backend cuando disponibles
-        const predMinPrice = calculatedPrediction?.predictedPriceMin ?? basePrice * (1 + (predictedChange - 2) / 100);
-        const predMaxPrice = calculatedPrediction?.predictedPriceMax ?? basePrice * (1 + (predictedChange + 2) / 100);
+        
+        const result = batchResult.results[asset.symbol];
+        const calculatedPrediction = result?.success ? result.data : null;
         
         try {
-          await predictionTrackingService.trackPrediction({
+          // Usar datos del calculador si está disponible, o fallback a momentum
+          let direction: 'up' | 'down' | 'neutral';
+          let confidence: number;
+          let predictedChange: number;
+          let reasoning: string;
+          let basePrice: number = asset.price!;
+          let targetPriceCalc: number;
+
+          if (calculatedPrediction) {
+            direction = calculatedPrediction.direction;
+            confidence = calculatedPrediction.confidence;
+            predictedChange = calculatedPrediction.predictedChange;
+            reasoning = `Score: ${calculatedPrediction.factorBreakdown?.confidenceExplanation || 'Basado en análisis de 11 factores'}`;
+            basePrice = calculatedPrediction.currentPrice;
+            targetPriceCalc = (calculatedPrediction.predictedPriceMin + calculatedPrediction.predictedPriceMax) / 2;
+          } else {
+            // Fallback a momentum si el calculador falla
+            const momentum = asset.changePercent ?? 0;
+            direction = momentum > 0.2 ? 'up' : momentum < -0.2 ? 'down' : 'neutral';
+            confidence = Math.round(Math.min(85, Math.max(45, 60 + Math.abs(momentum) * 2)));
+            predictedChange = Math.round((direction === 'up' ? Math.abs(momentum) * 0.5 : direction === 'down' ? -Math.abs(momentum) * 0.5 : 0) * 100) / 100;
+            reasoning = `Basado en momentum actual (${momentum.toFixed(2)}%)`;
+            targetPriceCalc = basePrice * (1 + predictedChange / 100);
+          }
+
+          const prediction = await trainingCacheService.set(asset.symbol, selectedTimeframe, {
             symbol: asset.symbol,
-            asset: asset.name,
-            assetType: 'stock',
-            currency: calculatedPrediction?.currency, // IMPORTANTE: Guardar la moneda real del activo
+            name: asset.name,
+            icon: asset.icon,
+            timeframe: selectedTimeframe,
             direction,
-            predictedChange,
-            predictedPriceMin: predMinPrice,
-            predictedPriceMax: predMaxPrice,
             confidence,
+            predictedChange,
             currentPrice: basePrice,
-            timeframe: selectedTimeframe, // Usar key (swing) en lugar de label (Swing)
-            timeframeDays,
-            volatility: calculatedPrediction?.historical?.volatility,
+            targetPrice: targetPriceCalc,
+            currency: calculatedPrediction?.currency,
+            reasoning,
+            analysisData: calculatedPrediction || undefined,
+            createdAt: new Date(),
           });
-          console.log(`[MarketPredictions] Tracking registrado para ${asset.symbol}`);
-        } catch (trackError) {
-          console.error(`[MarketPredictions] Error en tracking de ${asset.symbol}:`, trackError);
-        }
+          console.log(`[DEBUG] Saved prediction for ${asset.symbol}:`, prediction?.id, prediction?.timeframe);
 
-        if (onPredictionMade) {
-          onPredictionMade(prediction);
-        }
+          // Registrar predicción para tracking de estadísticas ML
+          const predMinPrice = calculatedPrediction?.predictedPriceMin ?? basePrice * (1 + (predictedChange - 2) / 100);
+          const predMaxPrice = calculatedPrediction?.predictedPriceMax ?? basePrice * (1 + (predictedChange + 2) / 100);
+          
+          try {
+            await predictionTrackingService.trackPrediction({
+              symbol: asset.symbol,
+              asset: asset.name,
+              assetType: 'stock',
+              currency: calculatedPrediction?.currency,
+              direction,
+              predictedChange,
+              predictedPriceMin: predMinPrice,
+              predictedPriceMax: predMaxPrice,
+              confidence,
+              currentPrice: basePrice,
+              timeframe: selectedTimeframe,
+              timeframeDays,
+              volatility: calculatedPrediction?.historical?.volatility,
+            });
+          } catch (trackError) {
+            console.error(`[MarketPredictions] Error en tracking de ${asset.symbol}:`, trackError);
+          }
 
-        successCount++;
-      } catch (error) {
-        console.error(`[MarketPredictions] Error predicting ${asset.symbol}:`, error);
-        errorCount++;
+          if (onPredictionMade) {
+            onPredictionMade(prediction);
+          }
+
+          successCount++;
+        } catch (assetError) {
+          console.error(`[MarketPredictions] Error processing ${asset.symbol}:`, assetError);
+          errorCount++;
+        }
       }
+    } catch (batchError) {
+      console.error('[MarketPredictions] Error en batch prediction:', batchError);
+      errorCount = assetsNeedingPrediction.length;
     }
 
     setPredictingSymbol(null);
     setIsPredictingBatch(false);
+    console.log(`[DEBUG] Fetching all active predictions...`);
     const batchUpdatedPredictions = await trainingCacheService.getAllActive();
+    console.log(`[DEBUG] getAllActive returned ${batchUpdatedPredictions.length} predictions:`, batchUpdatedPredictions.map(p => `${p.symbol}:${p.timeframe}`));
     setCachedPredictions(batchUpdatedPredictions);
     setSelectedSymbols(new Set());
 

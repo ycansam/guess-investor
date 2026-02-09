@@ -2,6 +2,7 @@ import { Prediction } from '@prisma/client';
 import { Request, Response } from 'express';
 import { prisma } from '../config/database.js';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
+import { logger } from '../middleware/logger.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
 import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
 import { trainingRepository } from '../repositories/training.repository.js';
@@ -319,6 +320,77 @@ export const predictionController = {
     res.json({
       success: true,
       data: prediction,
+    });
+  }),
+
+  /**
+   * POST /api/predictions/calculate-batch
+   * Calcular múltiples predicciones en paralelo (sin guardar)
+   * Body: { symbols: string[], days?: number }
+   * Retorna: { results: Record<symbol, prediction | error> }
+   */
+  calculateBatch: asyncHandler(async (req: Request, res: Response) => {
+    const { symbols, days = 1 } = req.body;
+    
+    if (!Array.isArray(symbols) || symbols.length === 0) {
+      throw BadRequestError('symbols array is required');
+    }
+
+    if (symbols.length > 20) {
+      throw BadRequestError('Maximum 20 symbols per batch');
+    }
+
+    const startTime = Date.now();
+    logger.info(`[Prediction] Batch calculate: ${symbols.length} symbols, ${days} days`);
+
+    // Calcular todas las predicciones en paralelo
+    const results = await Promise.allSettled(
+      symbols.map(async (symbol: string) => {
+        const normalizedSymbol = symbol.toUpperCase();
+        const type = normalizedSymbol.includes('-USD') || normalizedSymbol.includes('-EUR') ? 'crypto' : 'stock';
+        
+        const prediction = await predictionCalculatorService.calculatePrediction(
+          normalizedSymbol,
+          type as 'stock' | 'crypto',
+          days
+        );
+        
+        return { symbol: normalizedSymbol, prediction };
+      })
+    );
+
+    // Formatear resultados: incluir tanto éxitos como errores
+    const formattedResults: Record<string, any> = {};
+    
+    results.forEach((result, index) => {
+      const symbol = symbols[index].toUpperCase();
+      
+      if (result.status === 'fulfilled' && result.value.prediction) {
+        formattedResults[symbol] = {
+          success: true,
+          data: result.value.prediction,
+        };
+      } else {
+        formattedResults[symbol] = {
+          success: false,
+          error: result.status === 'rejected' 
+            ? result.reason?.message || 'Unknown error'
+            : 'No prediction available',
+        };
+      }
+    });
+
+    const successCount = Object.values(formattedResults).filter(r => r.success).length;
+    const elapsed = Date.now() - startTime;
+    logger.info(`[Prediction] Batch complete: ${successCount}/${symbols.length} success in ${elapsed}ms`);
+
+    res.json({
+      success: true,
+      data: {
+        results: formattedResults,
+        totalRequested: symbols.length,
+        totalSuccess: successCount,
+      },
     });
   }),
 

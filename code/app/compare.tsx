@@ -67,19 +67,41 @@ export default function CompareScreen() {
     }));
     setCompareData(newData);
 
-    // Cargar predicciones en paralelo
-    const results = await Promise.all(
-      validSymbols.map(async (symbol) => {
-        try {
-          const prediction = await apiClient.calculatePrediction(symbol.toUpperCase(), 1);
-          return { symbol: symbol.toUpperCase(), prediction, loading: false };
-        } catch (error: any) {
-          return { symbol: symbol.toUpperCase(), prediction: null, loading: false, error: error.message };
-        }
-      })
-    );
+    try {
+      // Usar batch para cargar todas las predicciones en una sola petición
+      const batchResult = await apiClient.calculatePredictionBatch(
+        validSymbols.map(s => s.toUpperCase()),
+        1
+      );
 
-    setCompareData(results);
+      // Mapear resultados
+      const results: CompareData[] = validSymbols.map(symbol => {
+        const normalizedSymbol = symbol.toUpperCase();
+        const result = batchResult.results[normalizedSymbol];
+        
+        if (result?.success && result.data) {
+          return { symbol: normalizedSymbol, prediction: result.data, loading: false };
+        } else {
+          return { 
+            symbol: normalizedSymbol, 
+            prediction: null, 
+            loading: false, 
+            error: result?.error || 'Error al calcular predicción' 
+          };
+        }
+      });
+
+      setCompareData(results);
+    } catch (error: any) {
+      // Fallback: si falla el batch, marcar todos como error
+      setCompareData(validSymbols.map(symbol => ({
+        symbol: symbol.toUpperCase(),
+        prediction: null,
+        loading: false,
+        error: error.message || 'Error de conexión',
+      })));
+    }
+    
     setIsComparing(false);
   };
 

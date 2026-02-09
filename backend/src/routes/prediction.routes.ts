@@ -33,6 +33,9 @@ router.post('/', predictionController.create);
 // POST /api/predictions/calculate - Solo calcular (preview)
 router.post('/calculate', predictionController.calculate);
 
+// POST /api/predictions/calculate-batch - Calcular múltiples predicciones en paralelo
+router.post('/calculate-batch', predictionController.calculateBatch);
+
 // POST /api/predictions/track - Registrar predicción para tracking
 router.post('/track', predictionController.track);
 

@@ -234,11 +234,13 @@ class TrainingCacheService {
   async getAllActive(): Promise<TrainingPrediction[]> {
     try {
       const data = await apiClient.getTrainingCache();
+      console.log(`[TrainingCache] getAllActive: backend returned ${data?.length || 0} items`);
       const now = new Date();
       
-      return data
-        .map((item: any) => this.parseBackendData(item))
-        .filter((p: TrainingPrediction) => p.expiresAt > now);
+      const parsed = data.map((item: any) => this.parseBackendData(item));
+      const filtered = parsed.filter((p: TrainingPrediction) => p.expiresAt > now);
+      console.log(`[TrainingCache] getAllActive: after filter ${filtered.length} active (now: ${now.toISOString()})`);
+      return filtered;
     } catch (error) {
       console.error('[TrainingCache] Error getting all active:', error);
       
