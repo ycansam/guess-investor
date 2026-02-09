@@ -373,7 +373,8 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                   
                   // Factores que tienen modal con más detalles (expectations eliminado)
                   const hasDetailModal = ['technical', 'macro', 'sentiment', 'news', 'trend', 'competitors', 
-                                          'forex', 'institutional', 'seasonality', 'financials']
+                                          'forex', 'institutional', 'seasonality', 'financials',
+                                          'intradayTrend', 'volumeProfile', 'volatilityIV', 'marketBreadth']
                                           .includes(factor.name);
                   
                   return (
@@ -390,7 +391,13 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                              factor.name === 'institutional' ? '🏛️ Institucionales' :
                              factor.name === 'seasonality' ? '📅 Estacionalidad' :
                              factor.name === 'financials' ? '💰 Financieros' :
-                             factor.name === 'technical' ? '📊 Técnico' : factor.name}
+                             factor.name === 'technical' ? '📊 Técnico' :
+                             factor.name === 'intradayTrend' ? '⚡ Intradía' :
+                             factor.name === 'volumeProfile' ? '📊 Volumen' :
+                             factor.name === 'volatilityIV' ? '📉 Volatilidad IV' :
+                             factor.name === 'marketBreadth' ? '🌐 Amplitud' :
+                             factor.name === 'optionsFlow' ? '🎯 Opciones' :
+                             factor.name === 'divergences' ? '↔️ Divergencias' : factor.name}
                             {isEssential && !factor.hasData && ' ⚠️'}
                           </Text>
                           {/* Botón para abrir modal con detalles del factor */}
@@ -398,7 +405,7 @@ export const PredictionCardAnalysis: React.FC<PredictionCardAnalysisProps> = ({ 
                             <Pressable
                               onPress={() => setFactorModal({ 
                                 visible: true, 
-                                type: factor.name as FactorType,
+                                type: factor.name.toLowerCase() as FactorType,
                                 score: factor.hasData ? factor.score : undefined
                               })}
                               style={({ pressed }) => ({
