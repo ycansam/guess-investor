@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { TIMEFRAME_INFO, TrainingPrediction } from '../../services/training-cache-service';
+import { FactorDetailModal, FactorType } from '../factor-detail-modal';
 
 interface TrainingPredictionAnalysisModalProps {
   prediction: TrainingPrediction | null;
@@ -13,6 +14,7 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
   onClose,
 }) => {
   const [auditExpanded, setAuditExpanded] = useState<boolean>(false);
+  const [selectedFactor, setSelectedFactor] = useState<{ type: FactorType; score: number | null } | null>(null);
   
   if (!prediction) return null;
 
@@ -29,6 +31,9 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
 
   const renderFactorScore = (name: string, emoji: string, factorKey: string) => {
     const score = getFactorScore(factorKey);
+    const factorType = factorKey.toLowerCase() as FactorType;
+    const hasDetailModal = ['technical', 'macro', 'sentiment', 'news', 'trend', 'forex', 'institutional', 'financials', 'intradaytrend', 'volumeprofile', 'volatilityiv', 'marketbreadth'].includes(factorType);
+    
     if (score === null || isNaN(score)) {
       return (
         <View key={name} style={styles.factorItem}>
@@ -37,6 +42,14 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
             <Text style={styles.factorName}>{name}</Text>
             <Text style={styles.factorScore}>N/D</Text>
           </View>
+          {hasDetailModal && (
+            <TouchableOpacity 
+              style={styles.factorEyeButton}
+              onPress={() => setSelectedFactor({ type: factorType, score: null })}
+            >
+              <Ionicons name="eye-outline" size={18} color="#60a5fa" />
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
@@ -53,6 +66,14 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
             {sign}{Math.round(score)}
           </Text>
         </View>
+        {hasDetailModal && (
+          <TouchableOpacity 
+            style={styles.factorEyeButton}
+            onPress={() => setSelectedFactor({ type: factorType, score })}
+          >
+            <Ionicons name="eye-outline" size={18} color="#60a5fa" />
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -188,6 +209,10 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
                   {renderFactorScore('Forex', '💱', 'forex')}
                   {renderFactorScore('Institucionales', '🏛️', 'institutional')}
                   {renderFactorScore('Financieros', '💰', 'financials')}
+                  {renderFactorScore('Intradía', '⚡', 'intradayTrend')}
+                  {renderFactorScore('Volumen', '📊', 'volumeProfile')}
+                  {renderFactorScore('Volatilidad IV', '📉', 'volatilityIV')}
+                  {renderFactorScore('Amplitud', '🌐', 'marketBreadth')}
                 </View>
 
                 {analysis.factorBreakdown.confidenceExplanation && (
@@ -474,6 +499,17 @@ export const TrainingPredictionAnalysisModal: React.FC<TrainingPredictionAnalysi
           </View>
         </View>
       </View>
+
+      {/* Modal de detalle de factor */}
+      {selectedFactor && (
+        <FactorDetailModal
+          visible={true}
+          onClose={() => setSelectedFactor(null)}
+          factorType={selectedFactor.type}
+          symbol={prediction.symbol}
+          score={selectedFactor.score ?? undefined}
+        />
+      )}
     </Modal>
   );
 };
@@ -693,6 +729,12 @@ const styles = StyleSheet.create({
   factorScore: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  factorEyeButton: {
+    padding: 8,
+    marginLeft: 8,
+    borderRadius: 6,
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
   },
   warningBox: {
     backgroundColor: 'rgba(245, 158, 11, 0.1)',

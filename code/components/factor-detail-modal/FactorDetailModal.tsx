@@ -41,8 +41,9 @@ const COLORS = {
 
 // Tipos de factor (expectations eliminado - deprecated)
 export type FactorType = 'technical' | 'macro' | 'sentiment' | 'news' | 'trend' | 
-                         'competitors' | 'forex' | 'institutional' | 
-                         'financials';
+                         'competitors' | 'forex' | 'institutional' | 'financials' |
+                         'intradaytrend' | 'volumeprofile' | 'volatilityiv' | 'marketbreadth' |
+                         'optionsflow' | 'divergences';
 
 interface Props {
   visible: boolean;
@@ -98,6 +99,36 @@ const FACTOR_CONFIG: Record<FactorType, { title: string; icon: string; descripti
     title: 'Financieros',
     icon: '💰',
     description: 'Métricas financieras: P/E, márgenes, deuda, target de analistas',
+  },
+  intradaytrend: {
+    title: 'Tendencia Intradía',
+    icon: '⚡',
+    description: 'Momentum corto plazo, VWAP, Pivot Points, tendencia 1h/4h',
+  },
+  volumeprofile: {
+    title: 'Perfil de Volumen',
+    icon: '📊',
+    description: 'POC (Point of Control), Value Area, clusters de volumen',
+  },
+  volatilityiv: {
+    title: 'Volatilidad IV',
+    icon: '📉',
+    description: 'Volatilidad implícita vs realizada, opciones ATM/OTM',
+  },
+  marketbreadth: {
+    title: 'Amplitud de Mercado',
+    icon: '🌐',
+    description: 'Ratio A/D, nuevos máximos/mínimos, salud del mercado',
+  },
+  optionsflow: {
+    title: 'Flujo de Opciones',
+    icon: '🎯',
+    description: 'Put/Call ratio, volumen inusual, gamma exposure',
+  },
+  divergences: {
+    title: 'Divergencias',
+    icon: '↔️',
+    description: 'Divergencias precio-indicador (RSI, MACD, volumen)',
   },
 };
 
@@ -1520,8 +1551,248 @@ const GenericDetail = ({ data, factorType }: { data: any; factorType: FactorType
         </View>
       )}
 
+      {/* Sección específica para Volatilidad IV */}
+      {factorType === 'volatilityiv' && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>📉 Análisis de Volatilidad</Text>
+          <View style={styles.dataGrid}>
+            {typeof data.impliedVolatility === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>IV (Implícita)</Text>
+                <Text style={styles.dataValue}>{data.impliedVolatility.toFixed(1)}%</Text>
+              </View>
+            )}
+            {typeof data.realizedVolatility === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>RV (Realizada)</Text>
+                <Text style={styles.dataValue}>{data.realizedVolatility.toFixed(1)}%</Text>
+              </View>
+            )}
+            {typeof data.ivRvSpread === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Spread IV-RV</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.ivRvSpread > 10 ? COLORS.green : data.ivRvSpread < -10 ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.ivRvSpread > 0 ? '+' : ''}{data.ivRvSpread.toFixed(1)}%
+                </Text>
+              </View>
+            )}
+            {typeof data.ivPercentile === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Percentil IV</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.ivPercentile > 70 ? COLORS.green : data.ivPercentile < 30 ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.ivPercentile.toFixed(0)}%
+                </Text>
+              </View>
+            )}
+            {data.optionsPricing && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Opciones</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.optionsPricing === 'expensive' ? COLORS.green : 
+                         data.optionsPricing === 'cheap' ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.optionsPricing === 'expensive' ? '💰 Caras' : 
+                   data.optionsPricing === 'cheap' ? '🏷️ Baratas' : '⚖️ Fair'}
+                </Text>
+              </View>
+            )}
+            {data.volatilityRegime && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Régimen</Text>
+                <Text style={styles.dataValue}>
+                  {data.volatilityRegime === 'extreme' ? '🔥 Extremo' : 
+                   data.volatilityRegime === 'high' ? '📈 Alto' : 
+                   data.volatilityRegime === 'elevated' ? '⬆️ Elevado' :
+                   data.volatilityRegime === 'low' ? '📉 Bajo' : '➡️ Normal'}
+                </Text>
+              </View>
+            )}
+            {typeof data.vixLevel === 'number' && data.vixLevel > 0 && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>VIX</Text>
+                <Text style={styles.dataValue}>{data.vixLevel.toFixed(1)}</Text>
+              </View>
+            )}
+            {typeof data.expectedMove === 'number' && data.expectedMove > 0 && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Mov. Esperado</Text>
+                <Text style={styles.dataValue}>±{data.expectedMove.toFixed(2)}%</Text>
+              </View>
+            )}
+          </View>
+          {data.tradingImplication && (
+            <View style={styles.summaryBox}>
+              <Text style={styles.summaryText}>💡 {data.tradingImplication}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Sección específica para Tendencia Intradía */}
+      {factorType === 'intradaytrend' && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>⚡ Tendencia Intradía</Text>
+          <View style={styles.dataGrid}>
+            {data.vwap && typeof data.vwap.price === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>VWAP</Text>
+                <Text style={styles.dataValue}>${data.vwap.price.toFixed(2)}</Text>
+              </View>
+            )}
+            {data.vwap && data.vwap.position && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Vs VWAP</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.vwap.position === 'above' ? COLORS.green : COLORS.red 
+                }]}>
+                  {data.vwap.position === 'above' ? '📈 Arriba' : '📉 Abajo'}
+                </Text>
+              </View>
+            )}
+            {data.momentum && data.momentum.short && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Momentum 1h</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.momentum.short > 0 ? COLORS.green : data.momentum.short < 0 ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.momentum.short > 0 ? '+' : ''}{data.momentum.short.toFixed(1)}
+                </Text>
+              </View>
+            )}
+            {data.momentum && typeof data.momentum.medium === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Momentum 4h</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.momentum.medium > 0 ? COLORS.green : data.momentum.medium < 0 ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.momentum.medium > 0 ? '+' : ''}{data.momentum.medium.toFixed(1)}
+                </Text>
+              </View>
+            )}
+            {data.pivots && typeof data.pivots.pivot === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Pivot</Text>
+                <Text style={styles.dataValue}>${data.pivots.pivot.toFixed(2)}</Text>
+              </View>
+            )}
+            {data.trend && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Tendencia</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.trend === 'bullish' ? COLORS.green : data.trend === 'bearish' ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.trend === 'bullish' ? '🐂 Alcista' : data.trend === 'bearish' ? '🐻 Bajista' : '➡️ Neutral'}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Sección específica para Perfil de Volumen */}
+      {factorType === 'volumeprofile' && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>📊 Perfil de Volumen</Text>
+          <View style={styles.dataGrid}>
+            {data.poc && typeof data.poc.price === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>POC</Text>
+                <Text style={styles.dataValue}>${data.poc.price.toFixed(2)}</Text>
+              </View>
+            )}
+            {data.poc && data.poc.percentage && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>% vol en POC</Text>
+                <Text style={styles.dataValue}>{data.poc.percentage.toFixed(1)}%</Text>
+              </View>
+            )}
+            {data.valueArea && (
+              <>
+                <View style={styles.dataItem}>
+                  <Text style={styles.dataLabel}>VAH (Alto)</Text>
+                  <Text style={styles.dataValue}>${data.valueArea.high?.toFixed(2) || 'N/A'}</Text>
+                </View>
+                <View style={styles.dataItem}>
+                  <Text style={styles.dataLabel}>VAL (Bajo)</Text>
+                  <Text style={styles.dataValue}>${data.valueArea.low?.toFixed(2) || 'N/A'}</Text>
+                </View>
+              </>
+            )}
+            {data.volumeBias && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Sesgo Volumen</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.volumeBias === 'accumulation' ? COLORS.green : 
+                         data.volumeBias === 'distribution' ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.volumeBias === 'accumulation' ? '📈 Acumulación' : 
+                   data.volumeBias === 'distribution' ? '📉 Distribución' : '➡️ Neutral'}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Sección específica para Market Breadth */}
+      {factorType === 'marketbreadth' && (
+        <View style={styles.indicatorSection}>
+          <Text style={styles.indicatorTitle}>🌐 Amplitud de Mercado</Text>
+          <View style={styles.dataGrid}>
+            {typeof data.advanceDeclineRatio === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Ratio A/D</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.advanceDeclineRatio > 1.2 ? COLORS.green : 
+                         data.advanceDeclineRatio < 0.8 ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.advanceDeclineRatio.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            {typeof data.percentAbove200MA === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>% &gt; MA200</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.percentAbove200MA > 60 ? COLORS.green : 
+                         data.percentAbove200MA < 40 ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.percentAbove200MA.toFixed(0)}%
+                </Text>
+              </View>
+            )}
+            {typeof data.newHighsLowsRatio === 'number' && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Ratio Max/Min</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.newHighsLowsRatio > 1 ? COLORS.green : COLORS.red 
+                }]}>
+                  {data.newHighsLowsRatio.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            {data.breadthSignal && (
+              <View style={styles.dataItem}>
+                <Text style={styles.dataLabel}>Señal</Text>
+                <Text style={[styles.dataValue, { 
+                  color: data.breadthSignal === 'bullish' ? COLORS.green : 
+                         data.breadthSignal === 'bearish' ? COLORS.red : COLORS.yellow 
+                }]}>
+                  {data.breadthSignal === 'bullish' ? '🐂 Alcista' : 
+                   data.breadthSignal === 'bearish' ? '🐻 Bajista' : '➡️ Neutral'}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Mostrar otros datos disponibles (genérico) */}
-      {factorType !== 'forex' && (
+      {!['forex', 'volatilityiv', 'intradaytrend', 'volumeprofile', 'marketbreadth'].includes(factorType) && (
         <View style={styles.dataGrid}>
           {Object.entries(data).map(([key, value]) => {
             if (['hasData', 'summary'].includes(key) || key.includes('score') || key.includes('Score') || typeof value === 'object') {
@@ -1581,6 +1852,18 @@ export function FactorDetailModal({ visible, onClose, factorType, symbol, score 
           break;
         case 'financials':
           response = await apiClient.getFinancials(symbol);
+          break;
+        case 'volatilityiv':
+          response = await apiClient.getVolatilityAnalysis(symbol);
+          break;
+        case 'intradaytrend':
+          response = await apiClient.getIntradayTrend(symbol);
+          break;
+        case 'volumeprofile':
+          response = await apiClient.getVolumeProfile(symbol);
+          break;
+        case 'marketbreadth':
+          response = await apiClient.getMarketBreadth();
           break;
         default:
           // Para otros factores, obtener análisis completo

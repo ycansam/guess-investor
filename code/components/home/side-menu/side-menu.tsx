@@ -2,15 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import {
-  Animated,
-  Dimensions,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+    Animated,
+    Dimensions,
+    Modal,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
 } from 'react-native';
 
 export type TabType = 'favorites' | 'predictions' | 'trends';
@@ -108,7 +108,7 @@ export function SideMenu({
       iconOutline: 'bulb-outline',
       label: 'Predicciones IA',
       color: '#f59e0b',
-      count: predictionsCount,
+      count: 0,  // No mostrar contador
     },
     {
       key: 'trends',

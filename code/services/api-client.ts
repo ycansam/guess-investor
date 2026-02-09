@@ -698,6 +698,34 @@ export const apiClient = {
   },
 
   /**
+   * Obtener análisis de volatilidad IV/RV
+   */
+  getVolatilityAnalysis: (symbol: string): Promise<any> => {
+    return get(`/analysis/volatility/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener tendencia intradía (VWAP, pivots, momentum corto plazo)
+   */
+  getIntradayTrend: (symbol: string): Promise<any> => {
+    return get(`/analysis/intraday-trend/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener perfil de volumen
+   */
+  getVolumeProfile: (symbol: string): Promise<any> => {
+    return get(`/analysis/volume-profile/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener amplitud de mercado
+   */
+  getMarketBreadth: (): Promise<any> => {
+    return get('/analysis/market-breadth');
+  },
+
+  /**
    * Obtener ranking de activos por tendencia
    * @param category - 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all'
    * @param limit - Número máximo de resultados (max 50)
