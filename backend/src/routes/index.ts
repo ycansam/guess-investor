@@ -3,6 +3,7 @@ import { analysisRoutes } from './analysis.routes.js';
 import { assetRoutes } from './asset.routes.js';
 import { backtestRoutes } from './backtest.routes.js';
 import { favoriteRoutes } from './favorite.routes.js';
+import { ipoRoutes } from './ipo.routes.js';
 import mlRoutes from './ml.routes.js';
 import { newsRoutes } from './news.routes.js';
 import { notesRoutes } from './notes.routes.js';
@@ -26,5 +27,6 @@ router.use('/analysis', analysisRoutes);
 router.use('/training', trainingRoutes);
 router.use('/ml', mlRoutes);
 router.use('/backtest', backtestRoutes);
+router.use('/ipo', ipoRoutes);
 
 export const apiRoutes = router;

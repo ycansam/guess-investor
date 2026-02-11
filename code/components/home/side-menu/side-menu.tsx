@@ -56,6 +56,7 @@ export function SideMenu({
   const isOnMLDiagnostics = pathname === '/ml-diagnostics';
   const isOnMLStats = pathname === '/ml-stats';
   const isOnMarketNews = pathname === '/market-news';
+  const isOnIPOs = pathname === '/ipos';
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -268,6 +269,26 @@ export function SideMenu({
               </Text>
               {isOnMarketNews && (
                 <View style={[styles.activeIndicator, { backgroundColor: '#f59708' }]} />
+              )}
+            </TouchableOpacity>
+
+            {/* IPOs & Nuevos Activos */}
+            <TouchableOpacity
+              style={[styles.menuItem, isOnIPOs && styles.menuItemActive]}
+              onPress={() => {
+                onClose();
+                router.push('/ipos');
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, isOnIPOs && { backgroundColor: '#8b5cf620' }]}>
+                <Text style={{ fontSize: 18 }}>🚀</Text>
+              </View>
+              <Text style={[styles.menuItemText, isOnIPOs && { color: '#8b5cf6' }]}>
+                IPOs & Nuevos
+              </Text>
+              {isOnIPOs && (
+                <View style={[styles.activeIndicator, { backgroundColor: '#8b5cf6' }]} />
               )}
             </TouchableOpacity>
           </View>

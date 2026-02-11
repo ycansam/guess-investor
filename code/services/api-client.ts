@@ -526,6 +526,38 @@ export interface NewsSentimentSummary {
 }
 
 // ============================================================================
+// IPO / NUEVOS ACTIVOS
+// ============================================================================
+
+export interface IPOListing {
+  symbol: string;
+  name: string;
+  exchange: string;
+  ipoDate: string;
+  priceRange?: string;
+  offerPrice?: number;
+  currentPrice?: number;
+  changeFromIPO?: number;
+  sharesOffered?: number;
+  marketCap?: string;
+  sector?: string;
+  industry?: string;
+  status: 'upcoming' | 'today' | 'recent' | 'filed';
+  description?: string;
+  country?: string;
+  popularity?: number;
+  expectedDate?: string;
+}
+
+export interface IPOData {
+  recent: IPOListing[];
+  upcoming: IPOListing[];
+  today: IPOListing[];
+  hot: IPOListing[];
+  lastUpdated: string;
+}
+
+// ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
 
@@ -1178,6 +1210,17 @@ export const apiClient = {
     results: Array<{ symbol: string; success: boolean; data?: BacktestSummary; error?: string }>;
   }> => {
     return post('/backtest/batch', { symbols, days: days || 60 });
+  },
+
+  // -------------------------------------------------------------------------
+  // IPO / NUEVOS ACTIVOS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener datos de IPOs (recientes, próximas, hot)
+   */
+  getIPOData: (): Promise<IPOData> => {
+    return get('/ipo');
   },
 };
 
