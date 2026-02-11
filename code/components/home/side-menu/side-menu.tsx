@@ -59,6 +59,9 @@ export function PersistentSidebar({
   const isOnIPOs = pathname === '/ipos';
   const isOnScreener = pathname === '/screener';
   const isOnCompare = pathname === '/compare';
+  const isOnCalendar = pathname === '/economic-calendar';
+  const isOnMovers = pathname === '/extended-hours';
+  const isOnSectors = pathname === '/sectors';
 
   useEffect(() => {
     Animated.timing(widthAnim, {
@@ -118,10 +121,13 @@ export function PersistentSidebar({
     { path: '/portfolio', emoji: '📝', label: 'Portfolio', color: '#3b82f6', isActive: isOnPortfolio },
     { path: '/screener', emoji: '🎯', label: 'Screener', color: '#06b6d4', isActive: isOnScreener },
     { path: '/compare', emoji: '⚖️', label: 'Comparar', color: '#f97316', isActive: isOnCompare },
-    { path: '/ml-diagnostics', emoji: '🧠', label: 'Diagnóstico ML', color: '#8b5cf6', isActive: isOnMLDiagnostics },
-    { path: '/ml-stats', emoji: '📊', label: 'Estadísticas ML', color: '#10b981', isActive: isOnMLStats },
+    { path: '/economic-calendar', emoji: '📅', label: 'Calendario', color: '#ef4444', isActive: isOnCalendar },
+    { path: '/extended-hours', emoji: '⚡', label: 'Pre/After Hours', color: '#f59e0b', isActive: isOnMovers },
+    { path: '/sectors', emoji: '🗺️', label: 'Mapa Sectores', color: '#10b981', isActive: isOnSectors },
     { path: '/market-news', emoji: '📰', label: 'Noticias', color: '#f59708', isActive: isOnMarketNews },
     { path: '/ipos', emoji: '🚀', label: 'IPOs & Nuevos', color: '#8b5cf6', isActive: isOnIPOs },
+    { path: '/ml-diagnostics', emoji: '🧠', label: 'Diagnóstico ML', color: '#8b5cf6', isActive: isOnMLDiagnostics },
+    { path: '/ml-stats', emoji: '📊', label: 'Estadísticas ML', color: '#10b981', isActive: isOnMLStats },
   ];
 
   return (

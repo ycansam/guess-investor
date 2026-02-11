@@ -1222,6 +1222,39 @@ export const apiClient = {
   getIPOData: (): Promise<IPOData> => {
     return get('/ipo');
   },
+
+  // -------------------------------------------------------------------------
+  // CALENDARIO ECONÓMICO
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener calendario económico
+   */
+  getEconomicCalendar: (): Promise<EconomicCalendarData> => {
+    return get('/calendar');
+  },
+
+  // -------------------------------------------------------------------------
+  // PRE-MARKET & AFTER-HOURS MOVERS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener movers de horario extendido
+   */
+  getExtendedHoursMovers: (): Promise<ExtendedHoursData> => {
+    return get('/movers');
+  },
+
+  // -------------------------------------------------------------------------
+  // SECTOR HEAT MAP
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener mapa de calor por sector
+   */
+  getSectorHeatMap: (): Promise<HeatMapData> => {
+    return get('/sectors');
+  },
 };
 
 // Tipos para backtesting
@@ -1264,6 +1297,119 @@ export interface BacktestSummary {
   avgAccuracyScore: number;
   bestTimeframe: number;
   recommendation: string;
+}
+
+// ============================================================================
+// Tipos para Calendario Económico
+// ============================================================================
+
+export type EventImpact = 'high' | 'medium' | 'low';
+export type EventCategory = 'central_bank' | 'employment' | 'inflation' | 'gdp' | 'earnings' | 'trade' | 'housing' | 'consumer' | 'manufacturing' | 'other';
+
+export interface EconomicEvent {
+  id: string;
+  title: string;
+  country: string;
+  countryFlag: string;
+  date: string;
+  time?: string;
+  impact: EventImpact;
+  category: EventCategory;
+  previous?: string;
+  forecast?: string;
+  actual?: string;
+  description?: string;
+  affectedAssets?: string[];
+}
+
+export interface EconomicCalendarData {
+  today: EconomicEvent[];
+  thisWeek: EconomicEvent[];
+  nextWeek: EconomicEvent[];
+  lastUpdated: string;
+}
+
+// ============================================================================
+// Tipos para Pre-Market & After-Hours
+// ============================================================================
+
+export interface ExtendedHoursMover {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  marketCap?: string;
+  sector?: string;
+  reason?: string;
+  session: 'pre' | 'post' | 'regular';
+}
+
+export interface ExtendedHoursData {
+  preMarket: {
+    gainers: ExtendedHoursMover[];
+    losers: ExtendedHoursMover[];
+    mostActive: ExtendedHoursMover[];
+  };
+  afterHours: {
+    gainers: ExtendedHoursMover[];
+    losers: ExtendedHoursMover[];
+    mostActive: ExtendedHoursMover[];
+  };
+  marketStatus: 'pre-market' | 'regular' | 'after-hours' | 'closed';
+  lastUpdated: string;
+}
+
+// ============================================================================
+// Tipos para Sector Heat Map
+// ============================================================================
+
+export interface SectorData {
+  name: string;
+  symbol: string;
+  change: number;
+  changeWeek?: number;
+  changeMonth?: number;
+  volume: number;
+  marketCap?: number;
+  color: string;
+  industries: IndustryData[];
+}
+
+export interface IndustryData {
+  name: string;
+  change: number;
+  topStocks: StockMover[];
+  volume?: number;
+}
+
+export interface StockMover {
+  symbol: string;
+  name: string;
+  change: number;
+  price: number;
+  volume: number;
+  marketCap?: string;
+}
+
+export interface HeatMapData {
+  sectors: SectorData[];
+  marketOverview: {
+    sp500: { change: number; price: number };
+    nasdaq: { change: number; price: number };
+    dow: { change: number; price: number };
+    russell: { change: number; price: number };
+    vix: { value: number; change: number };
+  };
+  breadth: {
+    advancers: number;
+    decliners: number;
+    unchanged: number;
+    newHighs: number;
+    newLows: number;
+  };
+  lastUpdated: string;
 }
 
 // Export por defecto
