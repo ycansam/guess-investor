@@ -361,11 +361,11 @@ export const predictionRepository = {
       : 0;
 
     // Por calidad
+    // Fusionar 'poor' y 'very_poor' en un solo campo 'poor' para simplificar stats
     const byQuality = {
       excellent: verifiedPredictions.filter(p => p.quality === 'excellent').length,
       good: verifiedPredictions.filter(p => p.quality === 'good').length,
-      poor: verifiedPredictions.filter(p => p.quality === 'poor').length,
-      veryPoor: verifiedPredictions.filter(p => p.quality === 'very_poor').length,
+      poor: verifiedPredictions.filter(p => p.quality === 'poor' || p.quality === 'very_poor').length,
       failed: verifiedPredictions.filter(p => p.quality === 'failed').length,
     };
 

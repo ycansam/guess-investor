@@ -110,13 +110,17 @@ function computeVerificationData(
     const actualMag = Math.abs(actualChange);
 
     if (predictedMag < 0.1 && actualMag < 0.5) {
-      accuracyScore = 100;
+      // Predicción neutral correcta (casi sin cambio)
+      accuracyScore = 85;
     } else if (predictedMag > 0.1) {
+      // Comparar magnitud predicha vs real
       const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
       const magAccuracy = Math.max(0, 1 - magError);
-      accuracyScore = 50 + (magAccuracy * 50);
+      // Rango completo: 20 (muy lejos en magnitud) a 100 (magnitud perfecta)
+      accuracyScore = 20 + (magAccuracy * 80);
     } else {
-      accuracyScore = 60;
+      // Predicción con magnitud baja pero dirección correcta
+      accuracyScore = 45;
     }
   } else {
     const actualMag = Math.abs(actualChange);
@@ -1094,13 +1098,13 @@ export const recalculateScores = asyncHandler(async (_req: Request, res: Respons
       const actualMag = Math.abs(actualChange);
       
       if (predictedMag < 0.1 && actualMag < 0.5) {
-        newAccuracyScore = 100;
+        newAccuracyScore = 85;
       } else if (predictedMag > 0.1) {
         const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
         const magAccuracy = Math.max(0, 1 - magError);
-        newAccuracyScore = 50 + (magAccuracy * 50);
+        newAccuracyScore = 20 + (magAccuracy * 80);
       } else {
-        newAccuracyScore = 60;
+        newAccuracyScore = 45;
       }
     } else {
       const actualMag = Math.abs(actualChange);
