@@ -5,7 +5,7 @@ export function WelcomeScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.emoji}>🤖💰</Text>
-      <Text style={styles.title}>Bienvenido a Guess Investor</Text>
+      <Text style={styles.title}>Bienvenido a AlphaVest</Text>
       <Text style={styles.text}>
         Soy tu asistente de inversiones con IA.{'\n'}
         Pregúntame sobre cualquier activo:{'\n'}

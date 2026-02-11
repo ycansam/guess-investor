@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "guess-investor",
-    "slug": "guess-investor",
+    "name": "alphavest",
+    "slug": "alphavest",
     "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
-    "scheme": "guessinvestor",
+    "scheme": "alphavest",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

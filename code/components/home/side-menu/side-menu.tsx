@@ -2,14 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import {
-    Animated,
-    Image,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const APP_LOGO = require('../../../assets/images/logo.png');
@@ -136,7 +136,7 @@ export function PersistentSidebar({
           />
         </View>
         {!collapsed && (
-          <Text style={styles.logoText}>Guess Investor</Text>
+          <Text style={styles.logoText}>AlphaVest</Text>
         )}
         <TouchableOpacity onPress={onToggle} style={styles.toggleButton} activeOpacity={0.7}>
           <Ionicons
@@ -242,7 +242,7 @@ export function PersistentSidebar({
       {/* Footer */}
       <View style={styles.sidebarFooter}>
         {!collapsed ? (
-          <Text style={styles.footerText}>Guess Investor v1.0</Text>
+          <Text style={styles.footerText}>AlphaVest v1.0</Text>
         ) : (
           <Text style={styles.footerTextCollapsed}>GI</Text>
         )}

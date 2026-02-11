@@ -53,7 +53,7 @@ export function Home() {
       <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
 
       <Header 
-        title="Guess Investor"
+        title="AlphaVest"
         actions={[
           { icon: '🎯', onPress: () => setShowScreener(true) },
         ]}

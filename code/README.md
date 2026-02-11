@@ -1,4 +1,4 @@
-# Guess Investor - App React Native
+# AlphaVest - App React Native
 
 **Última actualización:** 8 de febrero de 2026  
 **Versión:** 1.6.0
