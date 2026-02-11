@@ -3,6 +3,7 @@ import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import {
     Animated,
+    Image,
     Platform,
     ScrollView,
     StyleSheet,
@@ -10,6 +11,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+
+const APP_LOGO = require('../../../assets/images/logo.png');
 
 export type TabType = 'favorites' | 'predictions' | 'trends';
 
@@ -125,8 +128,15 @@ export function PersistentSidebar({
     <Animated.View style={[styles.sidebar, { width: widthAnim }]}>
       {/* Header / Toggle */}
       <View style={styles.sidebarHeader}>
+        <View style={collapsed ? styles.logoClipCollapsed : styles.logoClip}>
+          <Image
+            source={APP_LOGO}
+            style={collapsed ? styles.logoImageCollapsed : styles.logoImage}
+            resizeMode="cover"
+          />
+        </View>
         {!collapsed && (
-          <Text style={styles.logoText}>📈 GI</Text>
+          <Text style={styles.logoText}>Guess Investor</Text>
         )}
         <TouchableOpacity onPress={onToggle} style={styles.toggleButton} activeOpacity={0.7}>
           <Ionicons
@@ -270,11 +280,35 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1e1e2e',
     minHeight: 52,
   },
+  logoClip: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  logoClipCollapsed: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: 32,
+    height: 32,
+    transform: [{ scale: 2 }],
+  },
+  logoImageCollapsed: {
+    width: 28,
+    height: 28,
+    transform: [{ scale: 2 }],
+  },
   logoText: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#ffffff',
     letterSpacing: -0.3,
+    flex: 1,
+    marginLeft: 10,
   },
   toggleButton: {
     width: 32,
