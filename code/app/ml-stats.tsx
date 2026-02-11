@@ -413,79 +413,6 @@ export default function MLStatsPage() {
         </View>
       </View>
 
-      {/* Acciones */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>⚙️ Acciones del Sistema</Text>
-        <Text style={styles.cardSubtitle}>Controla el aprendizaje y estado del ML</Text>
-        
-        <View style={styles.actionsContainer}>
-          {/* Force Relearn Button */}
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.actionButtonPrimary, isRelearning && styles.actionButtonDisabled]}
-            onPress={handleForceRelearn}
-            disabled={isRelearning}
-          >
-            {isRelearning ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Text style={styles.actionButtonIcon}>🔄</Text>
-                <Text style={styles.actionButtonText}>Forzar Re-aprendizaje</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.actionHint}>Recalcula pesos desde predicciones verificadas</Text>
-          {relearnResult && (
-            <View style={[styles.resultBox, relearnResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
-              <Text style={styles.resultText}>{relearnResult}</Text>
-            </View>
-          )}
-
-          {/* Retrain Classifiers Button */}
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.actionButtonSecondary, isRetrainingClassifiers && styles.actionButtonDisabled]}
-            onPress={handleRetrainClassifiers}
-            disabled={isRetrainingClassifiers}
-          >
-            {isRetrainingClassifiers ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Text style={styles.actionButtonIcon}>🏷️</Text>
-                <Text style={styles.actionButtonText}>Reentrenar Clasificadores</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.actionHint}>Recalcula multiplicadores por grupo de activo</Text>
-          {retrainClassifiersResult && (
-            <View style={[styles.resultBox, retrainClassifiersResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
-              <Text style={styles.resultText}>{retrainClassifiersResult}</Text>
-            </View>
-          )}
-
-          {/* Reset All Button */}
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.actionButtonDanger, isResettingModels && styles.actionButtonDisabled]}
-            onPress={handleResetModels}
-            disabled={isResettingModels}
-          >
-            {isResettingModels ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Text style={styles.actionButtonIcon}>🗑️</Text>
-                <Text style={styles.actionButtonText}>Reset Completo ML</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <Text style={[styles.actionHint, { color: '#ef4444' }]}>⚠️ Borra TODO: predicciones, cache, pesos y datos Python</Text>
-          {resetModelsResult && (
-            <View style={[styles.resultBox, resetModelsResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
-              <Text style={styles.resultText}>{resetModelsResult}</Text>
-            </View>
-          )}
-        </View>
-      </View>
     </View>
   );
 
@@ -593,6 +520,27 @@ export default function MLStatsPage() {
           <Text style={styles.cardTitle}>🏷️ Clasificadores por Tipo de Activo</Text>
           <Text style={styles.cardSubtitle}>Multiplicadores específicos para cada grupo</Text>
           
+          {/* Retrain Classifiers Button */}
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.actionButtonSecondary, isRetrainingClassifiers && styles.actionButtonDisabled, { marginBottom: 12 }]}
+            onPress={handleRetrainClassifiers}
+            disabled={isRetrainingClassifiers}
+          >
+            {isRetrainingClassifiers ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.actionButtonIcon}>🏷️</Text>
+                <Text style={styles.actionButtonText}>Reentrenar Clasificadores</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          {retrainClassifiersResult && (
+            <View style={[styles.resultBox, retrainClassifiersResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess, { marginBottom: 12 }]}>
+              <Text style={styles.resultText}>{retrainClassifiersResult}</Text>
+            </View>
+          )}
+          
           {/* Asset Group Selector */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.assetGroupScroll}>
             <View style={styles.assetGroupRow}>
@@ -640,7 +588,7 @@ export default function MLStatsPage() {
                     </View>
                     <View style={styles.classifierStatItem}>
                       <Text style={[styles.classifierStatValue, { color: (stats?.successRate || 0) > 0.5 ? '#10b981' : '#64748b' }]}>
-                        {stats?.successRate ? `${(stats.successRate * 100).toFixed(0)}%` : '-'}
+                        {typeof stats?.successRate === 'number' ? `${(stats.successRate * 100).toFixed(0)}%` : '-'}
                       </Text>
                       <Text style={styles.classifierStatLabel}>Éxito</Text>
                     </View>
@@ -828,24 +776,24 @@ export default function MLStatsPage() {
         {mlModels && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>📊 Calidad del Sistema</Text>
-            <View style={styles.qualityGrid}>
-              <View style={styles.qualityItem}>
-                <Text style={styles.qualityLabel}>Predicciones entrenadas</Text>
-                <Text style={styles.qualityValue}>{weightsStatus?.summary?.trainingSamples || 0}</Text>
+            <View style={styles.systemQualityGrid}>
+              <View style={styles.systemQualityItem}>
+                <Text style={styles.systemQualityValue}>{weightsStatus?.summary?.trainingSamples || 0}</Text>
+                <Text style={styles.systemQualityLabel}>Predicciones entrenadas</Text>
               </View>
-              <View style={styles.qualityItem}>
-                <Text style={styles.qualityLabel}>Episodios RL</Text>
-                <Text style={styles.qualityValue}>{mlModels.reinforcementLearning?.totalEpisodes || 0}</Text>
+              <View style={styles.systemQualityItem}>
+                <Text style={styles.systemQualityValue}>{mlModels.reinforcementLearning?.totalEpisodes || 0}</Text>
+                <Text style={styles.systemQualityLabel}>Episodios RL</Text>
               </View>
-              <View style={styles.qualityItem}>
-                <Text style={styles.qualityLabel}>Tasa de éxito RL</Text>
-                <Text style={[styles.qualityValue, { color: (mlModels.reinforcementLearning?.successRate || 0) > 0.5 ? '#10b981' : '#f59e0b' }]}>
+              <View style={styles.systemQualityItem}>
+                <Text style={[styles.systemQualityValue, { color: (mlModels.reinforcementLearning?.successRate || 0) > 0.5 ? '#10b981' : '#f59e0b' }]}>
                   {((mlModels.reinforcementLearning?.successRate || 0) * 100).toFixed(1)}%
                 </Text>
+                <Text style={styles.systemQualityLabel}>Tasa de éxito RL</Text>
               </View>
-              <View style={styles.qualityItem}>
-                <Text style={styles.qualityLabel}>Muestras calibración</Text>
-                <Text style={styles.qualityValue}>{mlModels.probabilisticModel?.sampleCount || 0}</Text>
+              <View style={styles.systemQualityItem}>
+                <Text style={styles.systemQualityValue}>{mlModels.probabilisticModel?.sampleCount || 0}</Text>
+                <Text style={styles.systemQualityLabel}>Muestras calibración</Text>
               </View>
             </View>
           </View>
@@ -879,6 +827,55 @@ export default function MLStatsPage() {
           {activeTab === 'backtest' && renderBacktest()}
           {activeTab === 'models' && renderModels()}
         </ScrollView>
+        
+        {/* Acciones Globales - Fijadas al final */}
+        <View style={styles.bottomActionsContainer}>
+          <TouchableOpacity 
+            style={[styles.bottomActionButton, styles.actionButtonPrimary, isRelearning && styles.actionButtonDisabled]}
+            onPress={handleForceRelearn}
+            disabled={isRelearning}
+          >
+            {isRelearning ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.actionButtonIcon}>🔄</Text>
+                <Text style={styles.bottomActionButtonText}>Re-aprender Pesos</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.bottomActionButton, styles.actionButtonDanger, isResettingModels && styles.actionButtonDisabled]}
+            onPress={handleResetModels}
+            disabled={isResettingModels}
+          >
+            {isResettingModels ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.actionButtonIcon}>🗑️</Text>
+                <Text style={styles.bottomActionButtonText}>Reset Todo</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        {/* Resultados de acciones */}
+        {(relearnResult || resetModelsResult) && (
+          <View style={styles.bottomResultsContainer}>
+            {relearnResult && (
+              <View style={[styles.resultBox, relearnResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
+                <Text style={styles.resultText}>{relearnResult}</Text>
+              </View>
+            )}
+            {resetModelsResult && (
+              <View style={[styles.resultBox, resetModelsResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
+                <Text style={styles.resultText}>{resetModelsResult}</Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -1292,6 +1289,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  // Bottom actions styles
+  bottomActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#1e293b',
+    backgroundColor: '#0f172a',
+    gap: 12,
+  },
+  bottomActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    padding: 12,
+  },
+  bottomActionButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  bottomResultsContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#0f172a',
+  },
   // Timeframe selector styles
   timeframeSelector: {
     flexDirection: 'row',
@@ -1491,6 +1517,31 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#334155',
+  },
+  // System quality grid (2x2 grid for models tab)
+  systemQualityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 12,
+    gap: 8,
+  },
+  systemQualityItem: {
+    width: '47%',
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  systemQualityValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  systemQualityLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 4,
+    textAlign: 'center',
   },
   // Direction stats styles
   directionStatsGrid: {

@@ -14,7 +14,7 @@
 import { prisma } from '../../config/database.js';
 import { logger } from '../../middleware/logger.js';
 
-// Tipo para los multiplicadores de un clasificador (8 factores - competitors, seasonality y expectations eliminados)
+// Tipo para los multiplicadores de un clasificador (14 factores)
 interface ClassifierMultipliers {
   trend: number;
   technical: number;
@@ -24,6 +24,12 @@ interface ClassifierMultipliers {
   forex: number;
   institutional: number;
   financials: number;
+  intradayTrend: number;
+  optionsFlow: number;
+  volumeProfile: number;
+  divergences: number;
+  volatilityIV: number;
+  marketBreadth: number;
 }
 
 // Estado completo del aprendizaje de clasificadores
@@ -50,6 +56,12 @@ const BASE_MULTIPLIERS: ClassifierMultipliers = {
   forex: 1.0,
   institutional: 1.0,
   financials: 1.0,
+  intradayTrend: 1.0,
+  optionsFlow: 1.0,
+  volumeProfile: 1.0,
+  divergences: 1.0,
+  volatilityIV: 1.0,
+  marketBreadth: 1.0,
 };
 
 // Multiplicadores iniciales estáticos (los actuales del código)
@@ -58,6 +70,7 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     financials: 1.3,
     institutional: 1.2,
     forex: 0.8,
+    optionsFlow: 1.3,
   },
   small_cap_stock: {
     technical: 1.3,
@@ -65,12 +78,19 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     news: 1.3,
     institutional: 0.7,
     financials: 0.8,
+    intradayTrend: 1.4,
+    divergences: 1.3,
+    volumeProfile: 1.2,
+    volatilityIV: 1.2,
   },
   crypto_major: {
     sentiment: 1.5,
     news: 1.3,
     macro: 1.2,
     financials: 0.1,
+    intradayTrend: 1.5,
+    volumeProfile: 1.3,
+    divergences: 1.4,
   },
   crypto_alt: {
     sentiment: 1.8,
@@ -78,24 +98,34 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     news: 1.4,
     financials: 0.05,
     macro: 0.7,
+    intradayTrend: 1.8,
+    volumeProfile: 1.5,
+    divergences: 1.6,
   },
   etf_index: {
     macro: 1.4,
     trend: 1.2,
     forex: 1.1,
     financials: 0.3,
+    marketBreadth: 1.5,
+    optionsFlow: 1.2,
+    volatilityIV: 1.1,
   },
   commodity: {
     macro: 1.5,
     forex: 2.0,
     sentiment: 0.7,
     financials: 0.1,
+    intradayTrend: 1.2,
+    volumeProfile: 1.3,
+    volatilityIV: 1.4,
   },
   reit: {
     macro: 1.4,
     institutional: 1.3,
     financials: 1.2,
     forex: 0.6,
+    marketBreadth: 1.1,
   },
   forex: {
     macro: 1.8,
@@ -103,6 +133,10 @@ const INITIAL_STATIC_MULTIPLIERS: Record<string, Partial<ClassifierMultipliers>>
     news: 1.2,
     financials: 0.1,
     institutional: 0.3,
+    intradayTrend: 1.6,
+    volumeProfile: 1.4,
+    divergences: 1.3,
+    volatilityIV: 1.3,
   },
   adr: {
     forex: 1.5,
@@ -134,6 +168,31 @@ class ClassifierLearningService {
 
       if (saved) {
         this.state = JSON.parse(saved.stateJson);
+        
+        // Migrar: añadir factores nuevos que falten en el estado guardado
+        if (this.state) {
+          let migrated = false;
+          for (const [group, mults] of Object.entries(this.state.multipliers)) {
+            for (const factor of Object.keys(BASE_MULTIPLIERS) as (keyof ClassifierMultipliers)[]) {
+              if (!(factor in mults)) {
+                (mults as any)[factor] = BASE_MULTIPLIERS[factor];
+                migrated = true;
+              }
+            }
+            // Eliminar factores obsoletos (competitors, seasonality, expectations)
+            for (const key of Object.keys(mults)) {
+              if (!(key in BASE_MULTIPLIERS)) {
+                delete (mults as any)[key];
+                migrated = true;
+              }
+            }
+          }
+          if (migrated) {
+            await this.saveState();
+            logger.info('[ClassifierLearning] Migrated state: added new factors / removed obsolete ones');
+          }
+        }
+        
         logger.info(`[ClassifierLearning] Loaded state v${this.state?.version} with ${Object.keys(this.state?.multipliers || {}).length} classifiers`);
       } else {
         // Inicializar con multiplicadores estáticos
