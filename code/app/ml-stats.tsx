@@ -17,30 +17,45 @@ import {
     View,
 } from 'react-native';
 import { useMenu } from '../components/_shared/menu-context';
-import { apiClient, BacktestSummary } from '../services/api-client';
+import { apiClient, BacktestSummary, MLModelsStatus, MLWeightsStatus } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
 
 type TabType = 'overview' | 'weights' | 'backtest' | 'models';
+type TimeframeType = 'intraday' | 'swing' | 'long';
 
-interface WeightsStatus {
-  current: Record<string, number>;
-  version: number;
-  trainedAt: string;
-  sampleCount: number;
-  classifiers: {
-    name: string;
-    sampleCount: number;
-    successRate: number;
-    avgAccuracy: number;
-  }[];
-}
+// Multiplicadores base estáticos (v1.6.0 - 14 factores)
+const BASE_STATIC_MULTIPLIERS: Record<string, Record<string, number>> = {
+  large_cap_stock: { financials: 1.5, institutional: 1.4, optionsFlow: 1.3, news: 1.2 },
+  small_cap_stock: { technical: 1.4, intradayTrend: 1.4, trend: 1.3, divergences: 1.3 },
+  crypto_major: { sentiment: 1.5, intradayTrend: 1.5, technical: 1.4, volumeProfile: 1.3 },
+  crypto_alt: { sentiment: 1.8, intradayTrend: 1.8, technical: 1.6, divergences: 1.6 },
+  etf_index: { macro: 1.5, marketBreadth: 1.5, institutional: 1.3, optionsFlow: 1.2 },
+  commodity: { macro: 1.8, forex: 1.6, volatilityIV: 1.4, volumeProfile: 1.3 },
+  reit: { financials: 1.8, macro: 1.6, marketBreadth: 1.1 },
+  forex: { macro: 1.8, intradayTrend: 1.6, technical: 1.4, volumeProfile: 1.4 },
+  adr: { forex: 1.6, financials: 1.4 },
+  default: {},
+};
 
-interface MLModelsStatus {
-  reinforcementLearning: { states: number; experiences: number; avgReward: number };
-  probabilisticModel: { calibrations: number; isCalibrated: boolean };
-  factorCorrelation: { correlations: number };
-  metaLearning: { patterns: number };
-}
+// Descripciones de grupos de activos
+const GROUP_DESCRIPTIONS: Record<string, { emoji: string; description: string }> = {
+  large_cap_stock: { emoji: '🏢', description: 'Grandes empresas (Apple, Microsoft, Google)' },
+  small_cap_stock: { emoji: '🏪', description: 'Empresas pequeñas con alta volatilidad' },
+  crypto_major: { emoji: '₿', description: 'Bitcoin, Ethereum y criptos principales' },
+  crypto_alt: { emoji: '🪙', description: 'Altcoins y criptomonedas menores' },
+  etf_index: { emoji: '📊', description: 'ETFs e índices bursátiles' },
+  commodity: { emoji: '🥇', description: 'Oro, plata, petróleo, gas' },
+  reit: { emoji: '🏠', description: 'Fondos inmobiliarios' },
+  forex: { emoji: '💱', description: 'Pares de divisas' },
+  adr: { emoji: '🌍', description: 'Acciones extranjeras en USA' },
+  default: { emoji: '📋', description: 'Clasificación genérica' },
+};
+
+// 14 factores: 8 tradicionales + 6 intradía
+const ALL_FACTORS = [
+  'trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'financials',
+  'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'
+];
 
 export default function MLStatsPage() {
   const router = useRouter();
@@ -49,7 +64,7 @@ export default function MLStatsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<TrackingStats | null>(null);
-  const [weightsStatus, setWeightsStatus] = useState<WeightsStatus | null>(null);
+  const [weightsStatus, setWeightsStatus] = useState<MLWeightsStatus | null>(null);
   const [mlModels, setMlModels] = useState<MLModelsStatus | null>(null);
   
   // Backtesting
@@ -57,6 +72,21 @@ export default function MLStatsPage() {
   const [backtestLoading, setBacktestLoading] = useState(false);
   const [backtestResult, setBacktestResult] = useState<BacktestSummary | null>(null);
   const [backtestError, setBacktestError] = useState<string | null>(null);
+
+  // Selectores
+  const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeType>('intraday');
+  const [selectedAssetGroup, setSelectedAssetGroup] = useState<string>('large_cap_stock');
+
+  // Action button states
+  const [isRelearning, setIsRelearning] = useState(false);
+  const [relearnResult, setRelearnResult] = useState<string | null>(null);
+  const [isResettingModels, setIsResettingModels] = useState(false);
+  const [resetModelsResult, setResetModelsResult] = useState<string | null>(null);
+  const [isRetrainingClassifiers, setIsRetrainingClassifiers] = useState(false);
+  const [retrainClassifiersResult, setRetrainClassifiersResult] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<string | null>(null);
+  const [verifyProgress, setVerifyProgress] = useState<{ done: number; total: number } | null>(null);
 
   useEffect(() => {
     loadAllData();
@@ -79,6 +109,95 @@ export default function MLStatsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Action handlers
+  const handleForceRelearn = async () => {
+    setIsRelearning(true);
+    setRelearnResult(null);
+    try {
+      const result = await apiClient.forceRelearn();
+      setRelearnResult(result.message);
+      await loadAllData();
+    } catch (err) {
+      setRelearnResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsRelearning(false);
+    }
+  };
+
+  const handleResetModels = async () => {
+    setIsResettingModels(true);
+    setResetModelsResult(null);
+    try {
+      const result = await apiClient.resetAllML();
+      setResetModelsResult(`✅ Reset completado: ${result.predictions} predicciones, ${result.cache} cache, pesos: ${result.weights ? 'sí' : 'no'}, Python: ${result.pythonReset ? 'sí' : 'no'}`);
+      await loadAllData();
+    } catch (err) {
+      setResetModelsResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsResettingModels(false);
+    }
+  };
+
+  const handleRetrainClassifiers = async () => {
+    setIsRetrainingClassifiers(true);
+    setRetrainClassifiersResult(null);
+    try {
+      const result = await apiClient.forceRelearn();
+      setRetrainClassifiersResult(`✅ Clasificadores actualizados: ${result.classifiersLearned} grupos de ${result.withFactorData} predicciones`);
+      await loadAllData();
+    } catch (err) {
+      setRetrainClassifiersResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsRetrainingClassifiers(false);
+    }
+  };
+
+  const handleVerifyPending = async () => {
+    setIsVerifying(true);
+    setVerifyResult(null);
+    const total = stats?.pending || 0;
+    setVerifyProgress({ done: 0, total });
+    try {
+      const result = await apiClient.verifyAllPending();
+      setVerifyProgress({ done: result.verified, total });
+      setVerifyResult(`✅ Verificadas ${result.verified}/${total} predicciones`);
+      await loadAllData();
+    } catch (err) {
+      setVerifyResult(`❌ Error: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsVerifying(false);
+      setVerifyProgress(null);
+    }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Nunca';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getChangeColor = (changePercent: number) => {
+    if (changePercent > 10) return '#10b981';
+    if (changePercent < -10) return '#ef4444';
+    if (changePercent > 5) return '#22c55e88';
+    if (changePercent < -5) return '#ef444488';
+    return '#94a3b8';
+  };
+
+  const getMultiplierColor = (mult: number) => {
+    if (mult > 1.3) return '#10b981';
+    if (mult < 0.7) return '#ef4444';
+    if (mult > 1.1) return '#22c55e88';
+    if (mult < 0.9) return '#ef444488';
+    return '#94a3b8';
   };
 
   const runBacktest = async () => {
@@ -191,78 +310,378 @@ export default function MLStatsPage() {
         </View>
       )}
 
+      {/* Precisión por Dirección */}
+      {stats && stats.verified > 0 && stats.byDirection && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>📊 Acierto por Dirección</Text>
+          <Text style={styles.cardSubtitle}>Precisión del sistema según la dirección predicha</Text>
+          <View style={styles.directionStatsGrid}>
+            {/* Subida */}
+            <View style={styles.directionStatBox}>
+              <Text style={styles.directionEmoji}>📈</Text>
+              <Text style={styles.directionLabel}>Subida</Text>
+              <Text style={[styles.directionAccuracy, { color: stats.byDirection.up.total > 0 && (stats.byDirection.up.correct / stats.byDirection.up.total) >= 0.5 ? '#10b981' : '#ef4444' }]}>
+                {stats.byDirection.up.total > 0 
+                  ? `${((stats.byDirection.up.correct / stats.byDirection.up.total) * 100).toFixed(0)}%`
+                  : '-'}
+              </Text>
+              <Text style={styles.directionCount}>{stats.byDirection.up.correct}/{stats.byDirection.up.total}</Text>
+            </View>
+            {/* Bajada */}
+            <View style={styles.directionStatBox}>
+              <Text style={styles.directionEmoji}>📉</Text>
+              <Text style={styles.directionLabel}>Bajada</Text>
+              <Text style={[styles.directionAccuracy, { color: stats.byDirection.down.total > 0 && (stats.byDirection.down.correct / stats.byDirection.down.total) >= 0.5 ? '#10b981' : '#ef4444' }]}>
+                {stats.byDirection.down.total > 0 
+                  ? `${((stats.byDirection.down.correct / stats.byDirection.down.total) * 100).toFixed(0)}%`
+                  : '-'}
+              </Text>
+              <Text style={styles.directionCount}>{stats.byDirection.down.correct}/{stats.byDirection.down.total}</Text>
+            </View>
+            {/* Lateral */}
+            <View style={styles.directionStatBox}>
+              <Text style={styles.directionEmoji}>➡️</Text>
+              <Text style={styles.directionLabel}>Lateral</Text>
+              <Text style={[styles.directionAccuracy, { color: stats.byDirection.neutral.total > 0 && (stats.byDirection.neutral.correct / stats.byDirection.neutral.total) >= 0.5 ? '#10b981' : '#ef4444' }]}>
+                {stats.byDirection.neutral.total > 0 
+                  ? `${((stats.byDirection.neutral.correct / stats.byDirection.neutral.total) * 100).toFixed(0)}%`
+                  : '-'}
+              </Text>
+              <Text style={styles.directionCount}>{stats.byDirection.neutral.correct}/{stats.byDirection.neutral.total}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Verificar Predicciones Pendientes */}
+      {stats && stats.pending > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>⏳ Predicciones Pendientes</Text>
+          <Text style={styles.cardSubtitle}>
+            {stats.pending} predicciones esperando verificación
+          </Text>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.actionButtonVerify, isVerifying && styles.actionButtonDisabled]}
+            onPress={handleVerifyPending}
+            disabled={isVerifying}
+          >
+            {isVerifying ? (
+              <View style={styles.verifyProgressRow}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.actionButtonText}>
+                  {' '}Verificando... ({verifyProgress?.done || 0}/{verifyProgress?.total || stats.pending})
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.actionButtonIcon}>✅</Text>
+                <Text style={styles.actionButtonText}>Verificar Todas ({stats.verified}/{stats.total} verificadas, {stats.pending} pendientes)</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.actionHint}>Compara las predicciones vencidas con el precio real</Text>
+          {verifyResult && (
+            <View style={[styles.resultBox, verifyResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
+              <Text style={styles.resultText}>{verifyResult}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* ML Status */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🤖 Estado del Aprendizaje</Text>
         <View style={styles.mlStatusGrid}>
           <View style={styles.mlStatusItem}>
             <Text style={styles.mlStatusLabel}>Muestras de entrenamiento</Text>
-            <Text style={styles.mlStatusValue}>{weightsStatus?.sampleCount || 0}</Text>
+            <Text style={styles.mlStatusValue}>{weightsStatus?.summary?.trainingSamples || 0}</Text>
           </View>
           <View style={styles.mlStatusItem}>
             <Text style={styles.mlStatusLabel}>Clasificadores activos</Text>
-            <Text style={styles.mlStatusValue}>{weightsStatus?.classifiers?.length || 0}</Text>
+            <Text style={styles.mlStatusValue}>{weightsStatus?.availableAssetGroups?.length || 0}</Text>
           </View>
           <View style={styles.mlStatusItem}>
             <Text style={styles.mlStatusLabel}>Última actualización</Text>
-            <Text style={styles.mlStatusValue}>
-              {weightsStatus?.trainedAt ? new Date(weightsStatus.trainedAt).toLocaleDateString() : 'N/A'}
+            <Text style={styles.mlStatusValue}>{formatDate(weightsStatus?.summary?.lastUpdated || null)}</Text>
+          </View>
+          <View style={styles.mlStatusItem}>
+            <Text style={styles.mlStatusLabel}>Pesos aprendidos</Text>
+            <Text style={[styles.mlStatusValue, { color: weightsStatus?.summary?.hasLearnedWeights ? '#10b981' : '#64748b' }]}>
+              {weightsStatus?.summary?.hasLearnedWeights ? '✅ Activos' : '⏳ Pendiente'}
             </Text>
           </View>
         </View>
       </View>
+
+      {/* Acciones */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>⚙️ Acciones del Sistema</Text>
+        <Text style={styles.cardSubtitle}>Controla el aprendizaje y estado del ML</Text>
+        
+        <View style={styles.actionsContainer}>
+          {/* Force Relearn Button */}
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.actionButtonPrimary, isRelearning && styles.actionButtonDisabled]}
+            onPress={handleForceRelearn}
+            disabled={isRelearning}
+          >
+            {isRelearning ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.actionButtonIcon}>🔄</Text>
+                <Text style={styles.actionButtonText}>Forzar Re-aprendizaje</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.actionHint}>Recalcula pesos desde predicciones verificadas</Text>
+          {relearnResult && (
+            <View style={[styles.resultBox, relearnResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
+              <Text style={styles.resultText}>{relearnResult}</Text>
+            </View>
+          )}
+
+          {/* Retrain Classifiers Button */}
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.actionButtonSecondary, isRetrainingClassifiers && styles.actionButtonDisabled]}
+            onPress={handleRetrainClassifiers}
+            disabled={isRetrainingClassifiers}
+          >
+            {isRetrainingClassifiers ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.actionButtonIcon}>🏷️</Text>
+                <Text style={styles.actionButtonText}>Reentrenar Clasificadores</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.actionHint}>Recalcula multiplicadores por grupo de activo</Text>
+          {retrainClassifiersResult && (
+            <View style={[styles.resultBox, retrainClassifiersResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
+              <Text style={styles.resultText}>{retrainClassifiersResult}</Text>
+            </View>
+          )}
+
+          {/* Reset All Button */}
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.actionButtonDanger, isResettingModels && styles.actionButtonDisabled]}
+            onPress={handleResetModels}
+            disabled={isResettingModels}
+          >
+            {isResettingModels ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.actionButtonIcon}>🗑️</Text>
+                <Text style={styles.actionButtonText}>Reset Completo ML</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={[styles.actionHint, { color: '#ef4444' }]}>⚠️ Borra TODO: predicciones, cache, pesos y datos Python</Text>
+          {resetModelsResult && (
+            <View style={[styles.resultBox, resetModelsResult.startsWith('❌') ? styles.resultBoxError : styles.resultBoxSuccess]}>
+              <Text style={styles.resultText}>{resetModelsResult}</Text>
+            </View>
+          )}
+        </View>
+      </View>
     </View>
   );
 
-  const renderWeights = () => (
-    <View style={styles.section}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>⚖️ Pesos de Factores Actuales</Text>
-        <Text style={styles.cardSubtitle}>Cómo el sistema pondera cada factor en las predicciones</Text>
-        
-        {weightsStatus?.current ? (
-          <View style={styles.weightsGrid}>
-            {Object.entries(weightsStatus.current)
-              .sort((a, b) => b[1] - a[1])
-              .map(([factor, weight]) => (
-                <View key={factor} style={styles.weightItem}>
-                  <View style={styles.weightBar}>
-                    <View style={[styles.weightFill, { width: `${weight * 100}%` }]} />
-                  </View>
-                  <Text style={styles.weightLabel}>{factor}</Text>
-                  <Text style={styles.weightValue}>{(weight * 100).toFixed(1)}%</Text>
-                </View>
-              ))}
+  const renderWeights = () => {
+    const comparison = weightsStatus?.comparison?.[selectedTimeframe];
+    
+    return (
+      <View style={styles.section}>
+        {/* Summary Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>📊 Resumen de Pesos</Text>
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>🕐 Última actualización</Text>
+              <Text style={styles.summaryValue}>{formatDate(weightsStatus?.summary?.lastUpdated || null)}</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>📊 Muestras entrenadas</Text>
+              <Text style={styles.summaryValue}>{weightsStatus?.summary?.trainingSamples || 0}</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>✅ Pesos aprendidos</Text>
+              <Text style={[styles.summaryValue, { color: weightsStatus?.summary?.hasLearnedWeights ? '#10b981' : '#ef4444' }]}>
+                {weightsStatus?.summary?.hasLearnedWeights ? 'Activos' : 'No disponibles'}
+              </Text>
+            </View>
           </View>
-        ) : (
-          <Text style={styles.noData}>Sin datos de pesos disponibles</Text>
-        )}
-      </View>
+        </View>
 
-      {/* Clasificadores */}
-      {weightsStatus?.classifiers && weightsStatus.classifiers.length > 0 && (
+        {/* Timeframe Selector */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>⚖️ Pesos de Factores por Timeframe</Text>
+          <Text style={styles.cardSubtitle}>Comparación de pesos base vs aprendidos</Text>
+          
+          <View style={styles.timeframeSelector}>
+            {(['intraday', 'swing', 'long'] as TimeframeType[]).map((tf) => (
+              <TouchableOpacity
+                key={tf}
+                style={[styles.timeframeButton, selectedTimeframe === tf && styles.timeframeButtonActive]}
+                onPress={() => setSelectedTimeframe(tf)}
+              >
+                <Text style={[styles.timeframeText, selectedTimeframe === tf && styles.timeframeTextActive]}>
+                  {tf === 'intraday' ? '📅 Intradía' : tf === 'swing' ? '📆 Swing' : '📈 Largo'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Weights Comparison Table */}
+          {comparison ? (
+            <View style={styles.weightsTable}>
+              <View style={styles.weightsTableHeader}>
+                <Text style={[styles.weightsTableHeaderText, { flex: 2 }]}>Factor</Text>
+                <Text style={styles.weightsTableHeaderText}>Base</Text>
+                <Text style={styles.weightsTableHeaderText}>Actual</Text>
+                <Text style={styles.weightsTableHeaderText}>Δ%</Text>
+              </View>
+              {Object.entries(comparison)
+                .sort((a, b) => b[1].learned - a[1].learned)
+                .map(([name, comp]) => (
+                  <View key={name} style={styles.weightsTableRow}>
+                    <Text style={[styles.weightsTableCell, { flex: 2 }]}>{name}</Text>
+                    <Text style={[styles.weightsTableCell, { color: '#64748b' }]}>{(comp.base * 100).toFixed(0)}%</Text>
+                    <Text style={[styles.weightsTableCell, { color: getChangeColor(comp.changePercent) }]}>
+                      {(comp.learned * 100).toFixed(1)}%
+                    </Text>
+                    <Text style={[styles.weightsTableCell, { color: getChangeColor(comp.changePercent) }]}>
+                      {comp.change}
+                    </Text>
+                  </View>
+                ))}
+            </View>
+          ) : weightsStatus?.baseWeights ? (
+            <View style={styles.weightsTable}>
+              <View style={styles.weightsTableHeader}>
+                <Text style={[styles.weightsTableHeaderText, { flex: 2 }]}>Factor</Text>
+                <Text style={styles.weightsTableHeaderText}>Base</Text>
+              </View>
+              {Object.entries(weightsStatus.baseWeights)
+                .sort((a, b) => b[1] - a[1])
+                .map(([factor, weight]) => (
+                  <View key={factor} style={styles.weightsTableRow}>
+                    <Text style={[styles.weightsTableCell, { flex: 2 }]}>{factor}</Text>
+                    <Text style={styles.weightsTableCell}>{(weight * 100).toFixed(1)}%</Text>
+                  </View>
+                ))}
+            </View>
+          ) : (
+            <Text style={styles.noData}>Sin datos de pesos disponibles</Text>
+          )}
+
+          {/* Legend */}
+          <View style={styles.legend}>
+            <Text style={styles.legendTitle}>📖 Interpretación:</Text>
+            <Text style={styles.legendText}>
+              <Text style={{ color: '#10b981' }}>Verde</Text>: El ML aprendió que es más importante{'\n'}
+              <Text style={{ color: '#ef4444' }}>Rojo</Text>: El ML aprendió que es menos importante{'\n'}
+              <Text style={{ color: '#94a3b8' }}>Gris</Text>: Similar al peso base
+            </Text>
+          </View>
+        </View>
+
+        {/* Clasificadores por Grupo de Activo */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>🏷️ Clasificadores por Tipo de Activo</Text>
-          {weightsStatus.classifiers.map((classifier, index) => (
-            <View key={index} style={styles.classifierItem}>
-              <Text style={styles.classifierName}>{classifier.name}</Text>
-              <View style={styles.classifierStats}>
-                <Text style={styles.classifierStat}>
-                  📊 {classifier.sampleCount} muestras
-                </Text>
-                <Text style={styles.classifierStat}>
-                  ✅ {(classifier.successRate * 100).toFixed(1)}% éxito
-                </Text>
-                <Text style={styles.classifierStat}>
-                  🎯 {classifier.avgAccuracy.toFixed(0)} score
-                </Text>
-              </View>
+          <Text style={styles.cardSubtitle}>Multiplicadores específicos para cada grupo</Text>
+          
+          {/* Asset Group Selector */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.assetGroupScroll}>
+            <View style={styles.assetGroupRow}>
+              {(weightsStatus?.availableAssetGroups || Object.keys(GROUP_DESCRIPTIONS)).map((group) => {
+                const info = GROUP_DESCRIPTIONS[group] || { emoji: '📋', description: group };
+                return (
+                  <TouchableOpacity
+                    key={group}
+                    style={[styles.assetGroupButton, selectedAssetGroup === group && styles.assetGroupButtonActive]}
+                    onPress={() => setSelectedAssetGroup(group)}
+                  >
+                    <Text style={styles.assetGroupEmoji}>{info.emoji}</Text>
+                    <Text style={[styles.assetGroupText, selectedAssetGroup === group && styles.assetGroupTextActive]}>
+                      {group.replace(/_/g, ' ')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          ))}
+          </ScrollView>
+
+          {/* Selected Group Detail */}
+          {(() => {
+            const selectedInfo = GROUP_DESCRIPTIONS[selectedAssetGroup] || { emoji: '📋', description: 'Sin descripción' };
+            const multipliers = weightsStatus?.assetGroupMultipliers?.[selectedAssetGroup] || {};
+            const baseMultipliers = BASE_STATIC_MULTIPLIERS[selectedAssetGroup] || {};
+            const stats = weightsStatus?.assetGroupStats?.[selectedAssetGroup];
+            const hasLearnedChanges = stats && stats.sampleCount >= 5;
+
+            return (
+              <>
+                <View style={styles.selectedGroupCard}>
+                  <View style={styles.selectedGroupHeader}>
+                    <Text style={styles.selectedGroupEmoji}>{selectedInfo.emoji}</Text>
+                    <View style={styles.selectedGroupInfo}>
+                      <Text style={styles.selectedGroupName}>{selectedAssetGroup.replace(/_/g, ' ')}</Text>
+                      <Text style={styles.selectedGroupDescription}>{selectedInfo.description}</Text>
+                    </View>
+                  </View>
+                  {/* Estadísticas */}
+                  <View style={styles.classifierStatsGrid}>
+                    <View style={styles.classifierStatItem}>
+                      <Text style={styles.classifierStatValue}>{stats?.sampleCount || 0}</Text>
+                      <Text style={styles.classifierStatLabel}>Muestras</Text>
+                    </View>
+                    <View style={styles.classifierStatItem}>
+                      <Text style={[styles.classifierStatValue, { color: (stats?.successRate || 0) > 0.5 ? '#10b981' : '#64748b' }]}>
+                        {stats?.successRate ? `${(stats.successRate * 100).toFixed(0)}%` : '-'}
+                      </Text>
+                      <Text style={styles.classifierStatLabel}>Éxito</Text>
+                    </View>
+                    <View style={styles.classifierStatItem}>
+                      <Text style={[styles.classifierStatValue, { color: hasLearnedChanges ? '#10b981' : '#64748b' }]}>
+                        {hasLearnedChanges ? '✓' : '⏳'}
+                      </Text>
+                      <Text style={styles.classifierStatLabel}>{hasLearnedChanges ? 'Aprendido' : 'Min 5'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Multipliers Table */}
+                <View style={styles.weightsTable}>
+                  <View style={styles.weightsTableHeader}>
+                    <Text style={[styles.weightsTableHeaderText, { flex: 2 }]}>Factor</Text>
+                    <Text style={styles.weightsTableHeaderText}>Base</Text>
+                    <Text style={styles.weightsTableHeaderText}>Actual</Text>
+                  </View>
+                  {ALL_FACTORS.map((factor) => {
+                    const mult = (multipliers[factor] as number) || 1;
+                    const baseMult = (baseMultipliers[factor] as number) || 1;
+                    const changed = Math.abs(mult - baseMult) > 0.01;
+                    return (
+                      <View key={factor} style={styles.weightsTableRow}>
+                        <Text style={[styles.weightsTableCell, { flex: 2 }]}>{factor}</Text>
+                        <Text style={[styles.weightsTableCell, { color: '#64748b' }]}>{(baseMult * 100).toFixed(0)}%</Text>
+                        <Text style={[styles.weightsTableCell, changed && { color: getMultiplierColor(mult) }]}>
+                          {(mult * 100).toFixed(0)}%
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            );
+          })()}
         </View>
-      )}
-    </View>
-  );
+      </View>
+    );
+  };
 
   const renderBacktest = () => (
     <View style={styles.section}>
@@ -359,72 +778,81 @@ export default function MLStatsPage() {
     </View>
   );
 
-  const renderModels = () => (
-    <View style={styles.section}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🤖 Modelos ML Activos</Text>
-        
-        {mlModels ? (
-          <>
-            <View style={styles.modelCard}>
-              <Text style={styles.modelName}>🎮 Reinforcement Learning</Text>
-              <Text style={styles.modelDescription}>
-                Aprende qué acciones tomar según condiciones de mercado
-              </Text>
-              <View style={styles.modelStats}>
-                <Text style={styles.modelStat}>Estados: {mlModels.reinforcementLearning?.states || 0}</Text>
-                <Text style={styles.modelStat}>Experiencias: {mlModels.reinforcementLearning?.experiences || 0}</Text>
-                <Text style={styles.modelStat}>
-                  Reward Avg: {mlModels.reinforcementLearning?.avgReward?.toFixed(2) || 'N/A'}
-                </Text>
-              </View>
-            </View>
+  const renderModels = () => {
+    const modelInfo = [
+      { key: 'reinforcementLearning', name: 'Aprendizaje por Refuerzo', emoji: '🎮', 
+        detail: mlModels?.reinforcementLearning ? `${mlModels.reinforcementLearning.totalEpisodes} episodios` : '' },
+      { key: 'probabilisticModel', name: 'Modelo Probabilístico', emoji: '🎲',
+        detail: mlModels?.probabilisticModel ? `${mlModels.probabilisticModel.sampleCount} muestras` : '' },
+      { key: 'factorCorrelation', name: 'Correlación de Factores', emoji: '🔗', detail: '' },
+      { key: 'metaLearning', name: 'Meta-Aprendizaje', emoji: '🧠', detail: '' },
+      { key: 'featureEngineering', name: 'Ingeniería de Features', emoji: '⚙️', detail: '' },
+      { key: 'temporalCrossValidation', name: 'Validación Temporal', emoji: '📅', detail: '' },
+    ];
 
-            <View style={styles.modelCard}>
-              <Text style={styles.modelName}>📊 Modelo Probabilístico</Text>
-              <Text style={styles.modelDescription}>
-                Genera intervalos de confianza y probabilidades
-              </Text>
-              <View style={styles.modelStats}>
-                <Text style={styles.modelStat}>
-                  Calibraciones: {mlModels.probabilisticModel?.calibrations || 0}
-                </Text>
-                <Text style={styles.modelStat}>
-                  Estado: {mlModels.probabilisticModel?.isCalibrated ? '✅ Calibrado' : '⏳ Calibrando'}
-                </Text>
-              </View>
-            </View>
+    return (
+      <View style={styles.section}>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>🤖 Modelos ML Activos</Text>
+          <Text style={styles.cardSubtitle}>
+            Estado de cada componente del sistema de Machine Learning
+          </Text>
+          
+          {mlModels ? (
+            <View style={styles.modelsList}>
+              {modelInfo.map((model) => {
+                const data = mlModels[model.key as keyof MLModelsStatus] as { status?: string } | undefined;
+                const status = data?.status || 'unknown';
+                const isActive = status === 'active' || status === 'trained' || status === 'calibrating';
 
-            <View style={styles.modelCard}>
-              <Text style={styles.modelName}>🔗 Correlación de Factores</Text>
-              <Text style={styles.modelDescription}>
-                Detecta correlaciones entre factores y resultados
-              </Text>
-              <View style={styles.modelStats}>
-                <Text style={styles.modelStat}>
-                  Correlaciones: {mlModels.factorCorrelation?.correlations || 0}
-                </Text>
-              </View>
+                return (
+                  <View key={model.key} style={styles.modelCard}>
+                    <Text style={styles.modelEmoji}>{model.emoji}</Text>
+                    <View style={styles.modelInfo}>
+                      <Text style={styles.modelName}>{model.name}</Text>
+                      {model.detail && <Text style={styles.modelDetail}>{model.detail}</Text>}
+                    </View>
+                    <View style={[styles.statusBadge, isActive ? styles.statusActive : styles.statusInactive]}>
+                      <Text style={styles.statusText}>{status}</Text>
+                    </View>
+                  </View>
+                );
+              })}
             </View>
+          ) : (
+            <Text style={styles.noData}>Sin datos de modelos disponibles</Text>
+          )}
+        </View>
 
-            <View style={styles.modelCard}>
-              <Text style={styles.modelName}>🧠 Meta-Learning</Text>
-              <Text style={styles.modelDescription}>
-                Aprende patrones de condiciones de mercado
-              </Text>
-              <View style={styles.modelStats}>
-                <Text style={styles.modelStat}>
-                  Patrones: {mlModels.metaLearning?.patterns || 0}
+        {/* Calidad del Sistema */}
+        {mlModels && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>📊 Calidad del Sistema</Text>
+            <View style={styles.qualityGrid}>
+              <View style={styles.qualityItem}>
+                <Text style={styles.qualityLabel}>Predicciones entrenadas</Text>
+                <Text style={styles.qualityValue}>{weightsStatus?.summary?.trainingSamples || 0}</Text>
+              </View>
+              <View style={styles.qualityItem}>
+                <Text style={styles.qualityLabel}>Episodios RL</Text>
+                <Text style={styles.qualityValue}>{mlModels.reinforcementLearning?.totalEpisodes || 0}</Text>
+              </View>
+              <View style={styles.qualityItem}>
+                <Text style={styles.qualityLabel}>Tasa de éxito RL</Text>
+                <Text style={[styles.qualityValue, { color: (mlModels.reinforcementLearning?.successRate || 0) > 0.5 ? '#10b981' : '#f59e0b' }]}>
+                  {((mlModels.reinforcementLearning?.successRate || 0) * 100).toFixed(1)}%
                 </Text>
               </View>
+              <View style={styles.qualityItem}>
+                <Text style={styles.qualityLabel}>Muestras calibración</Text>
+                <Text style={styles.qualityValue}>{mlModels.probabilisticModel?.sampleCount || 0}</Text>
+              </View>
             </View>
-          </>
-        ) : (
-          <Text style={styles.noData}>Sin datos de modelos disponibles</Text>
+          </View>
         )}
       </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -761,16 +1189,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   modelCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#334155',
     borderRadius: 8,
     padding: 12,
     marginTop: 12,
   },
+  modelEmoji: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  modelInfo: {
+    flex: 1,
+  },
   modelName: {
     color: '#ffffff',
     fontWeight: 'bold',
     fontSize: 14,
-    marginBottom: 4,
+  },
+  modelDetail: {
+    color: '#64748b',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  modelsList: {
+    marginTop: 8,
   },
   modelDescription: {
     color: '#64748b',
@@ -790,5 +1234,302 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
     padding: 20,
+  },
+  // Action buttons styles
+  actionsContainer: {
+    marginTop: 8,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    padding: 14,
+    marginTop: 12,
+  },
+  actionButtonPrimary: {
+    backgroundColor: '#3b82f6',
+  },
+  actionButtonSecondary: {
+    backgroundColor: '#6366f1',
+  },
+  actionButtonDanger: {
+    backgroundColor: '#ef4444',
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
+  },
+  actionButtonIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  actionButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  actionHint: {
+    color: '#64748b',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  resultBox: {
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  resultBoxSuccess: {
+    backgroundColor: '#10b98120',
+  },
+  resultBoxError: {
+    backgroundColor: '#ef444420',
+  },
+  resultText: {
+    color: '#ffffff',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  // Timeframe selector styles
+  timeframeSelector: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  timeframeButton: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#334155',
+    marginHorizontal: 4,
+    alignItems: 'center',
+  },
+  timeframeButtonActive: {
+    backgroundColor: '#3b82f6',
+  },
+  timeframeText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  timeframeTextActive: {
+    color: '#ffffff',
+  },
+  // Weights table styles
+  weightsTable: {
+    marginTop: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#334155',
+  },
+  weightsTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    padding: 10,
+  },
+  weightsTableHeaderText: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'center',
+  },
+  weightsTableRow: {
+    flexDirection: 'row',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  weightsTableCell: {
+    color: '#ffffff',
+    fontSize: 12,
+    flex: 1,
+    textAlign: 'center',
+  },
+  // Summary styles
+  summaryGrid: {
+    marginTop: 8,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  summaryLabel: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+  summaryValue: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  // Legend styles
+  legend: {
+    backgroundColor: '#334155',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 16,
+  },
+  legendTitle: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  legendText: {
+    color: '#94a3b8',
+    fontSize: 11,
+    lineHeight: 18,
+  },
+  // Asset group selector styles
+  assetGroupScroll: {
+    marginVertical: 12,
+  },
+  assetGroupRow: {
+    flexDirection: 'row',
+  },
+  assetGroupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#334155',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  assetGroupButtonActive: {
+    backgroundColor: '#3b82f6',
+  },
+  assetGroupEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  assetGroupText: {
+    color: '#94a3b8',
+    fontSize: 11,
+  },
+  assetGroupTextActive: {
+    color: '#ffffff',
+  },
+  // Selected group card styles
+  selectedGroupCard: {
+    backgroundColor: '#334155',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  selectedGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  selectedGroupEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  selectedGroupInfo: {
+    flex: 1,
+  },
+  selectedGroupName: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textTransform: 'capitalize',
+  },
+  selectedGroupDescription: {
+    color: '#64748b',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  // Classifier stats grid
+  classifierStatsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    padding: 12,
+  },
+  classifierStatItem: {
+    alignItems: 'center',
+  },
+  classifierStatValue: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  classifierStatLabel: {
+    color: '#64748b',
+    fontSize: 10,
+    marginTop: 4,
+  },
+  // Status badge styles
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusActive: {
+    backgroundColor: '#10b98120',
+  },
+  statusInactive: {
+    backgroundColor: '#64748b20',
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+  },
+  // Quality item styles (for models tab)
+  qualityItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  // Direction stats styles
+  directionStatsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  directionStatBox: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#334155',
+    borderRadius: 8,
+    padding: 12,
+    marginHorizontal: 4,
+  },
+  directionEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  directionLabel: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  directionAccuracy: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  directionCount: {
+    color: '#64748b',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  // Verify button style
+  actionButtonVerify: {
+    backgroundColor: '#22c55e',
+  },
+  verifyProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
