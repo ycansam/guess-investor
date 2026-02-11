@@ -12,7 +12,13 @@
       "forex": 0.048963,
       "institutional": 0.050962,
       "seasonality": 0.016987,
-      "financials": 0.015988
+      "financials": 0.015988,
+      "intradayTrend": 0.000000,
+      "optionsFlow": 0.000000,
+      "volumeProfile": 0.000000,
+      "divergences": 0.000000,
+      "volatilityIV": 0.000000,
+      "marketBreadth": 0.000000
     },
     "swing": {
       "trend": 0.14,
@@ -23,7 +29,13 @@
       "forex": 0.06,
       "institutional": 0.1,
       "seasonality": 0.02,
-      "financials": 0.06
+      "financials": 0.06,
+      "intradayTrend": 0.000000,
+      "optionsFlow": 0.000000,
+      "volumeProfile": 0.000000,
+      "divergences": 0.000000,
+      "volatilityIV": 0.000000,
+      "marketBreadth": 0.000000
     },
     "long": {
       "trend": 0.06,
@@ -34,7 +46,13 @@
       "forex": 0.08,
       "institutional": 0.14,
       "seasonality": 0.04,
-      "financials": 0.26
+      "financials": 0.26,
+      "intradayTrend": 0.000000,
+      "optionsFlow": 0.000000,
+      "volumeProfile": 0.000000,
+      "divergences": 0.000000,
+      "volatilityIV": 0.000000,
+      "marketBreadth": 0.000000
     }
   },
   "metadata": {

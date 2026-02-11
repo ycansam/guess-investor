@@ -24,7 +24,7 @@ interface LearnedWeightsJson {
   };
 }
 
-// Pesos por defecto (9 factores activos)
+// Pesos por defecto (15 factores: 9 tradicionales + 6 intradía)
 const DEFAULT_WEIGHTS: Weights = {
   trend: 0.11,
   technical: 0.11,
@@ -33,26 +33,35 @@ const DEFAULT_WEIGHTS: Weights = {
   macro: 0.11,
   forex: 0.11,
   institutional: 0.11,
-  seasonality: 0.11,
-  financials: 0.12,
+  seasonality: 0.05,
+  financials: 0.05,
+  intradayTrend: 0.03,
+  optionsFlow: 0.02,
+  volumeProfile: 0.02,
+  divergences: 0.02,
+  volatilityIV: 0.02,
+  marketBreadth: 0.02,
 };
 
 // Pesos por defecto por timeframe (usados si no hay archivo)
 const DEFAULT_TIMEFRAME_WEIGHTS = {
   intraday: {
-    trend: 0.22, technical: 0.27, sentiment: 0.16, news: 0.18, macro: 0.04,
-    forex: 0.04, institutional: 0.05, seasonality: 0.02,
-    financials: 0.02
+    trend: 0.05, technical: 0.17, sentiment: 0.12, news: 0.08, macro: 0.03,
+    forex: 0.02, institutional: 0.00, seasonality: 0.01, financials: 0.00,
+    intradayTrend: 0.15, optionsFlow: 0.10, volumeProfile: 0.07,
+    divergences: 0.07, volatilityIV: 0.06, marketBreadth: 0.07
   },
   swing: {
-    trend: 0.14, technical: 0.20, sentiment: 0.11, news: 0.15, macro: 0.09,
-    forex: 0.06, institutional: 0.11, seasonality: 0.06,
-    financials: 0.08
+    trend: 0.12, technical: 0.17, sentiment: 0.10, news: 0.15, macro: 0.07,
+    forex: 0.05, institutional: 0.07, seasonality: 0.02, financials: 0.04,
+    intradayTrend: 0.05, optionsFlow: 0.03, volumeProfile: 0.02,
+    divergences: 0.05, volatilityIV: 0.03, marketBreadth: 0.03
   },
   long: {
-    trend: 0.06, technical: 0.09, sentiment: 0.05, news: 0.09, macro: 0.14,
-    forex: 0.09, institutional: 0.14, seasonality: 0.14,
-    financials: 0.20
+    trend: 0.06, technical: 0.08, sentiment: 0.04, news: 0.10, macro: 0.14,
+    forex: 0.07, institutional: 0.13, seasonality: 0.04, financials: 0.23,
+    intradayTrend: 0.00, optionsFlow: 0.02, volumeProfile: 0.01,
+    divergences: 0.03, volatilityIV: 0.02, marketBreadth: 0.03
   }
 };
 
@@ -102,8 +111,8 @@ export const weightsRepository = {
     return {
       weights: fileData.weights,
       trainingSamples: fileData.training_samples,
-      accuracy: fileData.metadata?.final_loss 
-        ? Math.round((1 - fileData.metadata.final_loss) * 100) 
+      accuracy: fileData.metadata?.final_loss
+        ? Math.round((1 - fileData.metadata.final_loss) * 100)
         : null,
       updatedAt: fileData.updated_at,
     };
