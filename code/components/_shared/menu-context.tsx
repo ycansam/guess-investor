@@ -1,18 +1,34 @@
 /**
  * Menu Context
- * Provides global menu state and functions across all pages
+ * Provides global sidebar state and functions across all pages.
+ * The sidebar is always visible (expanded or collapsed).
  */
 
 import { usePathname, useRouter } from 'expo-router';
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { favoritesService } from '../../services/favorites-service-v2';
 import { trainingCacheService } from '../../services/training-cache-service';
-import { SideMenu, TabType } from '../home/side-menu';
+import {
+    PersistentSidebar,
+    SIDEBAR_COLLAPSED_WIDTH,
+    SIDEBAR_EXPANDED_WIDTH,
+    TabType,
+} from '../home/side-menu';
 
 interface MenuContextType {
+  /** @deprecated Use toggleSidebar instead. Kept for backward compat. */
   showMenu: boolean;
+  /** @deprecated No-op. Sidebar is always visible. */
   openMenu: () => void;
+  /** @deprecated No-op. Sidebar is always visible. */
   closeMenu: () => void;
+  /** Whether the sidebar is collapsed (icon-only mode) */
+  sidebarCollapsed: boolean;
+  /** Toggle between expanded and collapsed */
+  toggleSidebar: () => void;
+  /** Current sidebar width in px */
+  sidebarWidth: number;
   favoritesCount: number;
   predictionsCount: number;
   refreshCounts: () => Promise<void>;
@@ -37,10 +53,12 @@ interface MenuProviderProps {
 export function MenuProvider({ children }: MenuProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [showMenu, setShowMenu] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [predictionsCount, setPredictionsCount] = useState(0);
   const [activeTab, setActiveTab] = useState<TabType>('predictions');
+
+  const sidebarWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
 
   const loadCounts = useCallback(async () => {
     try {
@@ -60,24 +78,30 @@ export function MenuProvider({ children }: MenuProviderProps) {
     loadCounts();
   }, [loadCounts]);
 
-  const openMenu = useCallback(() => setShowMenu(true), []);
-  const closeMenu = useCallback(() => setShowMenu(false), []);
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => !prev);
+  }, []);
+
+  // Backward compat stubs
+  const openMenu = useCallback(() => {}, []);
+  const closeMenu = useCallback(() => {}, []);
 
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab);
-    closeMenu();
-    // Navigate to home if not already there
     if (pathname !== '/') {
       router.push('/');
     }
-  }, [pathname, router, closeMenu]);
+  }, [pathname, router]);
 
   return (
     <MenuContext.Provider
       value={{
-        showMenu,
+        showMenu: !sidebarCollapsed,
         openMenu,
         closeMenu,
+        sidebarCollapsed,
+        toggleSidebar,
+        sidebarWidth,
         favoritesCount,
         predictionsCount,
         refreshCounts: loadCounts,
@@ -85,15 +109,29 @@ export function MenuProvider({ children }: MenuProviderProps) {
         setActiveTab,
       }}
     >
-      {children}
-      <SideMenu
-        visible={showMenu}
-        onClose={closeMenu}
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        predictionsCount={predictionsCount}
-        favoritesCount={favoritesCount}
-      />
+      <View style={styles.root}>
+        <PersistentSidebar
+          collapsed={sidebarCollapsed}
+          onToggle={toggleSidebar}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          predictionsCount={predictionsCount}
+          favoritesCount={favoritesCount}
+        />
+        <View style={styles.content}>
+          {children}
+        </View>
+      </View>
     </MenuContext.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  content: {
+    flex: 1,
+  },
+});

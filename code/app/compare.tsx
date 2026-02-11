@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -10,7 +9,6 @@ import {
     TextInput,
     View,
 } from 'react-native';
-import { useMenu } from '../components/_shared/menu-context';
 import { apiClient, CalculatedPrediction } from '../services/api-client';
 
 const DARK = {
@@ -36,7 +34,7 @@ interface CompareData {
 
 export default function CompareScreen() {
   const router = useRouter();
-  const { openMenu } = useMenu();
+  // Sidebar is always visible via layout
   const params = useLocalSearchParams();
   const initialSymbols = params.symbols 
     ? (Array.isArray(params.symbols) ? params.symbols : [params.symbols])
@@ -142,11 +140,7 @@ export default function CompareScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Pressable onPress={openMenu} style={styles.menuButton}>
-            <Ionicons name="menu" size={24} color={DARK.text} />
-          </Pressable>
-        </View>
+        <View style={styles.headerTop} />
         <Text style={styles.title}>📊 Comparador de Activos</Text>
         <Text style={styles.subtitle}>Compara hasta 3 activos lado a lado</Text>
       </View>
@@ -336,12 +330,6 @@ const styles = StyleSheet.create({
   },
   headerTop: {
     marginBottom: 16,
-  },
-  menuButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
   },
   title: {
     fontSize: 24,

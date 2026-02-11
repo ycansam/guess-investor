@@ -3,7 +3,6 @@
  * Dashboard completo de métricas del sistema de machine learning
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -16,7 +15,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useMenu } from '../components/_shared/menu-context';
 import { apiClient, BacktestSummary, MLModelsStatus, MLWeightsStatus } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
 
@@ -59,7 +57,6 @@ const ALL_FACTORS = [
 
 export default function MLStatsPage() {
   const router = useRouter();
-  const menuContext = useMenu();
   
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(true);
@@ -220,9 +217,6 @@ export default function MLStatsPage() {
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <TouchableOpacity onPress={() => menuContext?.openMenu()} style={styles.menuButton}>
-          <Ionicons name="menu" size={24} color="#ffffff" />
-        </TouchableOpacity>
         <Text style={styles.title}>🧠 Dashboard ML</Text>
       </View>
       <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -901,10 +895,6 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  menuButton: {
-    padding: 8,
-    marginRight: 8,
   },
   title: {
     fontSize: 20,

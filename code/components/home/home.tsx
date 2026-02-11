@@ -10,7 +10,7 @@ import { TabType } from './side-menu';
 import { useHome } from './use-home';
 
 export function Home() {
-  const { activeTab, setActiveTab, openMenu, refreshCounts } = useMenu();
+  const { activeTab, setActiveTab, refreshCounts } = useMenu();
   const [showScreener, setShowScreener] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -54,7 +54,6 @@ export function Home() {
 
       <Header 
         title="Guess Investor"
-        onMenuPress={openMenu}
         actions={[
           { icon: '🎯', onPress: () => setShowScreener(true) },
         ]}

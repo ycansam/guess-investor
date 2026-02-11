@@ -19,7 +19,6 @@ import {
     View,
 } from 'react-native';
 
-import { useMenu } from '../components/_shared/menu-context';
 import { AffectedAsset, apiClient, MarketImpactNews, NewsCategory } from '../services/api-client';
 
 // Colores
@@ -296,7 +295,7 @@ function getTimeAgo(date: Date): string {
 
 export default function MarketNewsPage() {
   const router = useRouter();
-  const { openMenu } = useMenu();
+  // Sidebar is always visible via layout
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [news, setNews] = useState<MarketImpactNews[]>([]);
@@ -383,9 +382,6 @@ export default function MarketNewsPage() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Pressable onPress={openMenu} style={styles.menuButton}>
-              <Ionicons name="menu" size={24} color={COLORS.text} />
-            </Pressable>
             <Text style={styles.headerTitle}>📰 Noticias Impacto</Text>
           </View>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
@@ -518,12 +514,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  menuButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 22,

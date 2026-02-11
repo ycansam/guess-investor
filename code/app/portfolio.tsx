@@ -14,26 +14,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 
-import { useMenu } from '../components/_shared/menu-context';
 import {
-  CreateNoteInput,
-  InvestmentNote,
-  NotesData,
-  notesService,
-  ResultadoTipo,
-  WalletTotals,
+    CreateNoteInput,
+    InvestmentNote,
+    NotesData,
+    notesService,
+    ResultadoTipo,
+    WalletTotals,
 } from '../services/notes-service';
 
 // Colores del tema oscuro
@@ -538,7 +537,7 @@ const ResultModal = ({
 
 export default function NotesScreen() {
   const router = useRouter();
-  const { openMenu } = useMenu();
+  // Sidebar is always visible via layout
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notesData, setNotesData] = useState<NotesData | null>(null);
@@ -662,9 +661,6 @@ export default function NotesScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Pressable onPress={openMenu} style={styles.menuButton}>
-              <Ionicons name="menu" size={24} color={COLORS.text} />
-            </Pressable>
             <Text style={styles.headerTitle}>📝 Mis Notas</Text>
           </View>
           <Pressable style={styles.addButton} onPress={openCreateModal}>
@@ -765,12 +761,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  menuButton: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 20,

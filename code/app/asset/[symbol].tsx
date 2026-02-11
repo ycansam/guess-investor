@@ -17,7 +17,6 @@ import {
     View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
-import { useMenu } from '../../components/_shared/menu-context';
 import { InvestorInfoCard } from '../../components/investor-info-card';
 import { PredictionCardAnalysis } from '../../components/prediction-card/prediction-card-analysis/prediction-card-analysis';
 import { PredictionHistoryCard } from '../../components/prediction-history';
@@ -406,7 +405,6 @@ const CHART_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 export default function AssetDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
-  const { openMenu } = useMenu();
   const { width } = useWindowDimensions();
 
   const [loading, setLoading] = useState(true);
@@ -1561,9 +1559,6 @@ export default function AssetDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={openMenu} style={styles.menuButton}>
-          <Ionicons name="menu" size={24} color="#fff" />
-        </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.symbol}>{symbol}</Text>
           {assetData && (
@@ -2109,10 +2104,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#111111',
     borderBottomWidth: 1,
     borderBottomColor: '#1f1f1f',
-  },
-  menuButton: {
-    padding: 8,
-    marginRight: 8,
   },
   headerInfo: {
     flex: 1,

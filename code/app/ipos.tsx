@@ -21,7 +21,6 @@ import {
     View
 } from 'react-native';
 
-import { useMenu } from '../components/_shared/menu-context';
 import { apiClient, IPOData, IPOListing } from '../services/api-client';
 
 // ============================================================================
@@ -370,7 +369,7 @@ const EmptyState = ({ tab }: { tab: TabKey }) => {
 
 export default function IPOPage() {
   const router = useRouter();
-  const { openMenu } = useMenu();
+  // Sidebar is always visible via layout
   const [ipoData, setIpoData] = useState<IPOData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -427,9 +426,6 @@ export default function IPOPage() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Pressable onPress={openMenu} style={styles.menuButton}>
-            <Ionicons name="menu" size={24} color={COLORS.text} />
-          </Pressable>
           <View>
             <Text style={styles.headerTitle}>IPOs & Nuevos Activos</Text>
             <Text style={styles.headerSubtitle}>
@@ -611,11 +607,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  menuButton: {
-    padding: 8,
-    borderRadius: 10,
-    backgroundColor: COLORS.cardLight,
   },
   headerTitle: {
     fontSize: 20,
