@@ -168,15 +168,18 @@ class TrainingCacheService {
 
   /**
    * Guarda una predicción en cache (backend + local)
+   * @param customExpiresAt - Fecha de expiración personalizada (opcional). Si no se proporciona, usa duración estándar del timeframe.
    */
   async set(
     symbol: string, 
     timeframe: TrainingTimeframe, 
-    prediction: Omit<TrainingPrediction, 'expiresAt'>
+    prediction: Omit<TrainingPrediction, 'expiresAt'>,
+    customExpiresAt?: Date
   ): Promise<TrainingPrediction> {
     const key = this.getKey(symbol, timeframe);
-    const duration = CACHE_DURATIONS[timeframe];
-    const expiresAt = new Date(Date.now() + duration);
+    
+    // Usar expiración personalizada si se proporciona, sino usar duración estándar
+    const expiresAt = customExpiresAt || new Date(Date.now() + CACHE_DURATIONS[timeframe]);
     
     const fullPrediction: TrainingPrediction = {
       ...prediction,

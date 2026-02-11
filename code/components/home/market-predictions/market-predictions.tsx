@@ -25,6 +25,7 @@ import {
 import { apiClient } from '../../../services/api-client';
 import { favoritesService } from '../../../services/favorites-service-v2';
 import { MarketAsset, marketDataService } from '../../../services/market-data-service';
+import { getPredictionExpiration } from '../../../services/market-hours-service';
 import { predictionTrackingService } from '../../../services/prediction-tracking-service';
 import {
   TIMEFRAME_INFO,
@@ -484,6 +485,16 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         targetPrice = asset.price * (1 + predictedChange / 100);
       }
 
+      // Calcular expiración según estado del mercado para predicciones intradía
+      let customExpiresAt: Date | undefined;
+      let expirationDescription = TIMEFRAME_INFO[timeframe].label;
+      
+      if (timeframe === 'intraday') {
+        const expInfo = getPredictionExpiration(asset.symbol, asset.name);
+        customExpiresAt = expInfo.expiresAt;
+        expirationDescription = expInfo.description;
+      }
+
       const prediction = await trainingCacheService.set(asset.symbol, timeframe, {
         symbol: asset.symbol,
         name: asset.name,
@@ -498,7 +509,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         reasoning,
         analysisData: calculatedPrediction || undefined, // Guardar análisis completo
         createdAt: new Date(),
-      });
+      }, customExpiresAt);
 
       // Actualizar lista de predicciones cacheadas
       const updatedPredictions = await trainingCacheService.getAllActive();
@@ -508,7 +519,12 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         onPredictionMade(prediction);
       }
 
-      showAlert('✅ Predicción creada', `${asset.name} (${TIMEFRAME_INFO[timeframe].label})\nDirección: ${direction === 'up' ? '📈 Sube' : direction === 'down' ? '📉 Baja' : '➡️ Lateral'}\nVálida hasta: ${prediction.expiresAt.toLocaleTimeString('es-ES')}`);
+      // Mostrar mensaje con la expiración correcta
+      const expiresAtStr = timeframe === 'intraday' 
+        ? prediction.expiresAt.toLocaleString('es-ES', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : prediction.expiresAt.toLocaleDateString('es-ES');
+      
+      showAlert('✅ Predicción creada', `${asset.name} (${expirationDescription})\nDirección: ${direction === 'up' ? '📈 Sube' : direction === 'down' ? '📉 Baja' : '➡️ Lateral'}\nVálida hasta: ${expiresAtStr}`);
     } catch (error) {
       console.error('[MarketPredictions] Error making prediction:', error);
       showAlert('Error', 'No se pudo crear la predicción');

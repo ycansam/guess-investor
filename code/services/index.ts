@@ -42,7 +42,7 @@ export type { TrainingPrediction, TrainingTimeframe } from './training-cache-ser
 export { currencyService } from './currency-service';
 
 // Horarios de mercado
-export { canTradeNow, getMarketHours } from './market-hours-service';
+export { canTradeNow, getMarketHours, getPredictionExpiration } from './market-hours-service';
 export type { MarketHoursInfo } from './market-hours-service';
 
 // Tracking de predicciones
