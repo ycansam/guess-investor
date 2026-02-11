@@ -1559,6 +1559,13 @@ export default function AssetDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={22} color="#e2e8f0" />
+        </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.symbol}>{symbol}</Text>
           {assetData && (
@@ -2104,6 +2111,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#111111',
     borderBottomWidth: 1,
     borderBottomColor: '#1f1f1f',
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#1a1a2e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   headerInfo: {
     flex: 1,

@@ -118,7 +118,6 @@ export function PersistentSidebar({
   }
 
   const pageEntries: PageEntry[] = [
-    { path: '/portfolio', emoji: '📝', label: 'Portfolio', color: '#3b82f6', isActive: isOnPortfolio },
     { path: '/screener', emoji: '🎯', label: 'Screener', color: '#06b6d4', isActive: isOnScreener },
     { path: '/compare', emoji: '⚖️', label: 'Comparar', color: '#f97316', isActive: isOnCompare },
     { path: '/economic-calendar', emoji: '📅', label: 'Calendario', color: '#ef4444', isActive: isOnCalendar },
@@ -126,6 +125,10 @@ export function PersistentSidebar({
     { path: '/sectors', emoji: '🗺️', label: 'Mapa Sectores', color: '#10b981', isActive: isOnSectors },
     { path: '/market-news', emoji: '📰', label: 'Noticias', color: '#f59708', isActive: isOnMarketNews },
     { path: '/ipos', emoji: '🚀', label: 'IPOs & Nuevos', color: '#8b5cf6', isActive: isOnIPOs },
+  ];
+
+  const toolEntries: PageEntry[] = [
+    { path: '/portfolio', emoji: '📝', label: 'Portfolio', color: '#3b82f6', isActive: isOnPortfolio },
     { path: '/ml-diagnostics', emoji: '🧠', label: 'Diagnóstico ML', color: '#8b5cf6', isActive: isOnMLDiagnostics },
     { path: '/ml-stats', emoji: '📊', label: 'Estadísticas ML', color: '#10b981', isActive: isOnMLStats },
   ];
@@ -213,6 +216,45 @@ export function PersistentSidebar({
         {collapsed && <View style={styles.collapsedSectionDot} />}
 
         {pageEntries.map((entry) => (
+          <TouchableOpacity
+            key={entry.path}
+            style={[
+              styles.sidebarItem,
+              collapsed && styles.sidebarItemCollapsed,
+              entry.isActive && styles.sidebarItemActive,
+              entry.isActive && { borderLeftColor: entry.color },
+            ]}
+            onPress={() => handleNavigation(entry.path)}
+            activeOpacity={0.7}
+          >
+            <View style={[
+              styles.sidebarIconBox,
+              entry.isActive && { backgroundColor: `${entry.color}20` },
+            ]}>
+              <Text style={{ fontSize: 18 }}>{entry.emoji}</Text>
+            </View>
+            {!collapsed && (
+              <Text
+                style={[
+                  styles.sidebarItemLabel,
+                  entry.isActive && { color: entry.color, fontWeight: '600' },
+                ]}
+                numberOfLines={1}
+              >
+                {entry.label}
+              </Text>
+            )}
+          </TouchableOpacity>
+        ))}
+
+        {/* Separator */}
+        <View style={[styles.separator, collapsed && styles.separatorCollapsed]} />
+
+        {/* Section: Tools */}
+        {!collapsed && <Text style={styles.sectionLabel}>HERRAMIENTAS</Text>}
+        {collapsed && <View style={styles.collapsedSectionDot} />}
+
+        {toolEntries.map((entry) => (
           <TouchableOpacity
             key={entry.path}
             style={[
