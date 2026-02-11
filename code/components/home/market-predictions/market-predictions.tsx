@@ -773,6 +773,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
               timeframe: selectedTimeframe,
               timeframeDays,
               volatility: calculatedPrediction?.historical?.volatility,
+              factorBreakdown: calculatedPrediction?.factorBreakdown,
             });
           } catch (trackError) {
             console.error(`[MarketPredictions] Error en tracking de ${asset.symbol}:`, trackError);

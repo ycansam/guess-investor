@@ -150,7 +150,7 @@ async function main() {
   console.log('\n💾 Guardando estado...');
 
   const existingState = await prisma.mLModelState.findFirst({
-    where: { modelType: 'classifier_multipliers' },
+    where: { modelType: 'classifier_learning' },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -166,7 +166,7 @@ async function main() {
   } else {
     await prisma.mLModelState.create({
       data: {
-        modelType: 'classifier_multipliers',
+        modelType: 'classifier_learning',
         version: state.version,
         stateJson: JSON.stringify(state),
       },

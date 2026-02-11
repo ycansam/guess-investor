@@ -7,14 +7,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { useMenu } from '../../components/_shared/menu-context';
@@ -734,6 +734,7 @@ export default function AssetDetailScreen() {
             timeframe: selectedTimeframe,
             timeframeDays: predictionDays,
             volatility: pred.historical?.volatility,
+            factorBreakdown: pred.factorBreakdown,
           });
         } catch (trackError) {
           console.warn('[AssetDetail] Error tracking prediction:', trackError);
@@ -1094,6 +1095,7 @@ export default function AssetDetailScreen() {
             timeframe: selectedTimeframe,
             timeframeDays: predictionDays,
             volatility: cached.analysisData?.historical?.volatility,
+            factorBreakdown: cached.analysisData?.factorBreakdown,
           });
         } catch (trackError) {
           console.warn('[AssetDetail] Error tracking cached prediction:', trackError);

@@ -689,6 +689,8 @@ export const predictionController = {
     // Aprender de la predicción verificada para ajustar clasificadores
     try {
       const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+      console.log(`[Verify] ${prediction.symbol} factorBreakdown:`, factorBreakdown ? `assetGroup=${factorBreakdown.assetGroup}, factors=${factorBreakdown.availableFactors?.length || 0}` : 'NULL');
+      
       if (factorBreakdown?.assetGroup) {
         const factorScores: Record<string, number> = {};
         const factorWeights: Record<string, number> = {};
@@ -712,20 +714,22 @@ export const predictionController = {
           predictedChange: prediction.predictedChange,
           actualChange: verifyData.actualChange,
         });
-        console.log(`[Verify] Classifier learning updated for ${factorBreakdown.assetGroup}`);
+        console.log(`[Verify] ✅ Classifier learning updated for ${factorBreakdown.assetGroup} (${Object.keys(factorScores).length} factor scores)`);
 
-        // Actualizar pesos de factores (technical, trend, news, etc.)
-        const weightLearningResult = await factorWeightLearningService.learnFromVerification({
-          timeframeDays: prediction.timeframeDays,
-          directionCorrect: verifyData.directionCorrect,
-          accuracyScore: verifyData.accuracyScore,
-          factorScores,
-          factorWeights,
-          predictedChange: prediction.predictedChange,
-          actualChange: verifyData.actualChange,
-        });
-        if (weightLearningResult.adjusted) {
-          console.log(`[Verify] Factor weights adjusted:`, weightLearningResult.changes.join(', '));
+        // Actualizar pesos de factores (solo si tenemos factor scores)
+        if (Object.keys(factorScores).length > 0) {
+          const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+            timeframeDays: prediction.timeframeDays,
+            directionCorrect: verifyData.directionCorrect,
+            accuracyScore: verifyData.accuracyScore,
+            factorScores,
+            factorWeights,
+            predictedChange: prediction.predictedChange,
+            actualChange: verifyData.actualChange,
+          });
+          if (weightLearningResult.adjusted) {
+            console.log(`[Verify] Factor weights adjusted:`, weightLearningResult.changes.join(', '));
+          }
         }
 
         // Marcar predicción como usada para training (evitar re-entrenamiento)
@@ -820,6 +824,8 @@ export const predictionController = {
         // Aprender de la predicción verificada para ajustar clasificadores y pesos
         try {
           const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+          console.log(`[VerifyPending] ${prediction.symbol} factorBreakdown:`, factorBreakdown ? `assetGroup=${factorBreakdown.assetGroup}, factors=${factorBreakdown.availableFactors?.length || 0}` : 'NULL');
+          
           if (factorBreakdown?.assetGroup) {
             const factorScores: Record<string, number> = {};
             const factorWeights: Record<string, number> = {};
@@ -843,20 +849,22 @@ export const predictionController = {
               predictedChange: prediction.predictedChange,
               actualChange: verifyData.actualChange,
             });
-            console.log(`[VerifyPending] Classifier learning updated for ${prediction.symbol} (${factorBreakdown.assetGroup})`);
+            console.log(`[VerifyPending] ✅ Classifier learning updated for ${prediction.symbol} (${factorBreakdown.assetGroup}, ${Object.keys(factorScores).length} factors)`);
 
-            // Actualizar pesos de factores (technical, trend, news, etc.)
-            const weightLearningResult = await factorWeightLearningService.learnFromVerification({
-              timeframeDays: prediction.timeframeDays,
-              directionCorrect: verifyData.directionCorrect,
-              accuracyScore: verifyData.accuracyScore,
-              factorScores,
-              factorWeights,
-              predictedChange: prediction.predictedChange,
-              actualChange: verifyData.actualChange,
-            });
-            if (weightLearningResult.adjusted) {
-              console.log(`[VerifyPending] Factor weights adjusted for ${prediction.symbol}:`, weightLearningResult.changes.join(', '));
+            // Actualizar pesos de factores (solo si tenemos factor scores)
+            if (Object.keys(factorScores).length > 0) {
+              const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+                timeframeDays: prediction.timeframeDays,
+                directionCorrect: verifyData.directionCorrect,
+                accuracyScore: verifyData.accuracyScore,
+                factorScores,
+                factorWeights,
+                predictedChange: prediction.predictedChange,
+                actualChange: verifyData.actualChange,
+              });
+              if (weightLearningResult.adjusted) {
+                console.log(`[VerifyPending] Factor weights adjusted for ${prediction.symbol}:`, weightLearningResult.changes.join(', '));
+              }
             }
 
             // Marcar predicción como usada para training (evitar re-entrenamiento)
