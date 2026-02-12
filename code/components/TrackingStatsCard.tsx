@@ -62,7 +62,10 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose, a
   const handleVerify = async () => {
     setVerifying(true);
     try {
-      const result = await apiClient.verifyAllPending();
+      const result = await apiClient.verifyAllPending((done, total) => {
+        // Actualizar stats.pending en tiempo real para reflejar progreso
+        setStats((prev: any) => prev ? { ...prev, pending: total - done } : prev);
+      });
       console.log('[TrackingStats] Verificadas:', result.verified);
       await loadData();
     } catch (error) {

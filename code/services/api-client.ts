@@ -890,10 +890,49 @@ export const apiClient = {
   },
 
   /**
-   * Verificar todas las predicciones pendientes automáticamente
+   * Verificar un lote de predicciones pendientes
+   * @param limit - máximo de predicciones a verificar (default 10)
+   * @param skipPythonSync - omitir sync Python (true para lotes intermedios)
    */
-  verifyAllPending: (): Promise<{ verified: number; results: any[] }> => {
-    return post('/predictions/verify-pending', {});
+  verifyPendingBatch: async (limit = 10, skipPythonSync = false): Promise<{
+    processed: number;
+    remaining: number;
+    totalPending: number;
+    results: any[];
+  }> => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (skipPythonSync) params.set('skipPythonSync', 'true');
+    const response = await fetchWithTimeout(
+      `${API_BASE_URL}/predictions/verify-pending?${params.toString()}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+      120000, // 2 min timeout per batch
+    );
+    const json = await response.json();
+    if (!json.success) throw new Error(json.error || 'Unknown error');
+    return json.data;
+  },
+
+  /**
+   * Verificar todas las predicciones pendientes en lotes con callback de progreso
+   */
+  verifyAllPending: async (
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ verified: number; results: any[] }> => {
+    const BATCH_SIZE = 10;
+    let totalVerified = 0;
+    const allResults: any[] = [];
+    let remaining = 1; // iniciar > 0 para entrar al loop
+
+    while (remaining > 0) {
+      const isLast = remaining <= BATCH_SIZE; // será el último lote si quedan pocos
+      const batch = await apiClient.verifyPendingBatch(BATCH_SIZE, !isLast);
+      totalVerified += batch.processed;
+      remaining = batch.remaining;
+      allResults.push(...batch.results);
+      onProgress?.(totalVerified, totalVerified + remaining);
+    }
+
+    return { verified: totalVerified, results: allResults };
   },
 
   /**

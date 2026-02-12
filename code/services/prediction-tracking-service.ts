@@ -199,11 +199,11 @@ class PredictionTrackingService {
   }
 
   /**
-   * Verificar todas las predicciones pendientes automáticamente
+   * Verificar todas las predicciones pendientes automáticamente (en lotes)
    */
-  async verifyAllPending(): Promise<{ verified: number; results: any[] }> {
+  async verifyAllPending(onProgress?: (done: number, total: number) => void): Promise<{ verified: number; results: any[] }> {
     try {
-      return await apiClient.verifyAllPending();
+      return await apiClient.verifyAllPending(onProgress);
     } catch (error: any) {
       console.error('[Tracking] Error verificando pendientes:', error.message);
       return { verified: 0, results: [] };

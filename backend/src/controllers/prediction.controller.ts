@@ -764,11 +764,18 @@ export const predictionController = {
 
   /**
    * POST /api/predictions/verify-pending
-   * Verificar todas las predicciones pendientes automáticamente
+   * Verificar predicciones pendientes automáticamente (en lotes)
    * Usa el precio de cierre de la fecha de expiración, no el precio actual
+   * Query params:
+   *   - limit: número máximo de predicciones a verificar (default: 10)
+   *   - skipPythonSync: si es "true", omite la sincronización con Python (para lotes intermedios)
    */
-  verifyPending: asyncHandler(async (_req: Request, res: Response) => {
-    const pending = await predictionRepository.findPendingVerification();
+  verifyPending: asyncHandler(async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+    const skipPythonSync = req.query.skipPythonSync === 'true';
+    const allPending = await predictionRepository.findPendingVerification();
+    const pending = allPending.slice(0, limit);
+    const remaining = allPending.length - pending.length;
     const results: any[] = [];
 
     for (const prediction of pending) {
@@ -905,20 +912,22 @@ export const predictionController = {
     };
     console.log(`[VerifyPending] ML training complete: RL=${mlStats.rlTrained}, Prob=${mlStats.probCalibrated}`);
 
-    // Sincronizar con Python después de verificar todas las pendientes
-    const pythonSync = await pythonTrainingService.syncAndTrain();
+    // Sincronizar con Python solo en el último lote (o si no se pide skip)
+    let pythonSync: Record<string, any> = { available: false, synced: 0, trained: false };
+    if (!skipPythonSync && remaining === 0) {
+      const sync = await pythonTrainingService.syncAndTrain();
+      pythonSync = { available: sync.available, synced: sync.synced, trained: sync.trained };
+    }
 
     res.json({
       success: true,
       data: {
         processed: results.length,
+        remaining,
+        totalPending: allPending.length,
         results,
         mlStats,
-        pythonSync: {
-          available: pythonSync.available,
-          synced: pythonSync.synced,
-          trained: pythonSync.trained,
-        },
+        pythonSync,
       },
     });
   }),

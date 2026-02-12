@@ -6,14 +6,14 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { apiClient, BacktestSummary, MLModelsStatus, MLWeightsStatus } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
@@ -157,7 +157,9 @@ export default function MLStatsPage() {
     const total = stats?.pending || 0;
     setVerifyProgress({ done: 0, total });
     try {
-      const result = await apiClient.verifyAllPending();
+      const result = await apiClient.verifyAllPending((done, totalPending) => {
+        setVerifyProgress({ done, total: totalPending });
+      });
       setVerifyProgress({ done: result.verified, total });
       setVerifyResult(`✅ Verificadas ${result.verified}/${total} predicciones`);
       await loadAllData();
