@@ -305,17 +305,30 @@ model PriceAlert {
 }
 
 // ============================================================================
-// INVESTMENT NOTES - Notas y apuntes de inversión
+// INVESTMENT NOTES - Notas y apuntes de inversión simplificadas
 // ============================================================================
 
 model InvestmentNote {
-  id        String   @id @default(uuid())
-  symbol    String   @unique
-  note      String   // Nota de texto libre
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String    @id @default(uuid())
+  symbol            String    @unique
+  
+  // Parámetros de dinero
+  dineroInvertido   Float     @default(0)  // Dinero invertido
+  beneficioEsperado Float     @default(0)  // Beneficio esperado
+  perdidaEsperada   Float     @default(0)  // Pérdida esperada
+  
+  // Resultado final
+  resultado         String?   // "beneficiado" | "perdida" | null (sin cerrar)
+  resultadoFinal    Float?    // Importe real del resultado
+  
+  // Nota de texto
+  note              String?   // Nota de texto libre
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   
   @@index([symbol])
+  @@index([resultado])
 }
 
 // ============================================================================

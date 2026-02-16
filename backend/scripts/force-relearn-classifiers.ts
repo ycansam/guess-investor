@@ -6,19 +6,22 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Multiplicadores base (11 factores)
+// Multiplicadores base (14 factores)
 const BASE_MULTIPLIERS = {
   trend: 1.0,
   technical: 1.0,
   sentiment: 1.0,
   news: 1.0,
   macro: 1.0,
-  competitors: 1.0,
   forex: 1.0,
   institutional: 1.0,
-  seasonality: 1.0,
   financials: 1.0,
-  expectations: 1.0,
+  intradayTrend: 1.0,
+  optionsFlow: 1.0,
+  volumeProfile: 1.0,
+  divergences: 1.0,
+  volatilityIV: 1.0,
+  marketBreadth: 1.0,
 };
 
 const MIN_SAMPLES = 5;
@@ -150,7 +153,7 @@ async function main() {
   console.log('\n💾 Guardando estado...');
 
   const existingState = await prisma.mLModelState.findFirst({
-    where: { modelType: 'classifier_multipliers' },
+    where: { modelType: 'classifier_learning' },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -159,14 +162,13 @@ async function main() {
       where: { id: existingState.id },
       data: {
         stateJson: JSON.stringify(state),
-        version: state.version,
         updatedAt: new Date(),
       },
     });
   } else {
     await prisma.mLModelState.create({
       data: {
-        modelType: 'classifier_multipliers',
+        modelType: 'classifier_learning',
         version: state.version,
         stateJson: JSON.stringify(state),
       },

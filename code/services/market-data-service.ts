@@ -361,46 +361,72 @@ class MarketDataService {
   private async fetchAllAssets(): Promise<Map<string, MarketAsset>> {
     const result = new Map<string, MarketAsset>();
     const symbols = POPULAR_ASSETS.map(a => a.symbol);
+    const now = Date.now();
 
-    console.log(`[MarketData] ⚡ Fetching ${symbols.length} symbols in parallel...`);
+    // Separar símbolos que necesitan fetch de los que están en cache
+    const uncachedSymbols: string[] = [];
+    for (const symbol of symbols) {
+      const cached = marketCache.get(symbol);
+      if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+        const asset = POPULAR_ASSETS.find(a => a.symbol === symbol)!;
+        result.set(symbol, {
+          ...asset,
+          price: cached.data.price,
+          change: cached.data.change,
+          changePercent: cached.data.changePercent,
+          currency: cached.data.currency,
+        });
+      } else {
+        uncachedSymbols.push(symbol);
+      }
+    }
+
+    if (uncachedSymbols.length === 0) {
+      console.log(`[MarketData] ✅ All ${symbols.length} symbols from cache`);
+      return result;
+    }
+
+    console.log(`[MarketData] ⚡ Batch fetching ${uncachedSymbols.length} symbols (${result.size} from cache)...`);
     const startTime = Date.now();
 
     try {
-      // TODAS las peticiones en paralelo - máxima velocidad
-      const promises = symbols.map(async (symbol) => {
-        try {
-          const data = await this.getQuoteLite(symbol);
-          if (data) {
-            const asset = POPULAR_ASSETS.find(a => a.symbol === symbol)!;
-            return {
-              symbol,
-              asset: {
-                ...asset,
-                price: data.price,
-                change: data.change,
-                changePercent: data.changePercent,
-                currency: data.currency,
-              } as MarketAsset
-            };
-          }
-        } catch (error) {
-          // Silenciar errores individuales
-        }
-        return null;
-      });
+      // Una sola llamada batch al backend
+      const quotes = await apiClient.getQuotesBatch(uncachedSymbols);
       
-      const results = await Promise.all(promises);
-      
-      for (const r of results) {
-        if (r) {
-          result.set(r.symbol, r.asset);
+      for (const symbol of uncachedSymbols) {
+        const data = quotes[symbol];
+        if (data) {
+          marketCache.set(symbol, { data, timestamp: now });
+          const asset = POPULAR_ASSETS.find(a => a.symbol === symbol)!;
+          result.set(symbol, {
+            ...asset,
+            price: data.price,
+            change: data.change,
+            changePercent: data.changePercent,
+            currency: data.currency,
+          });
         }
       }
       
       const elapsed = Date.now() - startTime;
-      console.log(`[MarketData] ✅ Fetched ${result.size}/${symbols.length} symbols in ${elapsed}ms`);
+      console.log(`[MarketData] ✅ Batch fetched ${result.size}/${symbols.length} symbols in ${elapsed}ms`);
     } catch (error) {
-      console.error('[MarketData] Fetch error:', error);
+      console.error('[MarketData] Batch fetch error, falling back to parallel:', error);
+      // Fallback a llamadas paralelas si el batch falla
+      const promises = uncachedSymbols.map(async (symbol) => {
+        try {
+          const data = await this.getQuoteLite(symbol);
+          if (data) {
+            const asset = POPULAR_ASSETS.find(a => a.symbol === symbol)!;
+            return { symbol, asset: { ...asset, price: data.price, change: data.change, changePercent: data.changePercent, currency: data.currency } as MarketAsset };
+          }
+        } catch { /* ignore */ }
+        return null;
+      });
+      const results = await Promise.all(promises);
+      for (const r of results) {
+        if (r) result.set(r.symbol, r.asset);
+      }
     }
 
     return result;
@@ -681,43 +707,48 @@ class MarketDataService {
   }
   
   /**
-   * Fetch con control de concurrencia para evitar rate limiting
+   * Fetch con batch endpoint en lugar de llamadas individuales
    */
   private async fetchWithRateLimit(assets: MarketAsset[]): Promise<MarketAsset[]> {
-    const results: MarketAsset[] = [];
+    if (assets.length === 0) return [];
     
-    // Procesar en chunks de MAX_CONCURRENT_REQUESTS
-    for (let i = 0; i < assets.length; i += MAX_CONCURRENT_REQUESTS) {
-      const chunk = assets.slice(i, i + MAX_CONCURRENT_REQUESTS);
+    const symbols = assets.map(a => a.symbol);
+    const now = Date.now();
+    
+    try {
+      // Una sola llamada batch
+      const quotes = await apiClient.getQuotesBatch(symbols);
       
-      const chunkPromises = chunk.map(async (asset) => {
-        try {
-          const data = await this.getQuoteLite(asset.symbol);
-          if (data) {
-            return {
-              ...asset,
-              price: data.price,
-              change: data.change,
-              changePercent: data.changePercent,
-              currency: data.currency,
-            };
-          }
-        } catch (error) {
-          // Silenciar error individual
+      return assets.map(asset => {
+        const data = quotes[asset.symbol];
+        if (data) {
+          marketCache.set(asset.symbol, { data, timestamp: now });
+          return {
+            ...asset,
+            price: data.price,
+            change: data.change,
+            changePercent: data.changePercent,
+            currency: data.currency,
+          };
         }
         return { ...asset, error: true };
       });
-      
-      const chunkResults = await Promise.all(chunkPromises);
-      results.push(...chunkResults);
-      
-      // Pequeña pausa entre chunks si hay más por procesar
-      if (i + MAX_CONCURRENT_REQUESTS < assets.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+    } catch (error) {
+      console.error('[MarketData] Batch fetch error in fetchWithRateLimit:', error);
+      // Fallback a llamadas paralelas
+      const results = await Promise.all(
+        assets.map(async (asset) => {
+          try {
+            const data = await this.getQuoteLite(asset.symbol);
+            if (data) {
+              return { ...asset, price: data.price, change: data.change, changePercent: data.changePercent, currency: data.currency };
+            }
+          } catch { /* ignore */ }
+          return { ...asset, error: true };
+        })
+      );
+      return results;
     }
-    
-    return results;
   }
 
   /**

@@ -444,6 +444,119 @@ export interface MLModelsStatus {
   temporalCrossValidation: { status: string };
 }
 
+// Market Impact News types
+export type ImpactDirection = 'bullish' | 'bearish' | 'neutral';
+export type ImpactMagnitude = 'high' | 'medium' | 'low';
+export type NewsCategory = 
+  | 'political'
+  | 'economic'
+  | 'trade'
+  | 'regulation'
+  | 'geopolitical'
+  | 'technology'
+  | 'energy'
+  | 'healthcare'
+  | 'earnings'
+  | 'commodities'
+  | 'crypto';
+
+export interface AffectedAsset {
+  symbol: string;
+  name: string;
+  sector: string;
+  impact: ImpactDirection;
+  magnitude: ImpactMagnitude;
+  reasoning: string;
+  confidence: number;
+}
+
+export interface MarketImpactNews {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string;
+  publishedAt: string;
+  category: NewsCategory;
+  subcategory: string;
+  overallSentiment: ImpactDirection;
+  impactMagnitude: ImpactMagnitude;
+  urgency: 'breaking' | 'important' | 'normal';
+  bullishAssets: AffectedAsset[];
+  bearishAssets: AffectedAsset[];
+  bullishSectors: string[];
+  bearishSectors: string[];
+  detectedKeywords: string[];
+  reasoning: string;
+}
+
+// Noticias específicas para un activo
+export interface AssetNews {
+  headline: string;
+  source: string;
+  publishedAt: string;
+  url: string;
+  sentiment: ImpactDirection;
+  sentimentScore: number; // -1 a 1
+  keywords: string[];
+  relevanceScore: number; // 0-100
+  marketImpact?: {
+    category: NewsCategory;
+    magnitude: ImpactMagnitude;
+    reasoning: string;
+  };
+}
+
+// Resumen de sentimiento de noticias para un activo
+export interface NewsSentimentSummary {
+  symbol: string;
+  totalNews: number;
+  bullishCount: number;
+  bearishCount: number;
+  neutralCount: number;
+  averageSentiment: number; // -1 a 1
+  overallDirection: ImpactDirection;
+  confidence: number; // 0-100
+  topHeadlines: {
+    headline: string;
+    source: string;
+    sentiment: ImpactDirection;
+    publishedAt: string;
+  }[];
+  lastUpdated: string;
+}
+
+// ============================================================================
+// IPO / NUEVOS ACTIVOS
+// ============================================================================
+
+export interface IPOListing {
+  symbol: string;
+  name: string;
+  exchange: string;
+  ipoDate: string;
+  priceRange?: string;
+  offerPrice?: number;
+  currentPrice?: number;
+  changeFromIPO?: number;
+  sharesOffered?: number;
+  marketCap?: string;
+  sector?: string;
+  industry?: string;
+  status: 'upcoming' | 'today' | 'recent' | 'filed';
+  description?: string;
+  country?: string;
+  popularity?: number;
+  expectedDate?: string;
+}
+
+export interface IPOData {
+  recent: IPOListing[];
+  upcoming: IPOListing[];
+  today: IPOListing[];
+  hot: IPOListing[];
+  lastUpdated: string;
+}
+
 // ============================================================================
 // API CLIENT - Funciones exportadas
 // ============================================================================
@@ -498,6 +611,13 @@ export const apiClient = {
    */
   getQuote: (symbol: string): Promise<AssetQuote> => {
     return get(`/assets/${encodeURIComponent(symbol)}/quote`);
+  },
+
+  /**
+   * Obtener cotizaciones de múltiples activos en una sola llamada
+   */
+  getQuotesBatch: (symbols: string[]): Promise<Record<string, AssetQuote | null>> => {
+    return post('/assets/quotes/batch', { symbols });
   },
 
   /**
@@ -610,6 +730,34 @@ export const apiClient = {
   },
 
   /**
+   * Obtener análisis de volatilidad IV/RV
+   */
+  getVolatilityAnalysis: (symbol: string): Promise<any> => {
+    return get(`/analysis/volatility/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener tendencia intradía (VWAP, pivots, momentum corto plazo)
+   */
+  getIntradayTrend: (symbol: string): Promise<any> => {
+    return get(`/analysis/intraday-trend/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener perfil de volumen
+   */
+  getVolumeProfile: (symbol: string): Promise<any> => {
+    return get(`/analysis/volume-profile/${encodeURIComponent(symbol)}`);
+  },
+
+  /**
+   * Obtener amplitud de mercado
+   */
+  getMarketBreadth: (): Promise<any> => {
+    return get('/analysis/market-breadth');
+  },
+
+  /**
    * Obtener ranking de activos por tendencia
    * @param category - 'gainers' | 'losers' | 'streaks' | 'momentum' | 'all'
    * @param limit - Número máximo de resultados (max 50)
@@ -627,6 +775,19 @@ export const apiClient = {
    */
   calculatePrediction: (symbol: string, days: number = 1): Promise<CalculatedPrediction> => {
     return post('/predictions/calculate', { symbol, days });
+  },
+
+  /**
+   * Calcular múltiples predicciones en paralelo (sin guardar)
+   * Más eficiente que múltiples llamadas individuales
+   * Máximo 20 símbolos por batch
+   */
+  calculatePredictionBatch: (symbols: string[], days: number = 1): Promise<{
+    results: Record<string, { success: boolean; data?: CalculatedPrediction; error?: string }>;
+    totalRequested: number;
+    totalSuccess: number;
+  }> => {
+    return post('/predictions/calculate-batch', { symbols, days });
   },
 
   /**
@@ -729,10 +890,49 @@ export const apiClient = {
   },
 
   /**
-   * Verificar todas las predicciones pendientes automáticamente
+   * Verificar un lote de predicciones pendientes
+   * @param limit - máximo de predicciones a verificar (default 10)
+   * @param skipPythonSync - omitir sync Python (true para lotes intermedios)
    */
-  verifyAllPending: (): Promise<{ verified: number; results: any[] }> => {
-    return post('/predictions/verify-pending', {});
+  verifyPendingBatch: async (limit = 10, skipPythonSync = false): Promise<{
+    processed: number;
+    remaining: number;
+    totalPending: number;
+    results: any[];
+  }> => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (skipPythonSync) params.set('skipPythonSync', 'true');
+    const response = await fetchWithTimeout(
+      `${API_BASE_URL}/predictions/verify-pending?${params.toString()}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+      120000, // 2 min timeout per batch
+    );
+    const json = await response.json();
+    if (!json.success) throw new Error(json.error || 'Unknown error');
+    return json.data;
+  },
+
+  /**
+   * Verificar todas las predicciones pendientes en lotes con callback de progreso
+   */
+  verifyAllPending: async (
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ verified: number; results: any[] }> => {
+    const BATCH_SIZE = 10;
+    let totalVerified = 0;
+    const allResults: any[] = [];
+    let remaining = 1; // iniciar > 0 para entrar al loop
+
+    while (remaining > 0) {
+      const isLast = remaining <= BATCH_SIZE; // será el último lote si quedan pocos
+      const batch = await apiClient.verifyPendingBatch(BATCH_SIZE, !isLast);
+      totalVerified += batch.processed;
+      remaining = batch.remaining;
+      allResults.push(...batch.results);
+      onProgress?.(totalVerified, totalVerified + remaining);
+    }
+
+    return { verified: totalVerified, results: allResults };
   },
 
   /**
@@ -952,6 +1152,34 @@ export const apiClient = {
   },
 
   // -------------------------------------------------------------------------
+  // MARKET IMPACT NEWS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener noticias de alto impacto con activos afectados
+   */
+  getMarketImpactNews: (): Promise<MarketImpactNews[]> => {
+    return get('/news/market-impact');
+  },
+
+  /**
+   * Obtener noticias específicas para un símbolo
+   */
+  getNewsForSymbol: (symbol: string, companyName?: string): Promise<AssetNews[]> => {
+    const params = companyName ? `?companyName=${encodeURIComponent(companyName)}` : '';
+    return get(`/news/symbol/${symbol}${params}`);
+  },
+
+  /**
+   * Obtener resumen de sentimiento de noticias para un símbolo
+   * Útil para ajustar confianza de predicciones
+   */
+  getNewsSentiment: (symbol: string, companyName?: string): Promise<NewsSentimentSummary> => {
+    const params = companyName ? `?companyName=${encodeURIComponent(companyName)}` : '';
+    return get(`/news/sentiment/${symbol}${params}`);
+  },
+
+  // -------------------------------------------------------------------------
   // HEALTH
   // -------------------------------------------------------------------------
 
@@ -992,7 +1220,236 @@ export const apiClient = {
   getMLStatus: (): Promise<MLModelsStatus> => {
     return get('/ml/status');
   },
+
+  // -------------------------------------------------------------------------
+  // BACKTESTING
+  // -------------------------------------------------------------------------
+
+  /**
+   * Ejecutar backtest para un símbolo
+   */
+  runBacktest: (symbol: string, days?: number, timeframe?: number): Promise<BacktestResult> => {
+    return post('/backtest', { symbol, days: days || 90, timeframe: timeframe || 5 });
+  },
+
+  /**
+   * Obtener resumen de backtesting multi-timeframe
+   */
+  getBacktestSummary: (symbol: string, days?: number): Promise<BacktestSummary> => {
+    const params = days ? `?days=${days}` : '';
+    return get(`/backtest/summary/${encodeURIComponent(symbol)}${params}`);
+  },
+
+  /**
+   * Ejecutar backtest por lotes
+   */
+  runBacktestBatch: (symbols: string[], days?: number): Promise<{
+    tested: number;
+    successful: number;
+    results: Array<{ symbol: string; success: boolean; data?: BacktestSummary; error?: string }>;
+  }> => {
+    return post('/backtest/batch', { symbols, days: days || 60 });
+  },
+
+  // -------------------------------------------------------------------------
+  // IPO / NUEVOS ACTIVOS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener datos de IPOs (recientes, próximas, hot)
+   */
+  getIPOData: (): Promise<IPOData> => {
+    return get('/ipo');
+  },
+
+  // -------------------------------------------------------------------------
+  // CALENDARIO ECONÓMICO
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener calendario económico
+   */
+  getEconomicCalendar: (): Promise<EconomicCalendarData> => {
+    return get('/calendar');
+  },
+
+  // -------------------------------------------------------------------------
+  // PRE-MARKET & AFTER-HOURS MOVERS
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener movers de horario extendido
+   */
+  getExtendedHoursMovers: (): Promise<ExtendedHoursData> => {
+    return get('/movers');
+  },
+
+  // -------------------------------------------------------------------------
+  // SECTOR HEAT MAP
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtener mapa de calor por sector
+   */
+  getSectorHeatMap: (): Promise<HeatMapData> => {
+    return get('/sectors');
+  },
 };
+
+// Tipos para backtesting
+export interface BacktestResult {
+  symbol: string;
+  period: string;
+  timeframe: string;
+  totalPredictions: number;
+  directionAccuracy: string;
+  avgError: string;
+  upAccuracy: string;
+  downAccuracy: string;
+  quality: {
+    excellent: number;
+    good: number;
+    poor: number;
+    failed: number;
+  };
+  advanced: {
+    sharpeRatio: string;
+    maxDrawdown: string;
+    winRate: string;
+    profitFactor: string;
+  };
+  recentPredictions: Array<{
+    date: string;
+    predicted: string;
+    actual: string;
+    correct: boolean;
+    score: number;
+  }>;
+  durationMs: number;
+}
+
+export interface BacktestSummary {
+  symbol: string;
+  period: string;
+  totalTests: number;
+  directionAccuracy: number;
+  avgAccuracyScore: number;
+  bestTimeframe: number;
+  recommendation: string;
+}
+
+// ============================================================================
+// Tipos para Calendario Económico
+// ============================================================================
+
+export type EventImpact = 'high' | 'medium' | 'low';
+export type EventCategory = 'central_bank' | 'employment' | 'inflation' | 'gdp' | 'earnings' | 'trade' | 'housing' | 'consumer' | 'manufacturing' | 'other';
+
+export interface EconomicEvent {
+  id: string;
+  title: string;
+  country: string;
+  countryFlag: string;
+  date: string;
+  time?: string;
+  impact: EventImpact;
+  category: EventCategory;
+  previous?: string;
+  forecast?: string;
+  actual?: string;
+  description?: string;
+  affectedAssets?: string[];
+}
+
+export interface EconomicCalendarData {
+  today: EconomicEvent[];
+  thisWeek: EconomicEvent[];
+  nextWeek: EconomicEvent[];
+  lastUpdated: string;
+}
+
+// ============================================================================
+// Tipos para Pre-Market & After-Hours
+// ============================================================================
+
+export interface ExtendedHoursMover {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  marketCap?: string;
+  sector?: string;
+  reason?: string;
+  session: 'pre' | 'post' | 'regular';
+}
+
+export interface ExtendedHoursData {
+  preMarket: {
+    gainers: ExtendedHoursMover[];
+    losers: ExtendedHoursMover[];
+    mostActive: ExtendedHoursMover[];
+  };
+  afterHours: {
+    gainers: ExtendedHoursMover[];
+    losers: ExtendedHoursMover[];
+    mostActive: ExtendedHoursMover[];
+  };
+  marketStatus: 'pre-market' | 'regular' | 'after-hours' | 'closed';
+  lastUpdated: string;
+}
+
+// ============================================================================
+// Tipos para Sector Heat Map
+// ============================================================================
+
+export interface SectorData {
+  name: string;
+  symbol: string;
+  change: number;
+  changeWeek?: number;
+  changeMonth?: number;
+  volume: number;
+  marketCap?: number;
+  color: string;
+  industries: IndustryData[];
+}
+
+export interface IndustryData {
+  name: string;
+  change: number;
+  topStocks: StockMover[];
+  volume?: number;
+}
+
+export interface StockMover {
+  symbol: string;
+  name: string;
+  change: number;
+  price: number;
+  volume: number;
+  marketCap?: string;
+}
+
+export interface HeatMapData {
+  sectors: SectorData[];
+  marketOverview: {
+    sp500: { change: number; price: number };
+    nasdaq: { change: number; price: number };
+    dow: { change: number; price: number };
+    russell: { change: number; price: number };
+    vix: { value: number; change: number };
+  };
+  breadth: {
+    advancers: number;
+    decliners: number;
+    unchanged: number;
+    newHighs: number;
+    newLows: number;
+  };
+  lastUpdated: string;
+}
 
 // Export por defecto
 export default apiClient;

@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { InvestmentPrediction } from '../../../types';
-import { AlertsModal } from '../../alerts-modal';
 import { PredictionAnalysisModal } from '../../prediction-analysis-modal';
 import { PredictionCard } from '../../prediction-card';
 import { styles } from './predictions-list-content.styles';
@@ -31,7 +30,6 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
   const isDesktop = Platform.OS === 'web' && width >= BREAKPOINTS.desktop;
   
   const [selectedPrediction, setSelectedPrediction] = useState<InvestmentPrediction | null>(null);
-  const [alertPrediction, setAlertPrediction] = useState<InvestmentPrediction | null>(null);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const lastLoadTime = useRef(0);
@@ -85,7 +83,6 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
       prediction={item} 
       onRemove={onRemove}
       onAnalysis={() => setSelectedPrediction(item)}
-      onAlert={() => setAlertPrediction(item)}
     />
   ), [onRemove]);
 
@@ -96,7 +93,6 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
         prediction={item} 
         onRemove={onRemove}
         onAnalysis={() => setSelectedPrediction(item)}
-        onAlert={() => setAlertPrediction(item)}
       />
     </View>
   ), [columnWidth, onRemove]);
@@ -124,17 +120,6 @@ export const PredictionsListContent: React.FC<PredictionsListContentProps> = ({
           onClose={() => setSelectedPrediction(null)}
         />
       )}
-
-      {/* Modal de alertas */}
-      <AlertsModal
-        visible={alertPrediction !== null}
-        onClose={() => setAlertPrediction(null)}
-        initialSymbol={alertPrediction?.symbol}
-        initialAssetName={alertPrediction?.asset}
-        initialPrice={alertPrediction?.currentPrice}
-        initialTargetPrice={alertPrediction?.predictedPriceMax}
-        initialDirection={alertPrediction?.direction === 'up' ? 'up' : 'down'}
-      />
 
       <View style={styles.header}>
         <Text style={styles.title}>🎯 Predicciones ({validPredictions.length})</Text>

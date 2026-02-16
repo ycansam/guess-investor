@@ -42,22 +42,23 @@ export type { TrainingPrediction, TrainingTimeframe } from './training-cache-ser
 export { currencyService } from './currency-service';
 
 // Horarios de mercado
-export { canTradeNow, getMarketHours } from './market-hours-service';
+export { canTradeNow, getMarketHours, getPredictionExpiration } from './market-hours-service';
 export type { MarketHoursInfo } from './market-hours-service';
 
 // Tracking de predicciones
 export { predictionTrackingService } from './prediction-tracking-service';
 export type { TrackedPrediction, TrackingStats } from './prediction-tracking-service';
 
-// Alertas de precio
-export { alertsService } from './alerts-service';
-export type { CreateAlertInput, PriceAlert } from './alerts-service';
+
 
 // Notas de inversión
 export { notesService } from './notes-service';
 export type {
     CreateNoteInput,
-    InvestmentNote, NoteStatus, NotesData, UpdateNoteInput
+    InvestmentNote,
+    NotesData,
+    ResultadoTipo,
+    WalletTotals
 } from './notes-service';
 
 // =============================================================================

@@ -1,27 +1,17 @@
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Modal, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
-import { favoritesService } from '../../services/favorites-service-v2';
-import { trainingCacheService } from '../../services/training-cache-service';
 import { Header } from '../_shared/header';
-import { AlertsModal } from '../alerts-modal';
-import { MLDiagnosticsModal } from '../ml-diagnostics-modal';
+import { useMenu } from '../_shared/menu-context';
+import { Screener } from '../screener';
 import { TopTrendsTab } from '../top-trends';
-import { TrackingStatsCard } from '../TrackingStatsCard';
 import { FavoritesList } from './favorites-list';
 import { MarketPredictions } from './market-predictions';
-import { SideMenu, TabType } from './side-menu';
+import { TabType } from './side-menu';
 import { useHome } from './use-home';
 
 export function Home() {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('predictions');
-  const [showTracking, setShowTracking] = useState(false);
-  const [showMLDiagnostics, setShowMLDiagnostics] = useState(false);
-  const [showAlerts, setShowAlerts] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [favoritesCount, setFavoritesCount] = useState(0);
-  const [predictionsCount, setPredictionsCount] = useState(0);
+  const { activeTab, setActiveTab, refreshCounts } = useMenu();
+  const [showScreener, setShowScreener] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const {
@@ -33,35 +23,17 @@ export function Home() {
     handleRemovePrediction,
   } = useHome();
 
-  // Cargar conteos
-  const loadCounts = useCallback(async () => {
-    try {
-      await favoritesService.init();
-      const favCount = favoritesService.count();
-      setFavoritesCount(favCount);
-
-      await trainingCacheService.init();
-      const allPredictions = await trainingCacheService.getAllActive();
-      setPredictionsCount(allPredictions.length);
-    } catch (error) {
-      console.error('Error loading counts:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadCounts();
-  }, [loadCounts, refreshKey]);
-
   // Refrescar conteos cuando cambia la pestaña
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab);
-    loadCounts();
-  }, [loadCounts]);
+    refreshCounts();
+  }, [setActiveTab, refreshCounts]);
 
   // Callback para refrescar cuando se cambian favoritos
   const handleFavoritesChange = useCallback(() => {
     setRefreshKey(k => k + 1);
-  }, []);
+    refreshCounts();
+  }, [refreshCounts]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -81,50 +53,22 @@ export function Home() {
       <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
 
       <Header 
-        title="Guess Investor"
-        onMenuPress={() => setShowMenu(true)}
+        title="AlphaVest"
         actions={[
-          { icon: '🎯', onPress: () => router.push('/screener') },
-          { icon: '💼', onPress: () => router.push('/portfolio') },
-          { icon: '🔔', onPress: () => setShowAlerts(true) },
-          { icon: '🧠', onPress: () => setShowMLDiagnostics(true) },
+          { icon: '🎯', onPress: () => setShowScreener(true) },
         ]}
-        actionIcon="📊"
-        onActionPress={() => setShowTracking(true)}
       />
 
-      {/* Menú lateral */}
-      <SideMenu
-        visible={showMenu}
-        onClose={() => setShowMenu(false)}
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        predictionsCount={predictionsCount}
-        favoritesCount={favoritesCount}
-      />
-
-      {/* Modal de Alertas */}
-      <AlertsModal
-        visible={showAlerts}
-        onClose={() => setShowAlerts(false)}
-      />
-
-      {/* Modal de Diagnóstico ML */}
-      <MLDiagnosticsModal
-        visible={showMLDiagnostics}
-        onClose={() => setShowMLDiagnostics(false)}
-      />
-
-      {/* Modal de Tracking Stats */}
+      {/* Modal de Screener */}
       <Modal
-        visible={showTracking}
+        visible={showScreener}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowTracking(false)}
+        onRequestClose={() => setShowScreener(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <TrackingStatsCard onClose={() => setShowTracking(false)} />
+            <Screener onClose={() => setShowScreener(false)} />
           </View>
         </View>
       </Modal>
@@ -142,15 +86,13 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
   },
   modalContent: {
-    width: '100%',
-    maxHeight: '90%',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
+    flex: 1,
+    marginTop: 50,
+    backgroundColor: '#0a0a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     overflow: 'hidden',
   },
 });

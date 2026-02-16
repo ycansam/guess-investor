@@ -1,8 +1,8 @@
 // Shared components
 export { Header } from './_shared';
+export { MenuProvider, useMenu } from './_shared/menu-context';
 
 // Feature components
-export { AlertsModal } from './alerts-modal';
 export { FactorDetailModal, type FactorType } from './factor-detail-modal';
 export { Home } from './home';
 export { PredictionCard } from './prediction-card';

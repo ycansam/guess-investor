@@ -1,5 +1,10 @@
 /**
- * Servicio de Expectativas del Mercado
+ * Servicio de Datos de Earnings
+ * 
+ * NOTA: Este servicio proporciona datos de earnings para la UI de investor-info.
+ * NO se usa como factor de predicción (expectations fue eliminado como factor
+ * por ser redundante con el factor news - las revisiones de analistas ya
+ * están incluidas en el análisis de noticias).
  * 
  * Obtiene datos de earnings y expectativas de analistas de Yahoo Finance
  */

@@ -51,9 +51,9 @@ import { trendsService } from '../external/trends.service.js';
 import { yahooService } from '../external/yahoo.service.js';
 import { classifierLearningService } from '../ml/classifier-learning.service.js';
 import {
-  factorCorrelationService,
-  probabilisticModelService,
-  reinforcementLearningService,
+    factorCorrelationService,
+    probabilisticModelService,
+    reinforcementLearningService,
 } from '../ml/index.js';
 import { assetAdjustmentService } from './asset-adjustment.service.js';
 import { commodityCorrelationService } from './commodity-correlation.service.js';
@@ -509,23 +509,20 @@ function adjustWeightsForVolatility(
     // Baja volatilidad: priorizar fundamentales
     volatilityMultiplier = {
       trend: 0.8, technical: 0.7, sentiment: 0.6, news: 0.8,
-      macro: 1.3, forex: 1.1, institutional: 1.4,
-      financials: 1.5, expectations: 1.5
+      macro: 1.3, forex: 1.1, institutional: 1.4, financials: 1.5
     };
     logger.debug(`[PredictionCalc] Low volatility (${assetVolatility.toFixed(1)}%): prioritizing fundamentals`);
   } else if (assetVolatility < 50) {
     // Volatilidad media: sin ajuste
     volatilityMultiplier = {
       trend: 1.0, technical: 1.0, sentiment: 1.0, news: 1.0,
-      macro: 1.0, forex: 1.0, institutional: 1.0,
-      financials: 1.0, expectations: 1.0
+      macro: 1.0, forex: 1.0, institutional: 1.0, financials: 1.0
     };
   } else {
     // Alta volatilidad: priorizar técnico/momentum/sentiment
     volatilityMultiplier = {
       trend: 1.4, technical: 1.5, sentiment: 1.4, news: 1.3,
-      macro: 0.7, forex: 0.9, institutional: 0.8,
-      financials: 0.5, expectations: 0.5
+      macro: 0.7, forex: 0.9, institutional: 0.8, financials: 0.5
     };
     logger.debug(`[PredictionCalc] High volatility (${assetVolatility.toFixed(1)}%): prioritizing technical/sentiment`);
   }

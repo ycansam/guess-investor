@@ -20,11 +20,13 @@ const MIN_WEIGHT = 0.01;    // Peso mínimo por factor
 const MAX_WEIGHT = 0.35;    // Peso máximo por factor
 const MIN_SAMPLES_TO_LEARN = 5; // Mínimo de muestras para empezar a ajustar
 
-// Factores disponibles (9 factores - competitors y seasonality eliminados)
+// Factores disponibles (15 factores: 9 tradicionales + 6 intradía)
 const FACTORS = [
   'trend', 'technical', 'sentiment', 'news', 'macro',
-  'forex', 'institutional',
-  'financials', 'expectations'
+  'forex', 'institutional', 'seasonality', 'financials',
+  // Factores intradía
+  'intradayTrend', 'optionsFlow', 'volumeProfile',
+  'divergences', 'volatilityIV', 'marketBreadth'
 ] as const;
 
 type Factor = typeof FACTORS[number];
@@ -65,19 +67,22 @@ const DEFAULT_WEIGHTS: WeightsData = {
   training_samples: 0,
   weights: {
     intraday: {
-      trend: 0.225, technical: 0.275, sentiment: 0.165, news: 0.185, macro: 0.04,
-      forex: 0.04, institutional: 0.05,
-      financials: 0.01, expectations: 0.01
+      trend: 0.05, technical: 0.17, sentiment: 0.12, news: 0.08, macro: 0.03,
+      forex: 0.02, institutional: 0.00, seasonality: 0.01, financials: 0.00,
+      intradayTrend: 0.15, optionsFlow: 0.10, volumeProfile: 0.07,
+      divergences: 0.07, volatilityIV: 0.06, marketBreadth: 0.07
     },
     swing: {
-      trend: 0.145, technical: 0.21, sentiment: 0.115, news: 0.155, macro: 0.095,
-      forex: 0.065, institutional: 0.115,
-      financials: 0.05, expectations: 0.05
+      trend: 0.12, technical: 0.17, sentiment: 0.10, news: 0.15, macro: 0.07,
+      forex: 0.05, institutional: 0.07, seasonality: 0.02, financials: 0.04,
+      intradayTrend: 0.05, optionsFlow: 0.03, volumeProfile: 0.02,
+      divergences: 0.05, volatilityIV: 0.03, marketBreadth: 0.03
     },
     long: {
-      trend: 0.065, technical: 0.095, sentiment: 0.055, news: 0.095, macro: 0.15,
-      forex: 0.095, institutional: 0.15,
-      financials: 0.15, expectations: 0.13
+      trend: 0.06, technical: 0.08, sentiment: 0.04, news: 0.10, macro: 0.14,
+      forex: 0.07, institutional: 0.13, seasonality: 0.04, financials: 0.23,
+      intradayTrend: 0.00, optionsFlow: 0.02, volumeProfile: 0.01,
+      divergences: 0.03, volatilityIV: 0.02, marketBreadth: 0.03
     }
   },
   metadata: {

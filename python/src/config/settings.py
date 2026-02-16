@@ -14,27 +14,41 @@ PREDICTIONS_FILE = DATA_DIR / "verified_predictions.json"
 WEIGHTS_FILE = CODE_DIR / "config" / "learned_weights.json"
 TRAINING_LOG_FILE = DATA_DIR / "training_log.json"
 
-# Factores del modelo (9 factores - competitors y expectations eliminados)
+# Factores del modelo (15 factores: 9 tradicionales + 6 intradía)
 # Seasonality: solo como bias suave para activos cíclicos
 # Forex: solo para activos con exposición internacional significativa
+# Factores intradía: intradayTrend, optionsFlow, volumeProfile, divergences, volatilityIV, marketBreadth
 FACTORS = [
     'trend', 'technical', 'sentiment', 'news', 'macro',
-    'forex', 'institutional', 'seasonality', 'financials'
+    'forex', 'institutional', 'seasonality', 'financials',
+    # Factores intradía
+    'intradayTrend', 'optionsFlow', 'volumeProfile',
+    'divergences', 'volatilityIV', 'marketBreadth'
 ]
 
 # Factores relevantes por grupo de activo
 # CRÍTICO: Cada grupo solo usa los factores que tienen sentido para ese tipo de activo
 ASSET_GROUP_FACTORS = {
-    'large_cap_stock': ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'seasonality', 'financials'],
-    'small_cap_stock': ['trend', 'technical', 'news', 'seasonality', 'financials'],
-    'crypto_major': ['trend', 'technical', 'sentiment', 'news', 'macro'],
-    'crypto_alt': ['trend', 'technical', 'sentiment'],
-    'etf_index': ['trend', 'technical', 'macro', 'seasonality', 'forex'],
-    'commodity': ['trend', 'technical', 'macro', 'forex'],  # SIN seasonality - no es fiable para commodities
-    'reit': ['trend', 'technical', 'macro', 'financials', 'seasonality'],
-    'forex': ['trend', 'technical', 'macro', 'news'],
-    'adr': ['trend', 'technical', 'news', 'forex', 'macro', 'financials'],
-    'default': ['trend', 'technical', 'sentiment', 'news'],
+    'large_cap_stock': ['trend', 'technical', 'sentiment', 'news', 'macro', 'forex', 'institutional', 'seasonality', 'financials',
+                        'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'],
+    'small_cap_stock': ['trend', 'technical', 'news', 'seasonality', 'financials',
+                        'intradayTrend', 'volumeProfile', 'divergences', 'marketBreadth'],
+    'crypto_major': ['trend', 'technical', 'sentiment', 'news', 'macro',
+                     'intradayTrend', 'volumeProfile', 'divergences', 'marketBreadth'],
+    'crypto_alt': ['trend', 'technical', 'sentiment',
+                   'intradayTrend', 'volumeProfile', 'divergences'],
+    'etf_index': ['trend', 'technical', 'macro', 'seasonality', 'forex',
+                  'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'],
+    'commodity': ['trend', 'technical', 'macro', 'forex',
+                  'intradayTrend', 'volumeProfile', 'divergences', 'volatilityIV'],
+    'reit': ['trend', 'technical', 'macro', 'financials', 'seasonality',
+             'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'marketBreadth'],
+    'forex': ['trend', 'technical', 'macro', 'news',
+              'intradayTrend', 'volumeProfile', 'divergences'],
+    'adr': ['trend', 'technical', 'news', 'forex', 'macro', 'financials',
+            'intradayTrend', 'optionsFlow', 'volumeProfile', 'divergences', 'volatilityIV', 'marketBreadth'],
+    'default': ['trend', 'technical', 'sentiment', 'news',
+                'intradayTrend', 'volumeProfile', 'divergences', 'marketBreadth'],
 }
 
 
@@ -50,22 +64,34 @@ def get_relevant_factors(asset_group: str) -> list:
     """
     return ASSET_GROUP_FACTORS.get(asset_group, ASSET_GROUP_FACTORS['default'])
 
-# Pesos por defecto por timeframe (9 factores)
+# Pesos por defecto por timeframe (15 factores: 9 tradicionales + 6 intradía)
 DEFAULT_WEIGHTS = {
     'intraday': {
-        'trend': 0.22, 'technical': 0.27, 'sentiment': 0.16, 'news': 0.19,
-        'macro': 0.05, 'forex': 0.05, 'institutional': 0.05,
-        'seasonality': 0.01, 'financials': 0.00
+        # Factores tradicionales (ajustados para dar espacio a los intradía)
+        'trend': 0.05, 'technical': 0.17, 'sentiment': 0.12, 'news': 0.08,
+        'macro': 0.03, 'forex': 0.02, 'institutional': 0.00,
+        'seasonality': 0.01, 'financials': 0.00,
+        # Factores intradía (peso alto - diseñados para esto)
+        'intradayTrend': 0.15, 'optionsFlow': 0.10, 'volumeProfile': 0.07,
+        'divergences': 0.07, 'volatilityIV': 0.06, 'marketBreadth': 0.07
     },
     'swing': {
-        'trend': 0.14, 'technical': 0.20, 'sentiment': 0.12, 'news': 0.20,
-        'macro': 0.10, 'forex': 0.06, 'institutional': 0.10,
-        'seasonality': 0.02, 'financials': 0.06
+        # Factores tradicionales
+        'trend': 0.12, 'technical': 0.17, 'sentiment': 0.10, 'news': 0.15,
+        'macro': 0.07, 'forex': 0.05, 'institutional': 0.07,
+        'seasonality': 0.02, 'financials': 0.04,
+        # Factores intradía (peso moderado)
+        'intradayTrend': 0.05, 'optionsFlow': 0.03, 'volumeProfile': 0.02,
+        'divergences': 0.05, 'volatilityIV': 0.03, 'marketBreadth': 0.03
     },
     'long': {
-        'trend': 0.06, 'technical': 0.10, 'sentiment': 0.05, 'news': 0.12,
-        'macro': 0.15, 'forex': 0.08, 'institutional': 0.14,
-        'seasonality': 0.04, 'financials': 0.26
+        # Factores tradicionales (dominan en largo plazo)
+        'trend': 0.06, 'technical': 0.08, 'sentiment': 0.04, 'news': 0.10,
+        'macro': 0.14, 'forex': 0.07, 'institutional': 0.13,
+        'seasonality': 0.04, 'financials': 0.23,
+        # Factores intradía (peso mínimo o cero)
+        'intradayTrend': 0.00, 'optionsFlow': 0.02, 'volumeProfile': 0.01,
+        'divergences': 0.03, 'volatilityIV': 0.02, 'marketBreadth': 0.03
     }
 }
 

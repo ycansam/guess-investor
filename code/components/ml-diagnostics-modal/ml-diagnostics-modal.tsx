@@ -3,22 +3,27 @@
  * Muestra pesos aprendidos, clasificadores de activos y estado del sistema ML
  */
 
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { colors } from '../../config/theme';
 import { apiClient, MLModelsStatus, MLWeightsStatus, WeightComparison } from '../../services/api-client';
+import { useMenu } from '../_shared/menu-context';
 
 interface MLDiagnosticsModalProps {
-  visible: boolean;
-  onClose: () => void;
+  visible?: boolean;
+  onClose?: () => void;
+  asPage?: boolean;
 }
 
 type TabType = 'weights' | 'classifiers' | 'models';
@@ -26,8 +31,9 @@ type TimeframeType = 'intraday' | 'swing' | 'long';
 type AssetGroupType = string;
 
 export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
-  visible,
+  visible = true,
   onClose,
+  asPage = false,
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,15 +48,17 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
   const [resetModelsResult, setResetModelsResult] = useState<string | null>(null);
   const [isRetrainingClassifiers, setIsRetrainingClassifiers] = useState(false);
   const [retrainClassifiersResult, setRetrainClassifiersResult] = useState<string | null>(null);
+  const router = useRouter();
+  const menuContext = asPage ? useMenu() : null;
 
   useEffect(() => {
-    if (visible) {
+    if (visible || asPage) {
       loadData();
       setRelearnResult(null);
       setResetModelsResult(null);
       setRetrainClassifiersResult(null);
     }
-  }, [visible]);
+  }, [visible, asPage]);
 
   const loadData = async () => {
     setLoading(true);
@@ -600,6 +608,29 @@ export const MLDiagnosticsModal: React.FC<MLDiagnosticsModalProps> = ({
     );
   };
 
+  // Page mode - render directly
+  if (asPage) {
+    return (
+      <SafeAreaView style={styles.pageContainer}>
+        {/* Header */}
+        <View style={styles.pageHeader}>
+          <View style={styles.pageHeaderLeft}>
+            <TouchableOpacity onPress={() => menuContext?.openMenu()} style={styles.menuButton}>
+              <Ionicons name="menu" size={24} color="#ffffff" />
+            </TouchableOpacity>
+            <Text style={styles.title}>🧠 Diagnóstico ML</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Text style={styles.backText}>← Atrás</Text>
+          </TouchableOpacity>
+        </View>
+
+        {renderContent()}
+      </SafeAreaView>
+    );
+  }
+
+  // Modal mode
   return (
     <Modal
       visible={visible}
@@ -1147,5 +1178,32 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  pageContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  pageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pageHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuButton: {
+    padding: 8,
+  },
+  backButton: {
+    padding: 8,
+  },
+  backText: {
+    fontSize: 16,
+    color: colors.primary,
   },
 });

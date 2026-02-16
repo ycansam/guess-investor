@@ -635,7 +635,7 @@ export const backtestingService = {
   },
 };
 
-interface HistoricalBar {
+export interface HistoricalBar {
   date: Date;
   open: number;
   high: number;

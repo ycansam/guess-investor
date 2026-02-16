@@ -1,44 +1,62 @@
 {
   "version": "1.0",
-  "updated_at": "2026-02-08T21:15:09.045520",
-  "training_samples": 0,
+  "updated_at": "2026-02-16T20:53:08.074727",
+  "training_samples": 805,
   "weights": {
     "intraday": {
-      "trend": 0.22,
-      "technical": 0.27,
-      "sentiment": 0.16,
-      "news": 0.19,
-      "macro": 0.05,
-      "forex": 0.05,
-      "institutional": 0.05,
-      "seasonality": 0.01,
-      "financials": 0.0
+      "trend": 0.134836,
+      "technical": 0.153868,
+      "sentiment": 0.349194,
+      "news": 0.125209,
+      "macro": 0.047078,
+      "forex": 0.046077,
+      "institutional": 0.04808,
+      "seasonality": 0.017028,
+      "financials": 0.016027,
+      "intradayTrend": 0.010017,
+      "optionsFlow": 0.010017,
+      "volumeProfile": 0.010017,
+      "divergences": 0.010851,
+      "volatilityIV": 0.010851,
+      "marketBreadth": 0.010851
     },
     "swing": {
-      "trend": 0.14,
-      "technical": 0.2,
-      "sentiment": 0.12,
-      "news": 0.2,
-      "macro": 0.1,
-      "forex": 0.06,
-      "institutional": 0.1,
-      "seasonality": 0.02,
-      "financials": 0.06
+      "trend": 0.131628,
+      "technical": 0.18804,
+      "sentiment": 0.112825,
+      "news": 0.18804,
+      "macro": 0.094021,
+      "forex": 0.056412,
+      "institutional": 0.094021,
+      "seasonality": 0.018804,
+      "financials": 0.056412,
+      "intradayTrend": 0.009966,
+      "optionsFlow": 0.009966,
+      "volumeProfile": 0.009966,
+      "divergences": 0.009966,
+      "volatilityIV": 0.009966,
+      "marketBreadth": 0.009966
     },
     "long": {
-      "trend": 0.06,
-      "technical": 0.1,
-      "sentiment": 0.05,
-      "news": 0.12,
-      "macro": 0.15,
-      "forex": 0.08,
-      "institutional": 0.14,
-      "seasonality": 0.04,
-      "financials": 0.26
+      "trend": 0.056412,
+      "technical": 0.094021,
+      "sentiment": 0.04701,
+      "news": 0.112825,
+      "macro": 0.14103,
+      "forex": 0.075216,
+      "institutional": 0.131628,
+      "seasonality": 0.037608,
+      "financials": 0.244453,
+      "intradayTrend": 0.009966,
+      "optionsFlow": 0.009966,
+      "volumeProfile": 0.009966,
+      "divergences": 0.009966,
+      "volatilityIV": 0.009966,
+      "marketBreadth": 0.009966
     }
   },
   "metadata": {
     "learning_rate": 0.05,
-    "momentum": 0.9
+    "momentum": 0.8
   }
 }

@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo   Iniciando Guess Investor
+echo   Iniciando AlphaVest
 echo ========================================
 echo.
 

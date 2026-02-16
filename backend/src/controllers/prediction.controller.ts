@@ -2,6 +2,7 @@ import { Prediction } from '@prisma/client';
 import { Request, Response } from 'express';
 import { prisma } from '../config/database.js';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-handler.js';
+import { logger } from '../middleware/logger.js';
 import { CreatePredictionRequestSchema } from '../models/index.js';
 import { predictionRepository, VerifyPredictionData } from '../repositories/prediction.repository.js';
 import { trainingRepository } from '../repositories/training.repository.js';
@@ -109,13 +110,17 @@ function computeVerificationData(
     const actualMag = Math.abs(actualChange);
 
     if (predictedMag < 0.1 && actualMag < 0.5) {
-      accuracyScore = 100;
+      // Predicción neutral correcta (casi sin cambio)
+      accuracyScore = 85;
     } else if (predictedMag > 0.1) {
+      // Comparar magnitud predicha vs real
       const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
       const magAccuracy = Math.max(0, 1 - magError);
-      accuracyScore = 50 + (magAccuracy * 50);
+      // Rango completo: 20 (muy lejos en magnitud) a 100 (magnitud perfecta)
+      accuracyScore = 20 + (magAccuracy * 80);
     } else {
-      accuracyScore = 60;
+      // Predicción con magnitud baja pero dirección correcta
+      accuracyScore = 45;
     }
   } else {
     const actualMag = Math.abs(actualChange);
@@ -319,6 +324,77 @@ export const predictionController = {
     res.json({
       success: true,
       data: prediction,
+    });
+  }),
+
+  /**
+   * POST /api/predictions/calculate-batch
+   * Calcular múltiples predicciones en paralelo (sin guardar)
+   * Body: { symbols: string[], days?: number }
+   * Retorna: { results: Record<symbol, prediction | error> }
+   */
+  calculateBatch: asyncHandler(async (req: Request, res: Response) => {
+    const { symbols, days = 1 } = req.body;
+    
+    if (!Array.isArray(symbols) || symbols.length === 0) {
+      throw BadRequestError('symbols array is required');
+    }
+
+    if (symbols.length > 20) {
+      throw BadRequestError('Maximum 20 symbols per batch');
+    }
+
+    const startTime = Date.now();
+    logger.info(`[Prediction] Batch calculate: ${symbols.length} symbols, ${days} days`);
+
+    // Calcular todas las predicciones en paralelo
+    const results = await Promise.allSettled(
+      symbols.map(async (symbol: string) => {
+        const normalizedSymbol = symbol.toUpperCase();
+        const type = normalizedSymbol.includes('-USD') || normalizedSymbol.includes('-EUR') ? 'crypto' : 'stock';
+        
+        const prediction = await predictionCalculatorService.calculatePrediction(
+          normalizedSymbol,
+          type as 'stock' | 'crypto',
+          days
+        );
+        
+        return { symbol: normalizedSymbol, prediction };
+      })
+    );
+
+    // Formatear resultados: incluir tanto éxitos como errores
+    const formattedResults: Record<string, any> = {};
+    
+    results.forEach((result, index) => {
+      const symbol = symbols[index].toUpperCase();
+      
+      if (result.status === 'fulfilled' && result.value.prediction) {
+        formattedResults[symbol] = {
+          success: true,
+          data: result.value.prediction,
+        };
+      } else {
+        formattedResults[symbol] = {
+          success: false,
+          error: result.status === 'rejected' 
+            ? result.reason?.message || 'Unknown error'
+            : 'No prediction available',
+        };
+      }
+    });
+
+    const successCount = Object.values(formattedResults).filter(r => r.success).length;
+    const elapsed = Date.now() - startTime;
+    logger.info(`[Prediction] Batch complete: ${successCount}/${symbols.length} success in ${elapsed}ms`);
+
+    res.json({
+      success: true,
+      data: {
+        results: formattedResults,
+        totalRequested: symbols.length,
+        totalSuccess: successCount,
+      },
     });
   }),
 
@@ -613,6 +689,8 @@ export const predictionController = {
     // Aprender de la predicción verificada para ajustar clasificadores
     try {
       const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+      console.log(`[Verify] ${prediction.symbol} factorBreakdown:`, factorBreakdown ? `assetGroup=${factorBreakdown.assetGroup}, factors=${factorBreakdown.availableFactors?.length || 0}` : 'NULL');
+      
       if (factorBreakdown?.assetGroup) {
         const factorScores: Record<string, number> = {};
         const factorWeights: Record<string, number> = {};
@@ -636,20 +714,22 @@ export const predictionController = {
           predictedChange: prediction.predictedChange,
           actualChange: verifyData.actualChange,
         });
-        console.log(`[Verify] Classifier learning updated for ${factorBreakdown.assetGroup}`);
+        console.log(`[Verify] ✅ Classifier learning updated for ${factorBreakdown.assetGroup} (${Object.keys(factorScores).length} factor scores)`);
 
-        // Actualizar pesos de factores (technical, trend, news, etc.)
-        const weightLearningResult = await factorWeightLearningService.learnFromVerification({
-          timeframeDays: prediction.timeframeDays,
-          directionCorrect: verifyData.directionCorrect,
-          accuracyScore: verifyData.accuracyScore,
-          factorScores,
-          factorWeights,
-          predictedChange: prediction.predictedChange,
-          actualChange: verifyData.actualChange,
-        });
-        if (weightLearningResult.adjusted) {
-          console.log(`[Verify] Factor weights adjusted:`, weightLearningResult.changes.join(', '));
+        // Actualizar pesos de factores (solo si tenemos factor scores)
+        if (Object.keys(factorScores).length > 0) {
+          const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+            timeframeDays: prediction.timeframeDays,
+            directionCorrect: verifyData.directionCorrect,
+            accuracyScore: verifyData.accuracyScore,
+            factorScores,
+            factorWeights,
+            predictedChange: prediction.predictedChange,
+            actualChange: verifyData.actualChange,
+          });
+          if (weightLearningResult.adjusted) {
+            console.log(`[Verify] Factor weights adjusted:`, weightLearningResult.changes.join(', '));
+          }
         }
 
         // Marcar predicción como usada para training (evitar re-entrenamiento)
@@ -684,11 +764,18 @@ export const predictionController = {
 
   /**
    * POST /api/predictions/verify-pending
-   * Verificar todas las predicciones pendientes automáticamente
+   * Verificar predicciones pendientes automáticamente (en lotes)
    * Usa el precio de cierre de la fecha de expiración, no el precio actual
+   * Query params:
+   *   - limit: número máximo de predicciones a verificar (default: 10)
+   *   - skipPythonSync: si es "true", omite la sincronización con Python (para lotes intermedios)
    */
-  verifyPending: asyncHandler(async (_req: Request, res: Response) => {
-    const pending = await predictionRepository.findPendingVerification();
+  verifyPending: asyncHandler(async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+    const skipPythonSync = req.query.skipPythonSync === 'true';
+    const allPending = await predictionRepository.findPendingVerification();
+    const pending = allPending.slice(0, limit);
+    const remaining = allPending.length - pending.length;
     const results: any[] = [];
 
     for (const prediction of pending) {
@@ -744,6 +831,8 @@ export const predictionController = {
         // Aprender de la predicción verificada para ajustar clasificadores y pesos
         try {
           const factorBreakdown = prediction.factorBreakdown ? JSON.parse(prediction.factorBreakdown) : null;
+          console.log(`[VerifyPending] ${prediction.symbol} factorBreakdown:`, factorBreakdown ? `assetGroup=${factorBreakdown.assetGroup}, factors=${factorBreakdown.availableFactors?.length || 0}` : 'NULL');
+          
           if (factorBreakdown?.assetGroup) {
             const factorScores: Record<string, number> = {};
             const factorWeights: Record<string, number> = {};
@@ -767,20 +856,22 @@ export const predictionController = {
               predictedChange: prediction.predictedChange,
               actualChange: verifyData.actualChange,
             });
-            console.log(`[VerifyPending] Classifier learning updated for ${prediction.symbol} (${factorBreakdown.assetGroup})`);
+            console.log(`[VerifyPending] ✅ Classifier learning updated for ${prediction.symbol} (${factorBreakdown.assetGroup}, ${Object.keys(factorScores).length} factors)`);
 
-            // Actualizar pesos de factores (technical, trend, news, etc.)
-            const weightLearningResult = await factorWeightLearningService.learnFromVerification({
-              timeframeDays: prediction.timeframeDays,
-              directionCorrect: verifyData.directionCorrect,
-              accuracyScore: verifyData.accuracyScore,
-              factorScores,
-              factorWeights,
-              predictedChange: prediction.predictedChange,
-              actualChange: verifyData.actualChange,
-            });
-            if (weightLearningResult.adjusted) {
-              console.log(`[VerifyPending] Factor weights adjusted for ${prediction.symbol}:`, weightLearningResult.changes.join(', '));
+            // Actualizar pesos de factores (solo si tenemos factor scores)
+            if (Object.keys(factorScores).length > 0) {
+              const weightLearningResult = await factorWeightLearningService.learnFromVerification({
+                timeframeDays: prediction.timeframeDays,
+                directionCorrect: verifyData.directionCorrect,
+                accuracyScore: verifyData.accuracyScore,
+                factorScores,
+                factorWeights,
+                predictedChange: prediction.predictedChange,
+                actualChange: verifyData.actualChange,
+              });
+              if (weightLearningResult.adjusted) {
+                console.log(`[VerifyPending] Factor weights adjusted for ${prediction.symbol}:`, weightLearningResult.changes.join(', '));
+              }
             }
 
             // Marcar predicción como usada para training (evitar re-entrenamiento)
@@ -821,20 +912,22 @@ export const predictionController = {
     };
     console.log(`[VerifyPending] ML training complete: RL=${mlStats.rlTrained}, Prob=${mlStats.probCalibrated}`);
 
-    // Sincronizar con Python después de verificar todas las pendientes
-    const pythonSync = await pythonTrainingService.syncAndTrain();
+    // Sincronizar con Python solo en el último lote (o si no se pide skip)
+    let pythonSync: Record<string, any> = { available: false, synced: 0, trained: false };
+    if (!skipPythonSync && remaining === 0) {
+      const sync = await pythonTrainingService.syncAndTrain();
+      pythonSync = { available: sync.available, synced: sync.synced, trained: sync.trained };
+    }
 
     res.json({
       success: true,
       data: {
         processed: results.length,
+        remaining,
+        totalPending: allPending.length,
         results,
         mlStats,
-        pythonSync: {
-          available: pythonSync.available,
-          synced: pythonSync.synced,
-          trained: pythonSync.trained,
-        },
+        pythonSync,
       },
     });
   }),
@@ -1022,13 +1115,13 @@ export const recalculateScores = asyncHandler(async (_req: Request, res: Respons
       const actualMag = Math.abs(actualChange);
       
       if (predictedMag < 0.1 && actualMag < 0.5) {
-        newAccuracyScore = 100;
+        newAccuracyScore = 85;
       } else if (predictedMag > 0.1) {
         const magError = Math.abs(actualMag - predictedMag) / Math.max(predictedMag, 1);
         const magAccuracy = Math.max(0, 1 - magError);
-        newAccuracyScore = 50 + (magAccuracy * 50);
+        newAccuracyScore = 20 + (magAccuracy * 80);
       } else {
-        newAccuracyScore = 60;
+        newAccuracyScore = 45;
       }
     } else {
       const actualMag = Math.abs(actualChange);

@@ -413,16 +413,18 @@ export default function ScreenerScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-          </Pressable>
           <Text style={styles.headerTitle}>🎯 Screener</Text>
-          <Pressable
-            style={[styles.filterToggle, showFilters && styles.filterToggleActive]}
-            onPress={() => setShowFilters(!showFilters)}
-          >
-            <Ionicons name="options" size={20} color={COLORS.text} />
-          </Pressable>
+          <View style={styles.headerRight}>
+            <Pressable
+              style={[styles.filterToggle, showFilters && styles.filterToggleActive]}
+              onPress={() => setShowFilters(!showFilters)}
+            >
+              <Ionicons name="options" size={20} color={COLORS.text} />
+            </Pressable>
+            <Pressable onPress={() => router.back()} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color={COLORS.text} />
+            </Pressable>
+          </View>
         </View>
 
         {/* Presets rápidos */}
@@ -603,11 +605,10 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 16,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
+  headerRight: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   headerTitle: {
     fontSize: 24,
@@ -624,6 +625,12 @@ const styles = StyleSheet.create({
   },
   filterToggleActive: {
     backgroundColor: COLORS.blue,
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // Presets

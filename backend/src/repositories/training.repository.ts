@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { prisma } from '../config/database.js';
 
-// Ruta al archivo JSON de pesos (única fuente de verdad)
+// Ruta al archivo JSON de pesos (legacy - solo fallback)
 const WEIGHTS_FILE = resolve(process.cwd(), '../code/config/learned_weights.json');
 
 // ============================================================================
@@ -188,51 +188,89 @@ export const trainingRepository = {
   // -------------------------------------------------------------------------
 
   /**
-   * Obtener pesos aprendidos actuales (lee del archivo JSON)
+   * Obtener pesos aprendidos actuales
+   * Prioridad: DB > archivo JSON (fallback legacy)
    */
   async getLearnedWeights(): Promise<LearnedWeights | null> {
     try {
-      if (!existsSync(WEIGHTS_FILE)) {
-        return null;
+      // 1. Primero intentar leer de la DB (fuente principal)
+      const dbWeights = await prisma.learnedWeights.findFirst({
+        orderBy: { version: 'desc' },
+      });
+      
+      if (dbWeights) {
+        return dbWeights;
       }
+      
+      // 2. Fallback a archivo JSON (legacy/migración)
+      if (!existsSync(WEIGHTS_FILE)) {
+        // 3. Si no hay nada, crear pesos por defecto en DB
+        return this.createDefaultWeights();
+      }
+      
       const content = readFileSync(WEIGHTS_FILE, 'utf-8');
       const data = JSON.parse(content);
       
       // Usar swing como balance entre timeframes
       const swingWeights = data.weights?.swing || {};
       
-      // Devolver formato compatible con LearnedWeights de Prisma
-      return {
-        id: 'file-based',
-        trend: swingWeights.trend || 0.10,
-        technical: swingWeights.technical || 0.10,
-        sentiment: swingWeights.sentiment || 0.10,
-        news: swingWeights.news || 0.10,
-        macro: swingWeights.macro || 0.10,
-        forex: swingWeights.forex || 0.10,
-        institutional: swingWeights.institutional || 0.10,
-        seasonality: swingWeights.seasonality || 0.10,
-        financials: swingWeights.financials || 0.10,
-        expectations: swingWeights.expectations || 0.10,
-        version: parseInt(data.version) || 1,
-        trainedAt: new Date(data.updated_at || Date.now()),
-        sampleCount: data.training_samples || 0,
-        accuracy: data.metadata?.final_loss 
-          ? Math.round((1 - data.metadata.final_loss) * 100) 
-          : null,
-      } as LearnedWeights;
+      // Importar del JSON a la DB para futuras lecturas
+      const importedWeights = await prisma.learnedWeights.create({
+        data: {
+          trend: swingWeights.trend || 0.125,
+          technical: swingWeights.technical || 0.125,
+          sentiment: swingWeights.sentiment || 0.125,
+          news: swingWeights.news || 0.125,
+          macro: swingWeights.macro || 0.125,
+          forex: swingWeights.forex || 0.125,
+          institutional: swingWeights.institutional || 0.125,
+          seasonality: swingWeights.seasonality || 0.02,
+          financials: swingWeights.financials || 0.105,
+          expectations: 0.00, // deprecated
+          version: parseInt(data.version) || 1,
+          sampleCount: data.training_samples || 0,
+          accuracy: data.metadata?.final_loss 
+            ? Math.round((1 - data.metadata.final_loss) * 100) 
+            : null,
+        },
+      });
+      
+      console.log('[TrainingRepository] Imported weights from JSON to DB');
+      return importedWeights;
     } catch (error) {
-      console.error('[TrainingRepository] Error reading weights file:', error);
+      console.error('[TrainingRepository] Error reading weights:', error);
       return null;
     }
   },
 
   /**
-   * Guardar nuevos pesos aprendidos
-   * NOTA: Esta función ya no guarda en DB. Python escribe directamente al archivo JSON.
-   * Se mantiene por compatibilidad pero devuelve los pesos actuales del archivo.
+   * Crear pesos por defecto uniformes
    */
-  async saveLearnedWeights(_weights: {
+  async createDefaultWeights(): Promise<LearnedWeights> {
+    const defaultWeight = 0.125; // 8 factores principales = 1.0
+    return prisma.learnedWeights.create({
+      data: {
+        trend: defaultWeight,
+        technical: defaultWeight,
+        sentiment: defaultWeight,
+        news: defaultWeight,
+        macro: defaultWeight,
+        forex: defaultWeight,
+        institutional: defaultWeight,
+        seasonality: 0.00,
+        financials: defaultWeight,
+        expectations: 0.00,
+        version: 1,
+        sampleCount: 0,
+        accuracy: null,
+      },
+    });
+  },
+
+  /**
+   * Guardar nuevos pesos aprendidos en la DB
+   */
+  async saveLearnedWeights(weights: {
     trend: number;
     technical: number;
     sentiment: number;
@@ -242,17 +280,36 @@ export const trainingRepository = {
     institutional: number;
     seasonality: number;
     financials: number;
-    expectations: number;
     sampleCount: number;
     accuracy?: number;
   }): Promise<LearnedWeights> {
-    // Los pesos se gestionan mediante Python que escribe al archivo JSON
-    // Retornamos los pesos actuales del archivo
-    const current = await this.getLearnedWeights();
-    if (!current) {
-      throw new Error('No weights file available. Train with Python first.');
-    }
-    return current;
+    // Obtener versión actual
+    const current = await prisma.learnedWeights.findFirst({
+      orderBy: { version: 'desc' },
+    });
+    const nextVersion = (current?.version || 0) + 1;
+    
+    // Crear nuevo registro de pesos
+    const newWeights = await prisma.learnedWeights.create({
+      data: {
+        trend: weights.trend,
+        technical: weights.technical,
+        sentiment: weights.sentiment,
+        news: weights.news,
+        macro: weights.macro,
+        forex: weights.forex,
+        institutional: weights.institutional,
+        seasonality: weights.seasonality,
+        financials: weights.financials,
+        expectations: 0.00, // always 0
+        version: nextVersion,
+        sampleCount: weights.sampleCount,
+        accuracy: weights.accuracy ?? null,
+      },
+    });
+    
+    console.log(`[TrainingRepository] Saved weights v${nextVersion} to DB`);
+    return newWeights;
   },
 
   // -------------------------------------------------------------------------

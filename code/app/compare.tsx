@@ -1,13 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { apiClient, CalculatedPrediction } from '../services/api-client';
 
@@ -34,6 +34,7 @@ interface CompareData {
 
 export default function CompareScreen() {
   const router = useRouter();
+  // Sidebar is always visible via layout
   const params = useLocalSearchParams();
   const initialSymbols = params.symbols 
     ? (Array.isArray(params.symbols) ? params.symbols : [params.symbols])
@@ -64,19 +65,41 @@ export default function CompareScreen() {
     }));
     setCompareData(newData);
 
-    // Cargar predicciones en paralelo
-    const results = await Promise.all(
-      validSymbols.map(async (symbol) => {
-        try {
-          const prediction = await apiClient.calculatePrediction(symbol.toUpperCase(), 1);
-          return { symbol: symbol.toUpperCase(), prediction, loading: false };
-        } catch (error: any) {
-          return { symbol: symbol.toUpperCase(), prediction: null, loading: false, error: error.message };
-        }
-      })
-    );
+    try {
+      // Usar batch para cargar todas las predicciones en una sola petición
+      const batchResult = await apiClient.calculatePredictionBatch(
+        validSymbols.map(s => s.toUpperCase()),
+        1
+      );
 
-    setCompareData(results);
+      // Mapear resultados
+      const results: CompareData[] = validSymbols.map(symbol => {
+        const normalizedSymbol = symbol.toUpperCase();
+        const result = batchResult.results[normalizedSymbol];
+        
+        if (result?.success && result.data) {
+          return { symbol: normalizedSymbol, prediction: result.data, loading: false };
+        } else {
+          return { 
+            symbol: normalizedSymbol, 
+            prediction: null, 
+            loading: false, 
+            error: result?.error || 'Error al calcular predicción' 
+          };
+        }
+      });
+
+      setCompareData(results);
+    } catch (error: any) {
+      // Fallback: si falla el batch, marcar todos como error
+      setCompareData(validSymbols.map(symbol => ({
+        symbol: symbol.toUpperCase(),
+        prediction: null,
+        loading: false,
+        error: error.message || 'Error de conexión',
+      })));
+    }
+    
     setIsComparing(false);
   };
 
@@ -117,9 +140,7 @@ export default function CompareScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Volver</Text>
-        </Pressable>
+        <View style={styles.headerTop} />
         <Text style={styles.title}>📊 Comparador de Activos</Text>
         <Text style={styles.subtitle}>Compara hasta 3 activos lado a lado</Text>
       </View>
@@ -307,12 +328,8 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
   },
-  backButton: {
+  headerTop: {
     marginBottom: 16,
-  },
-  backButtonText: {
-    color: DARK.accent,
-    fontSize: 16,
   },
   title: {
     fontSize: 24,

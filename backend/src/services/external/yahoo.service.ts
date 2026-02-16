@@ -156,6 +156,112 @@ export const yahooService = {
   },
 
   /**
+   * Obtener cotizaciones en batch (múltiples símbolos en una sola llamada)
+   * Usa el endpoint v7/finance/quote que soporta múltiples símbolos
+   */
+  async getQuotesBatch(symbols: string[]): Promise<Record<string, AssetQuote | null>> {
+    const results: Record<string, AssetQuote | null> = {};
+    
+    if (symbols.length === 0) return results;
+
+    // Separar símbolos cacheados de los que necesitan fetch
+    const uncachedSymbols: string[] = [];
+    for (const symbol of symbols) {
+      const cacheKey = `quote:${symbol}`;
+      const cached = getCached<AssetQuote>(cacheKey);
+      if (cached) {
+        results[symbol] = cached;
+      } else {
+        uncachedSymbols.push(symbol);
+      }
+    }
+
+    // Si todos están en caché, retornar
+    if (uncachedSymbols.length === 0) {
+      logger.debug(`[Yahoo] Batch: all ${symbols.length} quotes from cache`);
+      return results;
+    }
+
+    logger.info(`[Yahoo] Batch fetch: ${uncachedSymbols.length} symbols (${symbols.length - uncachedSymbols.length} cached)`);
+
+    try {
+      // Usar endpoint v7 que soporta múltiples símbolos
+      const symbolsParam = uncachedSymbols.map(s => encodeURIComponent(s)).join(',');
+      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbolsParam}`;
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        signal: AbortSignal.timeout(10000), // 10s timeout for batch
+      });
+
+      if (!response.ok) {
+        logger.warn(`[Yahoo] Batch fetch failed with status ${response.status}, falling back to individual`);
+        // Fallback: fetch individual (en paralelo)
+        return this.getQuotesBatchFallback(symbols);
+      }
+
+      const json: any = await response.json();
+      const quotes = json.quoteResponse?.result || [];
+
+      for (const quote of quotes) {
+        if (!quote || !quote.symbol) continue;
+        
+        const price = quote.regularMarketPrice || 0;
+        const prevClose = quote.regularMarketPreviousClose || quote.previousClose || price;
+        const change = quote.regularMarketChange ?? (price - prevClose);
+        const changePercent = quote.regularMarketChangePercent ?? (prevClose > 0 ? (change / prevClose) * 100 : 0);
+
+        const assetQuote: AssetQuote = {
+          symbol: quote.symbol,
+          name: quote.shortName || quote.longName || quote.symbol,
+          price,
+          currency: quote.currency || 'USD',
+          change,
+          changePercent,
+          volume: quote.regularMarketVolume,
+          marketCap: quote.marketCap,
+          previousClose: prevClose,
+        };
+
+        results[quote.symbol] = assetQuote;
+        
+        // Cachear individualmente
+        const cacheKey = `quote:${quote.symbol}`;
+        setCache(cacheKey, assetQuote, config.cache.quote);
+      }
+
+      // Marcar símbolos no encontrados como null
+      for (const symbol of uncachedSymbols) {
+        if (!(symbol in results)) {
+          results[symbol] = null;
+        }
+      }
+
+      logger.debug(`[Yahoo] Batch: fetched ${quotes.length}/${uncachedSymbols.length} quotes`);
+      return results;
+
+    } catch (error) {
+      logger.error(`[Yahoo] Batch fetch error, falling back to individual:`, error);
+      return this.getQuotesBatchFallback(symbols);
+    }
+  },
+
+  /**
+   * Fallback: fetch quotes en paralelo (individual) si el batch falla
+   */
+  async getQuotesBatchFallback(symbols: string[]): Promise<Record<string, AssetQuote | null>> {
+    const results: Record<string, AssetQuote | null> = {};
+    
+    await Promise.all(symbols.map(async (symbol) => {
+      results[symbol] = await this.getQuote(symbol);
+    }));
+    
+    return results;
+  },
+
+  /**
    * Obtener datos históricos con caché inteligente
    * - Cachea por 2 semanas
    * - Solo pide datos nuevos si faltan

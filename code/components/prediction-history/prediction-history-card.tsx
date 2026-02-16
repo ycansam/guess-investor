@@ -39,17 +39,19 @@ interface SymbolStats {
 function calculateSymbolStats(predictions: TrackedPrediction[]): SymbolStats {
   const verified = predictions.filter(p => p.verified);
   const pending = predictions.filter(p => !p.verified);
-  const correct = verified.filter(p => p.directionCorrect);
+  // Excluir laterales/neutral de accuracy
+  const directional = verified.filter(p => p.direction !== 'neutral');
+  const correct = directional.filter(p => p.directionCorrect);
   const withinRange = verified.filter(p => p.withinRange);
   
   const byQuality = {
-    excellent: verified.filter(p => p.quality === 'excellent').length,
-    good: verified.filter(p => p.quality === 'good').length,
-    failed: verified.filter(p => p.quality === 'failed').length,
+    excellent: directional.filter(p => p.quality === 'excellent').length,
+    good: directional.filter(p => p.quality === 'good').length,
+    failed: directional.filter(p => p.quality === 'failed').length,
   };
   
-  const avgAccuracyScore = verified.length > 0
-    ? verified.reduce((sum, p) => sum + (p.accuracyScore || 0), 0) / verified.length
+  const avgAccuracyScore = directional.length > 0
+    ? directional.reduce((sum, p) => sum + (p.accuracyScore || 0), 0) / directional.length
     : 0;
 
   return {
@@ -57,7 +59,7 @@ function calculateSymbolStats(predictions: TrackedPrediction[]): SymbolStats {
     verified: verified.length,
     pending: pending.length,
     correct: correct.length,
-    directionAccuracy: verified.length > 0 ? (correct.length / verified.length) * 100 : 0,
+    directionAccuracy: directional.length > 0 ? (correct.length / directional.length) * 100 : 0,
     avgAccuracyScore,
     withinRangeRate: verified.length > 0 ? (withinRange.length / verified.length) * 100 : 0,
     byQuality,

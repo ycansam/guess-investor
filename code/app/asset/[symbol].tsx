@@ -481,7 +481,7 @@ export default function AssetDetailScreen() {
           });
         }
       } catch (classError) {
-        console.log('[AssetDetail] Could not load asset classification:', classError);
+        __DEV__ && console.log('[AssetDetail] Could not load asset classification:', classError);
         // No es crítico, seguimos sin la clasificación
       }
     } catch (error) {
@@ -588,15 +588,17 @@ export default function AssetDetailScreen() {
             return last2Days.includes(dayStr);
           });
           
-          // DEBUG: Log de datos intraday
-          console.log('[Chart DEBUG] Intraday data:', {
-            totalPrices: prices.length,
-            firstTimestamp: prices[0]?.timestamp ? new Date(prices[0].timestamp).toISOString() : null,
-            lastTimestamp: prices[prices.length - 1]?.timestamp ? new Date(prices[prices.length - 1].timestamp).toISOString() : null,
-            uniqueDays: [...new Set(prices.map(p => new Date(p.timestamp).toDateString()))],
-            allTradingDays: uniqueTradingDays,
-            selectedDays: last2Days,
-          });
+          // DEBUG: Log de datos intraday (solo en desarrollo)
+          if (__DEV__) {
+            console.log('[Chart DEBUG] Intraday data:', {
+              totalPrices: prices.length,
+              firstTimestamp: prices[0]?.timestamp ? new Date(prices[0].timestamp).toISOString() : null,
+              lastTimestamp: prices[prices.length - 1]?.timestamp ? new Date(prices[prices.length - 1].timestamp).toISOString() : null,
+              uniqueDays: [...new Set(prices.map(p => new Date(p.timestamp).toDateString()))],
+              allTradingDays: uniqueTradingDays,
+              selectedDays: last2Days,
+            });
+          }
         } else if (selectedTimeframe === 'swing') {
           prices = prices.slice(-70);
         }
@@ -730,6 +732,7 @@ export default function AssetDetailScreen() {
             timeframe: selectedTimeframe,
             timeframeDays: predictionDays,
             volatility: pred.historical?.volatility,
+            factorBreakdown: pred.factorBreakdown,
           });
         } catch (trackError) {
           console.warn('[AssetDetail] Error tracking prediction:', trackError);
@@ -806,16 +809,18 @@ export default function AssetDetailScreen() {
           }
         }
         
-        // DEBUG: Log para verificar el cálculo
-        console.log('[Prediction] Market hours calculation:', {
-          symbol,
-          marketHours: marketHours.regularHours,
-          isExtendedHours,
-          closeHour,
-          closeMinute,
-          predictionDays,
-          endDate: endDate.toLocaleString(),
-        });
+        // DEBUG: Log para verificar el cálculo (solo en desarrollo)
+        if (__DEV__) {
+          console.log('[Prediction] Market hours calculation:', {
+            symbol,
+            marketHours: marketHours.regularHours,
+            isExtendedHours,
+            closeHour,
+            closeMinute,
+            predictionDays,
+            endDate: endDate.toLocaleString(),
+          });
+        }
         const endTime = endDate.getTime();
         const totalMs = endTime - startTime;
 
@@ -851,7 +856,7 @@ export default function AssetDetailScreen() {
         
         const openNextDayTime = openNextDayDate.getTime();
         
-        console.log('[Prediction] Open next day calculation:', {
+        __DEV__ && console.log('[Prediction] Open next day calculation:', {
           endDate: endDate.toLocaleString(),
           openNextDayDate: openNextDayDate.toLocaleString(),
           openHour,
@@ -910,7 +915,7 @@ export default function AssetDetailScreen() {
         const info = await apiClient.getInvestorInfo(symbol);
         setInvestorInfo(info);
       } catch (error) {
-        console.log('[AssetDetail] Investor info not available:', error);
+        __DEV__ && console.log('[AssetDetail] Investor info not available:', error);
         setInvestorInfo(null);
       }
       setInvestorInfoLoading(false);
@@ -955,7 +960,7 @@ export default function AssetDetailScreen() {
           : 0;
         
         if (priceChangePct > 3) {
-          console.log(`[AssetDetail] Cache invalidated for ${symbol}: price changed ${priceChangePct.toFixed(2)}% (${cachedPrice.toFixed(2)} → ${lastPriceForPrediction.toFixed(2)})`);
+          __DEV__ && console.log(`[AssetDetail] Cache invalidated for ${symbol}: price changed ${priceChangePct.toFixed(2)}% (${cachedPrice.toFixed(2)} → ${lastPriceForPrediction.toFixed(2)})`);
           // Invalidar cache y recalcular
           await trainingCacheService.remove(symbol, selectedTimeframe as TrainingTimeframe);
           setPrediction(null);
@@ -967,7 +972,7 @@ export default function AssetDetailScreen() {
           return;
         }
         
-        console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}:`, {
+        __DEV__ && console.log(`[AssetDetail] Found cached prediction for ${symbol} ${selectedTimeframe}:`, {
           change: cached.predictedChange,
           confidence: cached.confidence,
           targetPrice: cached.targetPrice,
@@ -1052,15 +1057,17 @@ export default function AssetDetailScreen() {
           endDate.setHours(closeHour, closeMinute, 0, 0);
         }
         
-        // DEBUG: Log para verificar el cálculo
-        console.log('[Prediction Cached] Market hours calculation:', {
-          symbol,
-          marketHours: marketHours.regularHours,
-          isExtendedHours,
-          closeHour,
-          closeMinute,
-          endDate: endDate.toLocaleString(),
-        });
+        // DEBUG: Log para verificar el cálculo (solo en desarrollo)
+        if (__DEV__) {
+          console.log('[Prediction Cached] Market hours calculation:', {
+            symbol,
+            marketHours: marketHours.regularHours,
+            isExtendedHours,
+            closeHour,
+            closeMinute,
+            endDate: endDate.toLocaleString(),
+          });
+        }
         
         const predictionEndTime = endDate.getTime();
         
@@ -1086,6 +1093,7 @@ export default function AssetDetailScreen() {
             timeframe: selectedTimeframe,
             timeframeDays: predictionDays,
             volatility: cached.analysisData?.historical?.volatility,
+            factorBreakdown: cached.analysisData?.factorBreakdown,
           });
         } catch (trackError) {
           console.warn('[AssetDetail] Error tracking cached prediction:', trackError);
@@ -1275,7 +1283,7 @@ export default function AssetDetailScreen() {
         });
       }
       
-      console.log('[Chart DEBUG] Extended mainChartData with real-time price:', {
+      __DEV__ && console.log('[Chart DEBUG] Extended mainChartData with real-time price:', {
         originalPoints: filtered.length,
         extendedPoints: extended.length,
         lastHistoricValue,
@@ -1288,8 +1296,8 @@ export default function AssetDetailScreen() {
       return extended;
     }
     
-    // DEBUG: Log de mainChartData
-    if (filtered.length > 0) {
+    // DEBUG: Log de mainChartData (solo en desarrollo)
+    if (__DEV__ && filtered.length > 0) {
       console.log('[Chart DEBUG] mainChartData:', {
         points: filtered.length,
         firstDate: new Date(filtered[0]?.timestamp).toLocaleString(),
@@ -1364,7 +1372,7 @@ export default function AssetDetailScreen() {
     // Usar directamente predictionMeta.endTimestamp que ya tiene la hora de cierre correcta
     // (23:00 para commodities, 17:30 para stocks regulares, etc.)
     if (predictionMeta) {
-      console.log('[Chart] predictionEndTime from predictionMeta:', {
+      __DEV__ && console.log('[Chart] predictionEndTime from predictionMeta:', {
         endTimestamp: predictionMeta.endTimestamp,
         endTimestampDate: new Date(predictionMeta.endTimestamp).toLocaleString(),
         startTimestamp: predictionMeta.startTimestamp,
@@ -1453,8 +1461,8 @@ export default function AssetDetailScreen() {
       }
     }
     
-    // DEBUG: Log de chartDataWithExtra
-    if (selectedTimeframe === 'intraday' && result.length > 0) {
+    // DEBUG: Log de chartDataWithExtra (solo en desarrollo)
+    if (__DEV__ && selectedTimeframe === 'intraday' && result.length > 0) {
       const historicPoints = result.filter(p => !p.isPrediction);
       const predictionPts = result.filter(p => p.isPrediction);
       console.log('[Chart DEBUG] chartDataWithExtra:', {
@@ -1551,8 +1559,12 @@ export default function AssetDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={22} color="#e2e8f0" />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.symbol}>{symbol}</Text>
@@ -2101,8 +2113,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1f1f1f',
   },
   backButton: {
-    padding: 8,
-    marginRight: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#1a1a2e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   headerInfo: {
     flex: 1,

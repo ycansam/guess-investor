@@ -6,6 +6,9 @@ const router = Router();
 // GET /api/notes - Obtener todas las notas
 router.get('/', notesController.getAll);
 
+// GET /api/notes/wallet - Obtener totales del wallet (debe ir antes de /:symbol)
+router.get('/wallet', notesController.getWallet);
+
 // GET /api/notes/:symbol - Obtener nota por símbolo
 router.get('/:symbol', notesController.getBySymbol);
 
@@ -14,6 +17,12 @@ router.post('/', notesController.upsert);
 
 // PUT /api/notes/:symbol - Actualizar nota
 router.put('/:symbol', notesController.update);
+
+// POST /api/notes/:symbol/result - Establecer resultado
+router.post('/:symbol/result', notesController.setResult);
+
+// DELETE /api/notes/:symbol/result - Limpiar resultado
+router.delete('/:symbol/result', notesController.clearResult);
 
 // DELETE /api/notes/:symbol - Eliminar nota
 router.delete('/:symbol', notesController.delete);

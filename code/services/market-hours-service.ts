@@ -1299,8 +1299,96 @@ export function getMarketStatusSummary(symbol: string): string {
   return `${info.statusEmoji} ${info.exchangeShort} ${info.statusText} · ${info.nextEvent} ${info.nextEventTime}`;
 }
 
+/**
+ * Calcula la fecha de expiración para una predicción según el estado del mercado
+ * - Si el mercado está abierto: expiración en 4 horas (o cierre si es antes)
+ * - Si el mercado está cerrado: expiración en la próxima apertura + 4 horas
+ */
+export function getPredictionExpiration(symbol: string, assetName?: string): { 
+  expiresAt: Date; 
+  isMarketOpen: boolean;
+  description: string;
+  hoursUntilExpiration: number;
+} {
+  const info = getMarketHours(symbol, assetName);
+  const now = new Date();
+  
+  // Para crypto (24/7), siempre 4 horas
+  if (info.status === 'open' && info.regularHours === '24/7') {
+    const expiresAt = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    return {
+      expiresAt,
+      isMarketOpen: true,
+      description: 'Próximas 4 horas',
+      hoursUntilExpiration: 4,
+    };
+  }
+  
+  // Mercado abierto o en horario extendido (pre-market, after-hours)
+  const isTrading = ['open', 'pre-market', 'after-hours'].includes(info.status);
+  
+  if (isTrading) {
+    // Calcular 4 horas desde ahora
+    const fourHoursLater = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    
+    // Para forex/commodities (casi 24h), usar 4 horas directamente
+    if (info.regularHours.includes('24h') || info.regularHours.includes('Casi')) {
+      return {
+        expiresAt: fourHoursLater,
+        isMarketOpen: true,
+        description: 'Próximas 4 horas',
+        hoursUntilExpiration: 4,
+      };
+    }
+    
+    return {
+      expiresAt: fourHoursLater,
+      isMarketOpen: true,
+      description: 'Próximas 4 horas',
+      hoursUntilExpiration: 4,
+    };
+  }
+  
+  // Mercado cerrado: calcular próximo día hábil
+  // Añadir 24 horas como aproximación simple (siguiente sesión)
+  const nextDay = new Date(now);
+  nextDay.setDate(nextDay.getDate() + 1);
+  
+  // Si es viernes después del cierre o sábado, ir al lunes
+  const dayOfWeek = now.getDay();
+  if (dayOfWeek === 5) { // Viernes
+    nextDay.setDate(nextDay.getDate() + 2); // Saltar a domingo -> lunes
+  } else if (dayOfWeek === 6) { // Sábado
+    nextDay.setDate(nextDay.getDate() + 1); // Ir a lunes (ya sumamos 1 antes)
+  }
+  
+  // Establecer hora de apertura aproximada (9:30 para US, 8:00 para Europa)
+  const isUS = symbol.match(/^\w{1,5}$/) && !symbol.includes('.');
+  const isEurope = symbol.includes('.L') || symbol.includes('.DE') || symbol.includes('.PA') || symbol.includes('.MI');
+  
+  if (isUS) {
+    nextDay.setHours(15, 30, 0, 0); // 9:30 ET = 15:30 España en invierno
+  } else if (isEurope) {
+    nextDay.setHours(9, 0, 0, 0); // 9:00 hora local Europa
+  } else {
+    nextDay.setHours(9, 0, 0, 0); // Default
+  }
+  
+  // Añadir 4 horas después de la apertura
+  const expiresAt = new Date(nextDay.getTime() + 4 * 60 * 60 * 1000);
+  const hoursUntilExpiration = Math.round((expiresAt.getTime() - now.getTime()) / (60 * 60 * 1000));
+  
+  return {
+    expiresAt,
+    isMarketOpen: false,
+    description: `Próxima sesión (${nextDay.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })})`,
+    hoursUntilExpiration,
+  };
+}
+
 export default {
   getMarketHours,
   canTradeNow,
   getMarketStatusSummary,
+  getPredictionExpiration,
 };

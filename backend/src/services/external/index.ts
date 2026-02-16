@@ -5,6 +5,8 @@ export * from './corporate-events.service.js';
 export * from './cot-report.service.js';
 export * from './dark-pools.service.js';
 export * from './etf-flows.service.js';
+// NOTA: expectations.service proporciona datos de earnings para investor-info UI
+// NO se usa como factor de predicción (eliminado por redundancia con news)
 export * from './expectations.service.js';
 export * from './fear-greed.service.js';
 export * from './financials.service.js';

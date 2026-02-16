@@ -793,35 +793,40 @@ export const trainingController = {
           ? JSON.parse(prediction.factorBreakdown) 
           : null;
 
-        if (!factorBreakdown?.availableFactors) {
-          continue;
-        }
-
-        // Extraer scores y weights
+        // Extraer scores y weights (pueden estar vacíos en predicciones backfilled)
         const factorScores: Record<string, number> = {};
         const factorWeights: Record<string, number> = {};
 
-        for (const f of factorBreakdown.availableFactors) {
-          factorScores[f.name] = f.score;
+        if (factorBreakdown.availableFactors) {
+          for (const f of factorBreakdown.availableFactors) {
+            factorScores[f.name] = f.score;
+          }
         }
 
         if (factorBreakdown.weightsUsed) {
           Object.assign(factorWeights, factorBreakdown.weightsUsed);
         }
 
-        // Aprender pesos de factores
-        const weightResult = await factorWeightLearningService.learnFromVerification({
-          timeframeDays: prediction.timeframeDays,
-          directionCorrect: prediction.directionCorrect || false,
-          accuracyScore: prediction.accuracyScore || 0,
-          factorScores,
-          factorWeights,
-          predictedChange: prediction.predictedChange,
-          actualChange: prediction.actualChange || 0,
-        });
+        // Necesitamos al menos assetGroup para clasificadores
+        if (!factorBreakdown.assetGroup && Object.keys(factorScores).length === 0) {
+          continue;
+        }
 
-        if (weightResult.adjusted) {
-          results.weightsLearned++;
+        // Aprender pesos de factores (solo si tenemos factor scores)
+        if (Object.keys(factorScores).length > 0) {
+          const weightResult = await factorWeightLearningService.learnFromVerification({
+            timeframeDays: prediction.timeframeDays,
+            directionCorrect: prediction.directionCorrect || false,
+            accuracyScore: prediction.accuracyScore || 0,
+            factorScores,
+            factorWeights,
+            predictedChange: prediction.predictedChange,
+            actualChange: prediction.actualChange || 0,
+          });
+
+          if (weightResult.adjusted) {
+            results.weightsLearned++;
+          }
         }
 
         // Aprender clasificadores por grupo de activo

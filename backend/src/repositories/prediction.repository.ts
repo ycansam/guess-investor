@@ -350,23 +350,24 @@ export const predictionRepository = {
       },
     });
 
-    // Calcular métricas
-    const correctDirection = verifiedPredictions.filter(p => p.directionCorrect).length;
+    // Calcular métricas EXCLUYENDO predicciones laterales/neutral
+    // Las laterales no cuentan para accuracy ("sin señal clara")
+    const directionalPredictions = verifiedPredictions.filter(p => p.direction !== 'neutral');
+    const correctDirection = directionalPredictions.filter(p => p.directionCorrect).length;
     const withinRangeCount = verifiedPredictions.filter(p => p.withinRange).length;
-    const avgAccuracyScore = verifiedPredictions.length > 0
-      ? verifiedPredictions.reduce((sum, p) => sum + (p.accuracyScore || 0), 0) / verifiedPredictions.length
+    const avgAccuracyScore = directionalPredictions.length > 0
+      ? directionalPredictions.reduce((sum, p) => sum + (p.accuracyScore || 0), 0) / directionalPredictions.length
       : 0;
     const avgPriceError = verifiedPredictions.length > 0
       ? verifiedPredictions.reduce((sum, p) => sum + (p.priceError || 0), 0) / verifiedPredictions.length
       : 0;
 
-    // Por calidad
+    // Por calidad (EXCLUYENDO laterales/neutral - no cuentan)
     const byQuality = {
-      excellent: verifiedPredictions.filter(p => p.quality === 'excellent').length,
-      good: verifiedPredictions.filter(p => p.quality === 'good').length,
-      poor: verifiedPredictions.filter(p => p.quality === 'poor').length,
-      veryPoor: verifiedPredictions.filter(p => p.quality === 'very_poor').length,
-      failed: verifiedPredictions.filter(p => p.quality === 'failed').length,
+      excellent: directionalPredictions.filter(p => p.quality === 'excellent').length,
+      good: directionalPredictions.filter(p => p.quality === 'good').length,
+      poor: directionalPredictions.filter(p => p.quality === 'poor' || p.quality === 'very_poor').length,
+      failed: directionalPredictions.filter(p => p.quality === 'failed').length,
     };
 
     // Por dirección
@@ -420,8 +421,8 @@ export const predictionRepository = {
       verified: verifiedPredictions.length,
       pending: pendingCount,
       active: activeCount,
-      directionAccuracy: verifiedPredictions.length > 0 
-        ? (correctDirection / verifiedPredictions.length) * 100 
+      directionAccuracy: directionalPredictions.length > 0 
+        ? (correctDirection / directionalPredictions.length) * 100 
         : 0,
       avgAccuracyScore,
       avgPriceError,
