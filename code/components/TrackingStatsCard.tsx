@@ -292,15 +292,13 @@ export const TrackingStatsCard: React.FC<TrackingStatsCardProps> = ({ onClose, a
                   </Text>
                 </View>
                 <View style={styles.directionItem}>
-                  <Text style={styles.directionIcon}>➡️</Text>
-                  <Text style={styles.directionLabel}>Laterales</Text>
-                  <Text style={styles.directionValue}>
+                  <Text style={styles.directionIcon}>🔇</Text>
+                  <Text style={styles.directionLabel}>Sin señal</Text>
+                  <Text style={[styles.directionValue, { opacity: 0.5 }]}>
                     {stats.byDirection.neutral.total}
                   </Text>
-                  <Text style={styles.directionPercent}>
-                    {stats.byDirection.neutral.total > 0 && stats.verified > 0
-                      ? `${((stats.byDirection.neutral.total / stats.verified) * 100).toFixed(1)}%`
-                      : '-'}
+                  <Text style={[styles.directionPercent, { color: '#9ca3af' }]}>
+                    No cuenta
                   </Text>
                 </View>
               </View>

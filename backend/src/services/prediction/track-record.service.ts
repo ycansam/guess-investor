@@ -65,6 +65,7 @@ export const trackRecordService = {
           verified: true,
         },
         select: {
+          direction: true,
           directionCorrect: true,
           accuracyScore: true,
           priceError: true,
@@ -83,9 +84,15 @@ export const trackRecordService = {
       }
 
       const verifiedPredictions = predictions.length;
-      const directionCorrect = predictions.filter(p => p.directionCorrect).length;
-      const directionAccuracy = (directionCorrect / verifiedPredictions) * 100;
-      const avgAccuracyScore = predictions.reduce((sum, p) => sum + (p.accuracyScore || 0), 0) / verifiedPredictions;
+      // Excluir laterales/neutral de las métricas de accuracy
+      const directionalPredictions = predictions.filter(p => p.direction !== 'neutral');
+      const directionCorrect = directionalPredictions.filter(p => p.directionCorrect).length;
+      const directionAccuracy = directionalPredictions.length > 0
+        ? (directionCorrect / directionalPredictions.length) * 100
+        : 0;
+      const avgAccuracyScore = directionalPredictions.length > 0
+        ? directionalPredictions.reduce((sum, p) => sum + (p.accuracyScore || 0), 0) / directionalPredictions.length
+        : 0;
       const avgPriceError = predictions.reduce((sum, p) => sum + Math.abs(p.priceError || 0), 0) / verifiedPredictions;
       const withinRangeCount = predictions.filter(p => p.withinRange).length;
       const withinRangeRate = (withinRangeCount / verifiedPredictions) * 100;

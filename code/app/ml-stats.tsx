@@ -334,16 +334,14 @@ export default function MLStatsPage() {
               </Text>
               <Text style={styles.directionCount}>{stats.byDirection.down.correct}/{stats.byDirection.down.total}</Text>
             </View>
-            {/* Lateral */}
-            <View style={styles.directionStatBox}>
-              <Text style={styles.directionEmoji}>➡️</Text>
-              <Text style={styles.directionLabel}>Lateral</Text>
-              <Text style={[styles.directionAccuracy, { color: stats.byDirection.neutral.total > 0 && (stats.byDirection.neutral.correct / stats.byDirection.neutral.total) >= 0.5 ? '#10b981' : '#ef4444' }]}>
-                {stats.byDirection.neutral.total > 0 
-                  ? `${((stats.byDirection.neutral.correct / stats.byDirection.neutral.total) * 100).toFixed(0)}%`
-                  : '-'}
+            {/* Sin señal (ex-Lateral) */}
+            <View style={[styles.directionStatBox, { opacity: 0.6 }]}>
+              <Text style={styles.directionEmoji}>🔇</Text>
+              <Text style={styles.directionLabel}>Sin señal</Text>
+              <Text style={[styles.directionAccuracy, { color: '#9ca3af' }]}>
+                {stats.byDirection.neutral.total}
               </Text>
-              <Text style={styles.directionCount}>{stats.byDirection.neutral.correct}/{stats.byDirection.neutral.total}</Text>
+              <Text style={[styles.directionCount, { color: '#9ca3af' }]}>No cuenta en accuracy</Text>
             </View>
           </View>
         </View>

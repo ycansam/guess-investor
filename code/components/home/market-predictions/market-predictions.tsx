@@ -524,7 +524,7 @@ export function MarketPredictions({ onPredictionMade }: MarketPredictionsProps) 
         ? prediction.expiresAt.toLocaleString('es-ES', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         : prediction.expiresAt.toLocaleDateString('es-ES');
       
-      showAlert('✅ Predicción creada', `${asset.name} (${expirationDescription})\nDirección: ${direction === 'up' ? '📈 Sube' : direction === 'down' ? '📉 Baja' : '➡️ Lateral'}\nVálida hasta: ${expiresAtStr}`);
+      showAlert('✅ Predicción creada', `${asset.name} (${expirationDescription})\nDirección: ${direction === 'up' ? '📈 Sube' : direction === 'down' ? '📉 Baja' : '🔇 Sin señal clara'}\nVálida hasta: ${expiresAtStr}`);
     } catch (error) {
       console.error('[MarketPredictions] Error making prediction:', error);
       showAlert('Error', 'No se pudo crear la predicción');
