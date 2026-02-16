@@ -45,9 +45,9 @@ function calculateSymbolStats(predictions: TrackedPrediction[]): SymbolStats {
   const withinRange = verified.filter(p => p.withinRange);
   
   const byQuality = {
-    excellent: verified.filter(p => p.quality === 'excellent').length,
-    good: verified.filter(p => p.quality === 'good').length,
-    failed: verified.filter(p => p.quality === 'failed').length,
+    excellent: directional.filter(p => p.quality === 'excellent').length,
+    good: directional.filter(p => p.quality === 'good').length,
+    failed: directional.filter(p => p.quality === 'failed').length,
   };
   
   const avgAccuracyScore = directional.length > 0

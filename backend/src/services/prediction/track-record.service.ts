@@ -98,10 +98,10 @@ export const trackRecordService = {
       const withinRangeRate = (withinRangeCount / verifiedPredictions) * 100;
 
       const qualityBreakdown = {
-        excellent: predictions.filter(p => p.quality === 'excellent').length,
-        good: predictions.filter(p => p.quality === 'good').length,
-        poor: predictions.filter(p => p.quality === 'poor').length,
-        failed: predictions.filter(p => p.quality === 'failed').length,
+        excellent: directionalPredictions.filter(p => p.quality === 'excellent').length,
+        good: directionalPredictions.filter(p => p.quality === 'good').length,
+        poor: directionalPredictions.filter(p => p.quality === 'poor').length,
+        failed: directionalPredictions.filter(p => p.quality === 'failed').length,
       };
 
       // Calcular ajuste de confianza basado en track record

@@ -362,13 +362,12 @@ export const predictionRepository = {
       ? verifiedPredictions.reduce((sum, p) => sum + (p.priceError || 0), 0) / verifiedPredictions.length
       : 0;
 
-    // Por calidad
-    // Fusionar 'poor' y 'very_poor' en un solo campo 'poor' para simplificar stats
+    // Por calidad (EXCLUYENDO laterales/neutral - no cuentan)
     const byQuality = {
-      excellent: verifiedPredictions.filter(p => p.quality === 'excellent').length,
-      good: verifiedPredictions.filter(p => p.quality === 'good').length,
-      poor: verifiedPredictions.filter(p => p.quality === 'poor' || p.quality === 'very_poor').length,
-      failed: verifiedPredictions.filter(p => p.quality === 'failed').length,
+      excellent: directionalPredictions.filter(p => p.quality === 'excellent').length,
+      good: directionalPredictions.filter(p => p.quality === 'good').length,
+      poor: directionalPredictions.filter(p => p.quality === 'poor' || p.quality === 'very_poor').length,
+      failed: directionalPredictions.filter(p => p.quality === 'failed').length,
     };
 
     // Por dirección
