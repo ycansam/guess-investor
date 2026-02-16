@@ -11,14 +11,13 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
-import { apiClient, BacktestSummary, MLModelsStatus, MLWeightsStatus } from '../services/api-client';
+import { apiClient, MLModelsStatus, MLWeightsStatus } from '../services/api-client';
 import { TrackingStats } from '../services/prediction-tracking-service';
 
-type TabType = 'overview' | 'weights' | 'backtest' | 'models';
+type TabType = 'overview' | 'weights' | 'models';
 type TimeframeType = 'intraday' | 'swing' | 'long';
 
 // Multiplicadores base estáticos (v1.6.0 - 14 factores)
@@ -64,11 +63,7 @@ export default function MLStatsPage() {
   const [weightsStatus, setWeightsStatus] = useState<MLWeightsStatus | null>(null);
   const [mlModels, setMlModels] = useState<MLModelsStatus | null>(null);
   
-  // Backtesting
-  const [backtestSymbol, setBacktestSymbol] = useState('AAPL');
-  const [backtestLoading, setBacktestLoading] = useState(false);
-  const [backtestResult, setBacktestResult] = useState<BacktestSummary | null>(null);
-  const [backtestError, setBacktestError] = useState<string | null>(null);
+
 
   // Selectores
   const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeType>('intraday');
@@ -199,23 +194,6 @@ export default function MLStatsPage() {
     return '#94a3b8';
   };
 
-  const runBacktest = async () => {
-    if (!backtestSymbol.trim()) return;
-    
-    setBacktestLoading(true);
-    setBacktestError(null);
-    setBacktestResult(null);
-    
-    try {
-      const result = await apiClient.getBacktestSummary(backtestSymbol.toUpperCase(), 90);
-      setBacktestResult(result);
-    } catch (error: any) {
-      setBacktestError(error.message || 'Error ejecutando backtest');
-    } finally {
-      setBacktestLoading(false);
-    }
-  };
-
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
@@ -232,7 +210,6 @@ export default function MLStatsPage() {
       {[
         { id: 'overview' as TabType, label: '📊 Overview', icon: 'stats-chart' },
         { id: 'weights' as TabType, label: '⚖️ Pesos', icon: 'scale' },
-        { id: 'backtest' as TabType, label: '🧪 Backtest', icon: 'flask' },
         { id: 'models' as TabType, label: '🤖 Modelos', icon: 'hardware-chip' },
       ].map(tab => (
         <TouchableOpacity
@@ -625,101 +602,6 @@ export default function MLStatsPage() {
     );
   };
 
-  const renderBacktest = () => (
-    <View style={styles.section}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🧪 Backtesting</Text>
-        <Text style={styles.cardSubtitle}>
-          Valida el rendimiento histórico del sistema con datos reales de Yahoo Finance
-        </Text>
-        
-        <View style={styles.backtestInput}>
-          <TextInput
-            style={styles.input}
-            placeholder="Símbolo (ej: AAPL, TSLA, BTC-USD)"
-            placeholderTextColor="#64748b"
-            value={backtestSymbol}
-            onChangeText={setBacktestSymbol}
-            autoCapitalize="characters"
-          />
-          <TouchableOpacity
-            style={[styles.backtestButton, backtestLoading && styles.disabledButton]}
-            onPress={runBacktest}
-            disabled={backtestLoading}
-          >
-            {backtestLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.backtestButtonText}>Ejecutar</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {backtestError && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>❌ {backtestError}</Text>
-          </View>
-        )}
-
-        {backtestResult && (
-          <View style={styles.backtestResults}>
-            <View style={styles.backtestHeader}>
-              <Text style={styles.backtestSymbol}>{backtestResult.symbol}</Text>
-              <Text style={styles.backtestPeriod}>{backtestResult.period}</Text>
-            </View>
-
-            <View style={styles.backtestStatsGrid}>
-              <View style={styles.backtestStat}>
-                <Text style={styles.backtestStatValue}>
-                  {backtestResult.directionAccuracy.toFixed(1)}%
-                </Text>
-                <Text style={styles.backtestStatLabel}>Precisión</Text>
-              </View>
-              <View style={styles.backtestStat}>
-                <Text style={styles.backtestStatValue}>
-                  {backtestResult.avgAccuracyScore.toFixed(0)}
-                </Text>
-                <Text style={styles.backtestStatLabel}>Score Avg</Text>
-              </View>
-              <View style={styles.backtestStat}>
-                <Text style={styles.backtestStatValue}>
-                  {backtestResult.bestTimeframe}d
-                </Text>
-                <Text style={styles.backtestStatLabel}>Mejor TF</Text>
-              </View>
-              <View style={styles.backtestStat}>
-                <Text style={styles.backtestStatValue}>
-                  {backtestResult.totalTests}
-                </Text>
-                <Text style={styles.backtestStatLabel}>Tests</Text>
-              </View>
-            </View>
-
-            <View style={styles.recommendationBox}>
-              <Text style={styles.recommendationText}>{backtestResult.recommendation}</Text>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Símbolos sugeridos */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>💡 Símbolos Populares</Text>
-        <View style={styles.suggestedSymbols}>
-          {['AAPL', 'TSLA', 'NVDA', 'MSFT', 'BTC-USD', 'SPY', 'QQQ'].map(symbol => (
-            <TouchableOpacity
-              key={symbol}
-              style={styles.symbolChip}
-              onPress={() => setBacktestSymbol(symbol)}
-            >
-              <Text style={styles.symbolChipText}>{symbol}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </View>
-  );
-
   const renderModels = () => {
     const modelInfo = [
       { key: 'reinforcementLearning', name: 'Aprendizaje por Refuerzo', emoji: '🎮', 
@@ -818,7 +700,6 @@ export default function MLStatsPage() {
         <ScrollView style={styles.scrollContent}>
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'weights' && renderWeights()}
-          {activeTab === 'backtest' && renderBacktest()}
           {activeTab === 'models' && renderModels()}
         </ScrollView>
         
@@ -1078,102 +959,6 @@ const styles = StyleSheet.create({
   classifierStat: {
     color: '#94a3b8',
     fontSize: 12,
-  },
-  backtestInput: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#334155',
-    borderRadius: 8,
-    padding: 12,
-    color: '#ffffff',
-    marginRight: 8,
-  },
-  backtestButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 8,
-    paddingHorizontal: 20,
-    justifyContent: 'center',
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  backtestButtonText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-  },
-  errorBox: {
-    backgroundColor: '#ef444420',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: '#ef4444',
-  },
-  backtestResults: {
-    backgroundColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-  },
-  backtestHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  backtestSymbol: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  backtestPeriod: {
-    color: '#64748b',
-  },
-  backtestStatsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  backtestStat: {
-    alignItems: 'center',
-  },
-  backtestStatValue: {
-    color: '#3b82f6',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  backtestStatLabel: {
-    color: '#94a3b8',
-    fontSize: 11,
-    marginTop: 4,
-  },
-  recommendationBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    padding: 12,
-  },
-  recommendationText: {
-    color: '#ffffff',
-    textAlign: 'center',
-  },
-  suggestedSymbols: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-  },
-  symbolChip: {
-    backgroundColor: '#334155',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  symbolChipText: {
-    color: '#94a3b8',
-    fontSize: 13,
   },
   modelCard: {
     flexDirection: 'row',
